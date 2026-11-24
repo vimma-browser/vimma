@@ -1043,6 +1043,10 @@ dependency for 4b, 5 and parts of 4a.
   panel. Firefox moves focus to the page at the end of every tab switch
   (`_adjustFocusBeforeTabSwitch` blurs chrome, `AsyncTabSwitcher` focuses the browser), so the
   panel takes focus back on `TabSwitchDone` while open (prefix+), prefix+c from the panel).
+  (Since changed: the address bar taking focus closes the panel, so a new tab from it (`ctrl+t`,
+  `prefix+c`, the `+` button, all of which focus the new tab page's address bar) and a click into
+  the address bar type there instead of running panel keys; the bookmarks panel does the same,
+  issue #1481.)
 - **Not-yet examples:** with `ctrl+b b` built, no default binding under the prefix and no `:`
   command is unbuilt. `head.js` `bindUnbuiltPrefixKey()` binds `history_back` to `ctrl+b o` for
   the notice tests in `browser_vimma_tab_keys.js`, `_statusbar.js`, `_cmdline.js` and

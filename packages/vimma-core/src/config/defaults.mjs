@@ -296,6 +296,8 @@ const modal = {
     // (element-focus decision 2).
     F: "hint.element",
     gF: "hint.follow_new_tab",
+    // docs/specs/hover.md decision 14: beside the other g keys, easier to type than ;h.
+    gh: "hint.hover",
     "/": "find.forward",
     "?": "find.backward",
     n: "find.next",

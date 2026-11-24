@@ -1197,7 +1197,14 @@ describe("statusAnnouncement: what is said, and when it is said again", () => {
     const r = statusAnnouncement({ ...quiet, notFound: "k" }, { mode: "command", find });
     expect(r).toEqual({
       text: null,
-      last: { mode: "normal", notFound: "k", agentWaiting: 0, element: null, hintTold: false },
+      last: {
+        mode: "normal",
+        notFound: "k",
+        agentWaiting: 0,
+        element: null,
+        hintTold: false,
+        hover: null,
+      },
     });
     // Without a URL the search is remembered by its query alone.
     expect(statusAnnouncement(quiet, { mode: "normal", find }).last.notFound).toBe("\nx");

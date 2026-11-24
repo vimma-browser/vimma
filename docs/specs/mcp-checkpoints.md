@@ -132,7 +132,8 @@ button that does not submit a form cannot pay unasked when either signal is ther
   step (`http-on-modify-request`, `actors/VimmaActors.sys.mjs:559`) to stop unasked form
   submissions (mcp-forms F16), and computes a URI's site (registrable domain) for links
   (`ctl/AgentAct.sys.mjs:77`, mcp-forms F10). A top-level load to another site, started by a
-  step, can be cancelled there before it is sent, the same way.
+  step, can be cancelled there before it is sent, the same way. (Since changed: the submission
+  blocker observes `http-on-opening-request`, in `actors/submit-marks.mjs`; issue #1484.)
 
 ### Shops
 

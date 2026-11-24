@@ -731,3 +731,27 @@ describe("setup's edges", () => {
     }
   });
 });
+
+// Issue #1119: the edges the weekly mutation run left unpinned.
+describe("the model picker's CLI rows at their edges", () => {
+  test("a CLI whose entry lists no models gets only the row to name one", () => {
+    const foo = {
+      name: "Foo",
+      kind: "cli" as const,
+      endpoint: "",
+      model: "m1",
+      vision: false,
+      cli: "foo",
+    };
+    for (const entry of [{}, null]) {
+      const clis = { foo: entry } as unknown as Record<string, { models: string[] }>;
+      expect(
+        pickerEntries({ providers: [foo], found: null, states: null, current: null, clis }),
+        JSON.stringify(entry),
+      ).toEqual([
+        { provider: foo, state: null, current: false },
+        { provider: foo, state: null, current: false, otherModel: true },
+      ]);
+    }
+  });
+});

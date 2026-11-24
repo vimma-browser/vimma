@@ -188,15 +188,17 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Hints
 
-| Action                                        | Config name              | Bindings           |
-| --------------------------------------------- | ------------------------ | ------------------ |
-| Follow link                                   | `follow_link`            | `f`                |
-| Follow link in new tab                        | `follow_link_new_tab`    | `gF`               |
-| Follow link in new tab and switch to it       | `follow_link_new_tab_fg` | —                  |
-| Focus a text block: v selects it, y copies it | `focus_element`          | `F`, `F [element]` |
-| Show a link's target without following it     | `show_link_target`       | —                  |
-| Copy a link's target                          | `copy_link_target`       | `c [pdf]`          |
-| Leave hint mode                               | `hint_cancel`            | `esc [hint]`       |
+| Action                                                     | Config name              | Bindings           |
+| ---------------------------------------------------------- | ------------------------ | ------------------ |
+| Follow link                                                | `follow_link`            | `f`                |
+| Follow link in new tab                                     | `follow_link_new_tab`    | `gF`               |
+| Follow link in new tab and switch to it                    | `follow_link_new_tab_fg` | —                  |
+| Focus a text block: v selects it, y copies it              | `focus_element`          | `F`, `F [element]` |
+| Show a link's target without following it                  | `show_link_target`       | —                  |
+| Copy a link's target                                       | `copy_link_target`       | `c [pdf]`          |
+| Hover an element: show what the page shows under the mouse | `hover_element`          | `gh`               |
+| End the hover                                              | `hover_release`          | —                  |
+| Leave hint mode                                            | `hint_cancel`            | `esc [hint]`       |
 
 ## Element focus
 

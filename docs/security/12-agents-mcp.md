@@ -1055,14 +1055,39 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   showed. A fill allows its submission only after its last field is set, so a form the page
   submits while it is being filled is cancelled like any other.
   Before every click and every fill the tab is marked in the parent (`AgentActors.agentMark`; the
-  marks and the `http-on-modify-request` observer are in `actors/submit-marks.mjs`, one instance
-  per parent process), after the page's transient user activation is consumed in every frame,
-  and from then on, while its top document is the same,
-  the request of every navigating form submission in it (any frame, a submit button,
-  `requestSubmit()` or a later `submit()`, whatever the page cached) **must** be cancelled
-  before it is sent when it carries no transient user activation, unless it is the one
-  submission the question allowed, during that call, with the method and destination (scheme,
-  host, port and path) it named; a redirect of a submission let through follows on. The call's
+  marks and the `http-on-opening-request` observer are in `actors/submit-marks.mjs`, one instance
+  per parent process; the request is checked as the parent opens it, before anything is sent,
+  issue #1484), after the page's transient user activation is consumed in every frame, and
+  from then on, while its top document is the same, the request of every navigating form
+  submission in it (any frame, a submit button, `requestSubmit()` or a later `submit()`,
+  whatever the page cached) **must** be cancelled before it is sent when it carries no transient
+  user activation, unless it is the one submission the question allowed, during that call, with
+  the method and destination (scheme, host, port and path) it named, and the very request the
+  step started; a redirect of a submission let through follows on. The step's child names that
+  request to the parent by its channel id (`Vimma:AgentSubmitting`, from
+  `actors/agent-page.mjs`'s `#claimSubmission`), and the parent lets through only the request
+  with that id, triggered from that child's process, once. The child takes the first document
+  load its frame starts from the step until the task queued just after it: Firefox runs a
+  form's navigation in a task of its own, queued as the form is submitted, any other load of the
+  frame that starts first cancels it, and a submission the page makes in a later task is queued
+  after that end. The name reaches the parent before the request: the load group starts the
+  document's progress before the child asks the parent to open it, over the same IPC channel. So
+  a page's submission to the same method and destination is never the asked one, whenever its
+  request is opened: one started just before the step, one whose opening Firefox puts off (a POST
+  whose upload stream it copies first, a submission while a prefetch of its address is in
+  flight) and one from a frame of another process aimed at the step's frame. What
+  is left is a submission the page's own handlers start while the step runs (its `submit` or
+  `formdata` listener, or those of the press): that one is named in the step's place, to the
+  asked method and destination alone, as those handlers can change the step's own submission
+  anyway. A load the child names that is not a form submission, or goes elsewhere, matches
+  nothing, and the step's own submission is then cancelled too. A step that does not run names
+  nothing, and only a step sent after the allowance opened can name its request. The child
+  watches only its own frame: a form aimed at another frame of the tab (`target` or
+  `formtarget` naming a frame, `_parent` or `_top` from a subframe) is cancelled even when asked,
+  as no request of that frame is named; one aimed at a new tab goes to a tab with no mark. With
+  Firefox's `dom.forms.submit_async_navigation` set to false by the user (it is true by
+  default), the form's navigation starts at once inside the step, and the child stops watching
+  as soon as the step returns. The call's
   wait for a page counts from when the click or the submission ran in the page's process, not
   from the child's reply before it, so that the allowance is still open when a busy process runs
   the step late; it still ends with the call. A step that starts no load ends its call once the
@@ -1095,9 +1120,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   question named. A submission the page starts while the element is being pressed, before the
   child's check, cannot be told from the click's own: it is let through only to the asked method and
   destination, as the click's would be. A frame of another process in the tab is not ordered with
-  that message, and until the call ends it too can send only the asked submission. So can a subframe
-  that skips the step and is removed before its message is sent: the allowance stays open until the
-  call ends, still only for the method and destination asked. The result and `:mcp log` name the
+  that message, but its submissions are never the request the step's child named. A subframe
+  that skips the step and is removed before its message is sent leaves the allowance open until
+  the call ends, but no request can take it: its child names none for a step that did not run. The result and `:mcp log` name the
   host it was going to. Clicks and fills on one tab run one at a time, so no call takes another's
   allowance. Your activation after the step (a click or a key of yours in that page) and your `f`
   hints end the mark, so your own submissions in an agent tab go through, and so do those of a page
@@ -1145,6 +1170,10 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_page_script_submit_after_a_fill_is_cancelled`](../../tests/browser/browser_vimma_mcp_fill.js),
   [`the_submit_check_test_hook_is_read_only_in_automation`](../../tests/browser/browser_vimma_security_invariants.js),
   [`test_a_page_submit_during_a_fill_is_not_the_asked_one`](../../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_page_submit_that_reaches_the_network_late_is_not_the_asked_one`](../../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_page_submit_opened_before_the_asked_one_cannot_take_its_place`](../../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_submit_of_a_frame_in_another_process_cannot_take_its_place`](../../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_page_submit_opened_before_the_asked_click_cannot_take_its_place`](../../tests/browser/browser_vimma_mcp_submit.js),
   [`test_selects_ranges_and_a_submit_button_of_another_form`](../../tests/browser/browser_vimma_mcp_fill.js),
   [`a fill that submits: the destination, then the fields, y or n only`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`test_submit_question_lists_the_fields_it_sends`](../../tests/browser/browser_vimma_mcp_submit.js),

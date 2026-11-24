@@ -14,7 +14,8 @@ What works today, each with the section that explains it:
 
 - **Vim on the page** ([the two layers](#the-two-layers)): `j`/`k`/`h`/`l` scroll, `d`/`u`
   half a page, `gg`/`G` top and bottom, `H`/`L` back and forward; `f` link hints (`gF` in a
-  new tab: in the background, or with an upper-case last key, switching to it); `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
+  new tab: in the background, or with an upper-case last key, switching to it); `gh`
+  [hovers](#hovering-an-element) what a page shows only under the mouse; `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
   list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
   with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
   [command line](#the-command-line) with completion and history.
@@ -808,6 +809,39 @@ it has been used, which puts the keys in that frame. `Tab` moves through the ban
 and `F` labels its paragraphs so you can [copy them](#copying-a-paragraph-element-focus). One
 banner kind sets its categories with a slider instead of switches; [Known limits](limits.md)
 says how to move it.
+
+### Hovering an element
+
+Many pages show some controls only while the mouse rests over part of the page: a chat message's
+actions, a channel's settings gear, a table row's buttons, a navigation bar's sub-menu. `gh`
+reaches them without the mouse. It puts a label on everything on screen that can be hovered: what
+`f` labels, elements that react to the mouse resting on them (a menu that opens, an element with
+a tooltip title), and text, so a row whose buttons appear only under the mouse can be hovered
+through its text. A block that holds something else to hover gets no label of its own: a
+paragraph with a link is labelled on the link. Typing, `Backspace` and `Esc` work as they do for
+link hints.
+
+Typing a label **hovers** its element: the page shows what it shows when the mouse rests there,
+and the status bar says `hover · ` and the element's text. The tab stays in normal mode, so `f`
+then labels the controls the hover revealed and follows one, `j` and `k` scroll to read a menu
+that opened, and `F` copies from it. The hover holds through a click, so a menu that a revealed
+button opens stays open.
+
+The hover holds while you scroll and the page changes, and ends with:
+
+- `Esc` in normal mode (a second `Esc` stops a loading page, as before);
+- another `gh` label, which moves the hover;
+- leaving the page, switching to another tab, workspace or split pane;
+- the page replacing or moving the hovered element;
+- moving the real mouse;
+- `:hover_release`, which you can bind to a key.
+
+A hover clicks nothing, focuses nothing and selects nothing. Hovering a link shows its address in
+the link preview, as the mouse would. Firefox's own tooltip and the mouse pointer's shape do not
+change, since the real pointer stays where it is.
+
+Hovering is `gh` in normal mode and `:hover_element` on the command line; bind `hover_element`
+and `hover_release` to other keys in [config.toml](#configtoml) under `[modal.normal]`.
 
 ### Copying a paragraph (element focus)
 
@@ -3667,6 +3701,9 @@ highlighted and its number coloured; a tab playing sound shows `♪`, one from a
 | `I`                     | Close the panel and focus the address bar.                                                                                                                                                                 |
 | `Esc`                   | End a range; else clear the marks (with a split: put its marks back); else close the panel, and the page has the keys again.                                                                               |
 | `ctrl+b b`              | Close the panel.                                                                                                                                                                                           |
+
+A new tab (`ctrl+t`, `ctrl+b c` or the `+` button) closes the panel and you type in its
+address bar, as does a click into the address bar; the bookmarks panel does the same.
 
 A window with workspaces has no pinned tabs: they are unpinned at once
 ([Managing workspaces](#managing-workspaces)). A private window keeps them: the panel lists them,

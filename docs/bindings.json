@@ -1734,6 +1734,21 @@
           ]
         },
         {
+          "name": "hover_element",
+          "description": "Hover an element: show what the page shows under the mouse",
+          "keys": [
+            {
+              "keys": "gh",
+              "chords": ["gh"]
+            }
+          ]
+        },
+        {
+          "name": "hover_release",
+          "description": "End the hover",
+          "keys": []
+        },
+        {
           "name": "hint_cancel",
           "description": "Leave hint mode",
           "keys": [

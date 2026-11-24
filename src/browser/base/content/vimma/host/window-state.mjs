@@ -11,6 +11,7 @@
 // `init` builds it and hands it in: only the modules tools/layering's RESTRICTED lists import
 // the gate.
 
+import { HoverOps } from "./hover-ops.mjs";
 import { createDispatcher } from "../core/dispatcher.mjs";
 import { PageFirstQueue } from "../core/page-first.mjs";
 import { CommandLine } from "../ui/cmdline.mjs";
@@ -142,6 +143,7 @@ export function newWindowState(host, win, keymap, env) {
       host._cancelHints(state);
       state.find.onTabSelect();
       state.element.leave();
+      HoverOps.onTabSelect(win);
       state.help.close({ tabChanged: true });
       state.cmdline.close({ tabChanged: true });
       state.picker.close({ tabChanged: true });

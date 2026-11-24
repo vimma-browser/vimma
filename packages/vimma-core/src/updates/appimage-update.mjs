@@ -123,6 +123,7 @@ export function downloadProblem(expected, got) {
  * @param {InstallType} [installType]
  * @returns {{ text: string, commands: string[], link: string }}
  */
+// Stryker disable next-line StringLiteral: every install type other than "tarball" gets the AppImage text
 export function stagedSteps(offer, installType = "appimage") {
   const v = offer.displayVersion;
   return {

@@ -395,6 +395,7 @@ function fillLine(w, lead, count) {
     const fullName = clean(f?.name);
     const name = truncate(fullName, FILL_NAME_COLUMNS, "end");
     const flag = typeof f?.value === "boolean";
+    // Stryker disable next-line StringLiteral: a checkbox shows checked or unchecked, never this value, which is only compared with itself cut
     const fullValue = flag ? "" : clean(f?.value);
     const value = truncate(fullValue, FILL_VALUE_COLUMNS, "end");
     if (name !== fullName || value !== fullValue) fits = false;
@@ -423,6 +424,7 @@ function fillLine(w, lead, count) {
  * F14, F15): a fill that submits must, because its one yes sends them.
  * @param {What} what
  */
+// Stryker disable next-line StringLiteral,BooleanLiteral: the lead and the count change only the first part, never whether the fields fit
 export const fillFits = (what) => fillLine(what, "", false).fits;
 
 /**

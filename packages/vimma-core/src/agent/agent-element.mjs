@@ -34,7 +34,11 @@ export const ELEMENT_REPLY_CAPS = Object.freeze({
   action: 8192,
 });
 
-/** Form methods, as `HTMLFormElement.method` reports them. */
+/**
+ * Form methods, as `HTMLFormElement.method` reports them; a set of anything, so that `has` takes
+ * a value of any type, which is in it only as one of these strings.
+ * @type {ReadonlySet<unknown>}
+ */
 const METHODS = new Set(["get", "post", "dialog"]);
 
 /** Autocomplete field names that are never listed with a value or filled (F6). */
@@ -96,13 +100,16 @@ const isText = (v, max) => typeof v === "string" && v.length <= max;
  */
 export function parseAgentElement(value, forms) {
   try {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    if (typeof value !== "object" || Array.isArray(value)) return null;
+    // Stryker disable next-line ConditionalExpression: the `false` case: null throws into the catch
+    if (value === null) return null;
     const v = /** @type {Record<string, unknown>} */ (value);
     const caps = ELEMENT_REPLY_CAPS;
-    if (typeof v.kind !== "string" || !ELEMENT_KINDS.includes(v.kind)) return null;
+    // A kind that is not a string is in no list of strings.
+    if (!(/** @type {readonly unknown[]} */ (ELEMENT_KINDS).includes(v.kind))) return null;
     if (!isText(v.text, caps.text)) return null;
     /** @type {AgentElementInfo} */
-    const out = { kind: v.kind, text: /** @type {string} */ (v.text) };
+    const out = { kind: /** @type {string} */ (v.kind), text: /** @type {string} */ (v.text) };
     for (const key of /** @type {const} */ (["type", "name", "autocomplete", "caption"])) {
       if (v[key] === undefined) continue;
       if (!isText(v[key], caps[key])) return null;
@@ -130,7 +137,9 @@ export function parseAgentElement(value, forms) {
       /** @type {ElementOption[]} */
       const options = [];
       for (const o of [...v.options]) {
-        if (typeof o !== "object" || o === null) return null;
+        if (typeof o !== "object") return null;
+        // Stryker disable next-line ConditionalExpression: the `false` case: null throws into the catch
+        if (o === null) return null;
         const { value: ov, text: ot } = /** @type {Record<string, unknown>} */ (o);
         if (!isText(ov, caps.text) || !isText(ot, caps.text)) return null;
         options.push({ value: /** @type {string} */ (ov), text: /** @type {string} */ (ot) });
@@ -164,11 +173,13 @@ export function parseAgentForms(value) {
     /** @type {AgentForm[]} */
     const out = [];
     for (const f of [...value]) {
-      if (typeof f !== "object" || f === null) return null;
+      if (typeof f !== "object") return null;
+      // Stryker disable next-line ConditionalExpression: the `false` case: null throws into the catch
+      if (f === null) return null;
       const { method, action } = /** @type {Record<string, unknown>} */ (f);
-      if (typeof method !== "string" || !METHODS.has(method)) return null;
+      if (!METHODS.has(method)) return null;
       if (!isText(action, ELEMENT_REPLY_CAPS.action)) return null;
-      out.push({ method, action: /** @type {string} */ (action) });
+      out.push({ method: /** @type {string} */ (method), action: /** @type {string} */ (action) });
     }
     return out;
   } catch {

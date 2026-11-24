@@ -906,3 +906,20 @@ add_task(async function an_empty_toolbar_says_what_the_panel_shows() {
   BrowserTestUtils.removeTab(tab);
   await seed();
 });
+
+// #1481, as the side panel: a new tab from the panel focuses its URL bar, which then gets the
+// keys; the panel closes rather than keep `panel` mode.
+add_task(async function a_new_tab_from_the_panel_types_in_its_url_bar() {
+  await openPanel();
+  const n = gBrowser.tabs.length;
+  EventUtils.synthesizeKey("t", { ctrlKey: true });
+  await until(() => gBrowser.tabs.length === n + 1, "a new tab opens");
+  await until(() => gURLBar.focused, "its URL bar has focus");
+  EventUtils.sendString("moz");
+  Assert.equal(gURLBar.value, "moz", "the URL bar has what was typed");
+  Assert.equal(VimmaHost.status(window).mode, "insert", "the window types, not panel mode");
+  Assert.ok(!isOpen(), "the panel has closed");
+  Assert.ok(!promptOpen(), "no prompt opened");
+  gURLBar.handleRevert();
+  BrowserTestUtils.removeTab(gBrowser.selectedTab);
+});

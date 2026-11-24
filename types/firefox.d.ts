@@ -796,6 +796,8 @@ interface nsIHttpChannel {
   readonly URI: nsIURI;
   readonly loadInfo: nsILoadInfo;
   readonly requestMethod: string;
+  /** nsIIdentChannel's: a document load's is the one its DocumentChannel had in the child. */
+  readonly channelId: number;
   /** nsIRequest's: the request's result so far, a failure code once it failed. */
   readonly status: number;
   /** Throws while there is no response yet (a request that failed before one). */
@@ -808,6 +810,8 @@ interface nsIHttpChannel {
 // engine/netwerk/base/nsILoadInfo.idl
 interface nsILoadInfo {
   readonly isFormSubmission: boolean;
+  /** The remote type of the process that started the load, set by the parent from the sender. */
+  readonly triggeringRemoteType: string;
   readonly hasValidUserGestureActivation: boolean;
   /** The frame the load is for; null once it is gone. In the parent, canonical. */
   readonly browsingContext: CanonicalBrowsingContext | null;
@@ -826,6 +830,7 @@ interface Window {
   readonly ResizeObserver: typeof ResizeObserver;
   readonly KeyboardEvent: typeof KeyboardEvent;
   readonly MouseEvent: typeof MouseEvent;
+  readonly PointerEvent: typeof PointerEvent;
   readonly Event: typeof Event;
   readonly OffscreenCanvas: typeof OffscreenCanvas;
   readonly CSS: typeof CSS;
@@ -1341,10 +1346,32 @@ interface nsITypeAheadFind {
   find(searchString: string, linksOnly: boolean, mode: number, dontIterateFrames: boolean): number;
 }
 
-// engine/uriloader/base/nsIWebProgress.idl (the members Vimma reads)
+// engine/uriloader/base/nsIWebProgress.idl (the members Vimma reads). A listener is held weakly.
 interface nsIWebProgress {
   readonly isTopLevel: boolean;
   readonly isLoadingDocument: boolean;
+  /** The frame whose loads it reports; null once it is gone. */
+  readonly browsingContext: BrowsingContext | null;
+  addProgressListener(listener: nsIWebProgressListener, notifyMask: number): void;
+  removeProgressListener(listener: nsIWebProgressListener): void;
+}
+// engine/uriloader/base/nsIWebProgressListener.idl, a JS implementation's members.
+interface nsIWebProgressListener extends nsISupports {
+  onStateChange(
+    progress: nsIWebProgress | null,
+    request: nsIRequest,
+    flags: number,
+    status: number,
+  ): void;
+  onProgressChange(): void;
+  onLocationChange(): void;
+  onStatusChange(): void;
+  onSecurityChange(): void;
+  onContentBlockingEvent(): void;
+}
+// engine/netwerk/base/nsIIdentChannel.idl: a channel with its id (a DocumentChannel too).
+interface nsIIdentChannel extends nsIChannel {
+  readonly channelId: number;
 }
 
 // engine/docshell/shistory/nsISHistory.idl and nsISHEntry.idl (the members Vimma reads).
@@ -2323,6 +2350,15 @@ interface XPCOMInterfaces {
     readonly LOAD_FLAGS_NONE: number;
     readonly LOAD_FLAGS_ALLOW_POPUPS: number;
   };
+  nsIChannel: nsIJSIID<nsIChannel> & {
+    readonly LOAD_DOCUMENT_URI: number;
+  };
+  nsIIdentChannel: nsIJSIID<nsIIdentChannel>;
+  nsISupportsWeakReference: nsIJSIID<nsISupports>;
+  nsIWebProgress: nsIJSIID<nsIWebProgress> & {
+    readonly NOTIFY_STATE_DOCUMENT: number;
+    readonly NOTIFY_STATE_REQUEST: number;
+  };
   nsIWebProgressListener: nsIJSIID<nsISupports> & {
     readonly LOCATION_CHANGE_SAME_DOCUMENT: number;
     readonly STATE_CERT_USER_OVERRIDDEN: number;
@@ -2661,3 +2697,13 @@ interface nsIGIOMimeApp {
   setAsDefaultForMimeType(mimeType: string): void;
   setAsDefaultForFileExtensions(extensions: string): void;
 }
+
+// engine/dom/chrome-webidl/InspectorUtils.webidl (chrome only): DevTools' "force element state",
+// a pseudo-class lock on one element (docs/specs/hover.md).
+interface InspectorUtilsNamespace {
+  addPseudoClassLock(element: Element, pseudoClass: string, enabled?: boolean): void;
+  removePseudoClassLock(element: Element, pseudoClass: string): void;
+  hasPseudoClassLock(element: Element, pseudoClass: string): boolean;
+  clearPseudoClassLocks(element: Element): void;
+}
+declare var InspectorUtils: InspectorUtilsNamespace;

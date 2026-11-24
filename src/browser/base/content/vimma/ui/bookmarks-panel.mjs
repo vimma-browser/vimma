@@ -17,6 +17,7 @@ import {
 } from "../core/bookmarks.mjs";
 import {
   PanelNumbers,
+  addressBarFocused,
   buildPanelBox,
   emptyRow,
   giveFocusBack,
@@ -161,6 +162,10 @@ export class BookmarksPanel {
       const el = this.win.document.activeElement;
       if (this.isOpen && el?.localName === "browser") this.list?.focus();
     };
+    // As the side panel (side-panel.mjs addressBarFocused).
+    this.onFocusIn = () => {
+      if (this.isOpen && addressBarFocused(this.win)) this.close();
+    };
   }
 
   get isOpen() {
@@ -193,6 +198,7 @@ export class BookmarksPanel {
     box.hidden = false;
     this.unobserve = this.host.observe(() => this.scheduleReload());
     this.win.addEventListener("TabSwitchDone", this.onSwitchDone);
+    this.win.addEventListener("focusin", this.onFocusIn);
     // The tree, which carries aria-activedescendant (m7-a11y).
     /** @type {HTMLElement} */ (this.list).focus();
     this.reload();
@@ -218,6 +224,7 @@ export class BookmarksPanel {
     if (this.reloadTimer !== null) this.win.clearTimeout(this.reloadTimer);
     this.reloadTimer = null;
     this.win.removeEventListener("TabSwitchDone", this.onSwitchDone);
+    this.win.removeEventListener("focusin", this.onFocusIn);
     const box = /** @type {HTMLElement} */ (this.box);
     // Focus first, then hide (side-panel.mjs giveFocusBack).
     giveFocusBack(this.win, box, this.opener);

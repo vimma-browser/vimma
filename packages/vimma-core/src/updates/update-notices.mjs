@@ -57,6 +57,7 @@ export function checkDue({ enabled, installType, okAt, triedAt, now, intervalSec
  *   "" for none
  * @returns {string | null}
  */
+// Stryker disable next-line StringLiteral: stage is only compared with "pending" and "staged" here
 export function announcement({ enabled, installType, offer, announced, stage = "none" }) {
   if (!enabled || installType === "source" || !offer) return null;
   if (offer.displayVersion === announced || stage === "pending") return null;
