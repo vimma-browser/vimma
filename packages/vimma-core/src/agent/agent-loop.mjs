@@ -123,7 +123,7 @@ function leftOutCount(messages, keep) {
   if (!(keep > 0)) return 0;
   let total = 0;
   for (const m of messages) if (m.role === "tool") total += m.results.length;
-  // Stryker disable next-line EqualityOperator: at total === keep both sides give 0
+  // Stryker disable next-line EqualityOperator: the `<=` case: at total === keep both give 0
   return total < keep ? 0 : Math.floor((total - keep) / keep) * keep;
 }
 
@@ -392,7 +392,7 @@ async function run(opts, signal, pending) {
       const error = `stopped: ${repeated.name} was refused ${REPEAT_LIMIT} times in a row with the same arguments`;
       return { outcome: "error", messages, error };
     }
-    // Stryker disable next-line ConditionalExpression: the next turn's first check finds it too
+    // Stryker disable next-line ConditionalExpression: `false`: the next turn's first check finds it
     if (exceeded) return { outcome: "budget", messages, exceeded };
   }
 }

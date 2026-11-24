@@ -123,16 +123,16 @@ export function modelChoices(found) {
  */
 
 /** The same kind, endpoint and model: one model, whatever its provider is named. */
-export const providerKey = (/** @type {AgentProviderConfig} */ p) =>
+export const providerKey = (
+  /** @type {Pick<AgentProviderConfig, "kind" | "endpoint" | "model" | "cli">} */ p,
+) =>
   `${p.kind}\n${p.endpoint.replace(/\/+$/, "")}\n${p.model}${p.kind === "cli" ? `\n${p.cli}` : ""}`;
 
 /**
- * A local server's model as providerKey writes an OpenAI-compatible provider of it, which needs
- * no name or vision.
+ * A local server's model as providerKey writes an OpenAI-compatible provider of it.
  * @param {{ endpoint: string, model: string }} local
  */
-const localKey = (local) =>
-  providerKey(/** @type {AgentProviderConfig} */ ({ kind: "openai", ...local }));
+const localKey = (local) => providerKey({ kind: "openai", ...local });
 
 /**
  * Whether two providers are the same model at the same endpoint under the same name.
@@ -179,7 +179,7 @@ export async function localModelState(
     // gives the same "unknown".
     // Stryker disable next-line OptionalChaining: see above
     const data = JSON.parse(await res.text())?.data;
-    // Stryker disable next-line ConditionalExpression: see above
+    // Stryker disable next-line ConditionalExpression: the `false` case, as above
     if (!Array.isArray(data)) return "unknown";
     return data.some((/** @type {JsonEntry} */ m) => m?.id === provider.model)
       ? "available"

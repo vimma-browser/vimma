@@ -101,7 +101,7 @@ const isText = (v, max) => typeof v === "string" && v.length <= max;
 export function parseAgentElement(value, forms) {
   try {
     if (typeof value !== "object" || Array.isArray(value)) return null;
-    // Stryker disable next-line ConditionalExpression: reading null throws into the catch
+    // Stryker disable next-line ConditionalExpression: the `false` case: null throws into the catch
     if (value === null) return null;
     const v = /** @type {Record<string, unknown>} */ (value);
     const caps = ELEMENT_REPLY_CAPS;
@@ -138,7 +138,7 @@ export function parseAgentElement(value, forms) {
       const options = [];
       for (const o of [...v.options]) {
         if (typeof o !== "object") return null;
-        // Stryker disable next-line ConditionalExpression: reading null throws into the catch
+        // Stryker disable next-line ConditionalExpression: the `false` case: null throws into the catch
         if (o === null) return null;
         const { value: ov, text: ot } = /** @type {Record<string, unknown>} */ (o);
         if (!isText(ov, caps.text) || !isText(ot, caps.text)) return null;
@@ -174,7 +174,7 @@ export function parseAgentForms(value) {
     const out = [];
     for (const f of [...value]) {
       if (typeof f !== "object") return null;
-      // Stryker disable next-line ConditionalExpression: reading null throws into the catch
+      // Stryker disable next-line ConditionalExpression: the `false` case: null throws into the catch
       if (f === null) return null;
       const { method, action } = /** @type {Record<string, unknown>} */ (f);
       if (!METHODS.has(method)) return null;

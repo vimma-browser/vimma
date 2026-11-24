@@ -119,10 +119,11 @@ export function storedRecord(c) {
     over -= size(record.entries.shift()) + 1;
   }
   const last = record.entries[0];
-  // Stryker disable next-line EqualityOperator,ConditionalExpression: with over <= 0 it cuts nothing
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: `over >= 0`, `true`: over <= 0 cuts none
   if (over > 0 && last) {
     // One entry alone is too long: its start is kept. Each character takes at least one byte of
-    // the JSON, so cutting `over` of them fits, unless the rest of the record is too long alone.
+    // the JSON, so cutting `over` of them fits; when the rest of the record is too long alone,
+    // nothing of the text is left.
     const chars = [...last.text];
     last.text = chars.slice(0, Math.max(0, chars.length - over)).join("");
   }
@@ -186,7 +187,8 @@ function tokens(n) {
   // Round first, then pick the unit, so 999_500 reads as 1M rather than 1000k (#1190).
   const thousands = Math.round(n / 1000);
   if (thousands < 1000) return `${thousands}k`;
-  // Stryker disable next-line Regex: toFixed(1) writes one dot, so its ".0" can only end it
+  // Below 1e27 tokens, where toFixed turns to exponents, it writes one dot, so ".0" ends it.
+  // Stryker disable next-line Regex: the `/\.0/` case, as above
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 

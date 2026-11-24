@@ -75,6 +75,13 @@ const ANSWERS = Object.freeze({
   mute: "denied (muted)",
 });
 
+/**
+ * What the gate's answer makes of a step; none is "denied".
+ * @param {string | undefined} answer
+ */
+// Stryker disable next-line StringLiteral: no answer is named "Stryker was here!" either
+const answerText = (answer) => ANSWERS[answer ?? ""] ?? "denied";
+
 /** Columns a tool's name keeps in a step's line. */
 const NAME_COLUMNS = 40;
 
@@ -224,7 +231,7 @@ export class Transcript {
             ? "ran under grant"
             : e.kind === "timeout"
               ? "denied (no answer)"
-              : (ANSWERS[String(e.answer)] ?? "denied");
+              : answerText(e.answer);
     }
     this.version++;
   }
@@ -238,7 +245,7 @@ export class Transcript {
   cliGate(e) {
     // gate() gives the step its outcome, and does nothing without a step.
     if (e.kind === "asked" || e.kind === "ran") {
-      this.step = this.push({ kind: "step", text: toolName(e.tool) });
+      this.step = this.push({ kind: "step", text: toolName(e.tool), outcome: "…" });
     }
     this.gate(e);
     if (e.kind !== "asked") this.step = null;
@@ -337,7 +344,14 @@ const PROBED_PORTS = new Set(LOCAL_SERVERS.map((s) => String(s.port)));
 
 /** @param {string} endpoint @returns {URL | null} */
 function parse(endpoint) {
-  return URL.canParse(endpoint) ? new URL(endpoint) : null;
+  /** @type {URL | null} */
+  let url = null;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    // not a URL: null
+  }
+  return url;
 }
 
 /**
@@ -359,8 +373,15 @@ export function isLocalEndpoint(endpoint) {
 export const needsKey = (p) =>
   p.kind !== "cli" && (p.kind === "anthropic" || !isLocalEndpoint(p.endpoint));
 
+/**
+ * A supported agent CLI's entry by its id, or null.
+ * @param {string | undefined} id
+ */
+// Stryker disable next-line StringLiteral: no CLI is named "Stryker was here!" either
+const cliEntry = (id) => CLIS[id ?? ""] ?? null;
+
 /** @param {{ kind: string, cli?: string }} p */
-const cliOf = (p) => (p.kind === "cli" ? (CLIS[String(p.cli)] ?? null) : null);
+const cliOf = (p) => (p.kind === "cli" ? cliEntry(p.cli) : null);
 
 /**
  * What a y to the notice before the first task covers: the endpoint, or for an agent CLI the
@@ -494,7 +515,7 @@ export function chatHeader({
   cli = null,
 }) {
   const approval = granted ? ["granted"] : asking ? ["asks every step"] : [];
-  const info = provider?.kind === "cli" ? (CLIS[String(provider.cli)] ?? null) : null;
+  const info = provider?.kind === "cli" ? cliEntry(provider.cli) : null;
   if (provider && info) {
     // docs/specs/builtin-agent-cli.md Behaviour 5: the CLI, the model it reported (else the
     // one the provider names), and that the CLI decides where data goes; then its own tools.
@@ -526,7 +547,8 @@ export function chatHeader({
 function tokens(n) {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
-  // Stryker disable next-line Regex: toFixed(1) writes one dot, so its ".0" can only end it
+  // Below 1e27 tokens, where toFixed turns to exponents, it writes one dot, so ".0" ends it.
+  // Stryker disable next-line Regex: the `/\.0/` case, as above
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 

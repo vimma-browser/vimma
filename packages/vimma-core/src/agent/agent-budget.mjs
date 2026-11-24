@@ -28,6 +28,9 @@ export const DEFAULT_LIMITS = Object.freeze({ maxSteps: 100, maxTokens: 2_000_00
 
 const MINUTE_MS = 60_000;
 
+/** Whole minutes since a CLI run's start. @param {{ start: number }} run @param {number} now */
+const minutesOf = (run, now) => Math.floor((now - run.start) / MINUTE_MS);
+
 export class Budget {
   /** @param {Partial<Limits>} [limits] @param {Prices} [prices] @param {CliRun} [run] */
   constructor(limits = {}, prices = {}, run) {
@@ -89,7 +92,7 @@ export class Budget {
 
   /** Whole minutes an agent CLI's run has taken, or null for a model's task. @param {number} now */
   minutes(now) {
-    return this.cli ? Math.floor((now - this.cli.start) / MINUTE_MS) : null;
+    return this.cli ? minutesOf(this.cli, now) : null;
   }
 
   /**
@@ -108,7 +111,7 @@ export class Budget {
     if (cost !== null && !(cost - this.base.cost < this.limits.maxCost))
       return { limit: "cost", used: cost - this.base.cost, max: this.limits.maxCost };
     if (this.cli) {
-      const minutes = /** @type {number} */ (this.minutes(now));
+      const minutes = minutesOf(this.cli, now);
       if (!(minutes < this.cli.maxMinutes))
         return { limit: "minutes", used: minutes, max: this.cli.maxMinutes };
     }
