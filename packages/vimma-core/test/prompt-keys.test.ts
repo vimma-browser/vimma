@@ -264,6 +264,29 @@ describe("barKey", () => {
     expect(barKey("esc", { ...bar, inField: true, inBar: true })).toEqual({ kind: "pass" });
   });
 
+  // macOS Firefox leaves Enter on a focused XUL button to the window's default button
+  // (XULButtonElement::PostHandleEvent), so Vimma presses the bar's button itself.
+  test("Enter presses the bar button that has focus, on every platform", () => {
+    const onButton = { ...closable, inField: true, inBar: true, onButton: true };
+    expect(barKey("enter", onButton)).toEqual({ kind: "press" });
+    expect(barKey("enter", { ...onButton, dismissable: false })).toEqual({ kind: "press" });
+    for (const key of ["space", "tab", "shift+tab", "y"]) {
+      expect(barKey(key, onButton)).toEqual({ kind: "pass" });
+    }
+  });
+
+  test("Enter is Firefox's on the close button, held down, mid-sequence or in the agent workspace", () => {
+    const onButton = { ...closable, inField: true, inBar: true, onButton: true };
+    for (const s of [
+      { ...onButton, onButton: false },
+      { ...onButton, repeat: true },
+      { ...onButton, pending: true },
+      { ...onButton, agent: true },
+    ]) {
+      expect(barKey("enter", s)).toEqual({ kind: "pass" });
+    }
+  });
+
   test("in the agent workspace Esc leaves the bar alone with focus on it too", () => {
     const inBar = { ...closable, inField: true, inBar: true, agent: true };
     expect(barKey("esc", inBar)).toEqual({ kind: "pass" });

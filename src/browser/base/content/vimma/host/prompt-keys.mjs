@@ -563,7 +563,25 @@ export class PromptKeys {
   }
 
   /**
-   * A keydown while a bar other than the pop-up blocked bar shows: Tab or Esc.
+   * The bar's own button that has focus, when it is enabled, else null (focus elsewhere, on the
+   * close button, or on a button Firefox's clickjacking delay disabled again). Its buttons carry
+   * the class `notification-button` (notificationbox.js, NotificationMessage.setButtons); a
+   * focused one is the active element itself, or the host of the button that has focus.
+   * @param {MozNotificationMessage} bar
+   * @returns {HTMLButtonElement | null}
+   */
+  focusedBarButton(bar) {
+    const chain = hostChain(this.win.document.activeElement);
+    const button = [...(bar.buttonContainer?.children ?? [])].find(
+      (b) => b.classList.contains("notification-button") && chain.includes(b),
+    );
+    const enabled = button && !(/** @type {HTMLButtonElement} */ (button).disabled);
+    return enabled ? /** @type {HTMLButtonElement} */ (button) : null;
+  }
+
+  /**
+   * A keydown while a bar other than the pop-up blocked bar shows: Tab, Esc, or Enter on one of
+   * its buttons.
    * @param {KeyboardEvent} e
    * @param {Chord} chord
    * @param {MozNotificationMessage} bar
@@ -571,6 +589,7 @@ export class PromptKeys {
    * @returns {boolean} whether it was the bar's key (consumed)
    */
   onOtherBarKey(e, chord, bar, armed) {
+    const pressed = this.focusedBarButton(bar);
     const first = firstBarButton(bar);
     const result = barKey(formatKey(chord), {
       open: true,
@@ -578,9 +597,11 @@ export class PromptKeys {
       // (notificationbox.js, _startClickJackingDelay), on a clock Vimma does not see: a disabled
       // button takes no focus, so a Tab then would be lost.
       armed: armed && !first?.disabled,
-      // Focus on the bar's own buttons is insert mode: Firefox's Tab and Enter work there.
+      // Focus on the bar's own buttons is insert mode: Firefox's Tab and Space work there, and
+      // Enter is barKey's.
       inField: this.host.inField(),
       inBar: this.inBar(bar),
+      onButton: !!pressed,
       pending: this.host.pending(),
       repeat: e.repeat,
       agent: inAgentTab(this.win),
@@ -593,6 +614,11 @@ export class PromptKeys {
     if (result.kind === "close") {
       bar.dismiss();
       // Closing the bar fires no event the status bar hears.
+      this.host.changed();
+    } else if (result.kind === "press") {
+      // A click runs the button's callback, as Linux's Enter does, and closes the bar unless
+      // the callback keeps it (notificationbox.js, NotificationMessage.handleEvent).
+      pressed?.click();
       this.host.changed();
     } else (first ?? bar.closeButton)?.focus();
     return true;
