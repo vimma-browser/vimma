@@ -406,7 +406,8 @@ add_task(async function menubar_help_has_no_mozilla_items() {
 // _onHelpViewShow): with browser.nova.enabled, on by default, Firefox replaces the copy of the
 // menu bar's Switch Device item with a promo; without it the copy stays. The pref is read each
 // time the view opens and a user can turn it off, so both are hidden, and each is made here
-// so that the rule hiding it is what keeps it out of sight.
+// so that the rule hiding it is what keeps it out of sight. Firefox 162 locks the pref on
+// (firefox.js), so there the copy can no longer stay and only the promo is made.
 for (const [name, nova, item] of /** @type {[string, boolean, string][]} */ ([
   ["app_menu_help_has_no_mozilla_items_with_nova", true, "appMenu-nova-switch-device-promo"],
   ["app_menu_help_has_no_mozilla_items_without_nova", false, "appMenu_helpSwitchDevice"],
@@ -414,6 +415,13 @@ for (const [name, nova, item] of /** @type {[string, boolean, string][]} */ ([
   // A named function per run, so that the log tells the two apart.
   const task = {
     async [name]() {
+      if (!nova && Services.prefs.prefIsLocked("browser.nova.enabled")) {
+        Assert.ok(
+          Services.prefs.getBoolPref("browser.nova.enabled"),
+          "Firefox locks browser.nova.enabled on, so the Help view always has the promo",
+        );
+        return;
+      }
       await SpecialPowers.pushPrefEnv({ set: [["browser.nova.enabled", nova]] });
       try {
         await BrowserTestUtils.withNewTab("https://example.com/", async () => {
