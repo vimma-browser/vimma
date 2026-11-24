@@ -1323,6 +1323,9 @@ interface HTMLTextAreaElement {
 // rather than give null.
 interface nsIEditor {
   readonly selectionController: nsISelectionController;
+  readonly selection: Selection;
+  readonly rootElement: Element;
+  endOfDocument(): void;
 }
 // engine/dom/base/nsISelectionController.idl
 interface nsISelectionController {
