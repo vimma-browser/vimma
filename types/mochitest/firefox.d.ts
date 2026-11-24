@@ -149,6 +149,32 @@ interface XPCOMClasses {
   readonly [contract: string]: any;
   // Firefox's own about:home module, which the start page stands in for.
   "@mozilla.org/network/protocol/about;1?what=home": nsIJSCID;
+  "@mozilla.org/network/protocol;1?name=resource": nsIJSCID;
+  "@mozilla.org/libjar/zip-reader;1": nsIJSCID;
+}
+// Where a resource: URL's file is, without loading it (browser_vimma_mozilla_services.js):
+// engine/netwerk/protocol/res/nsIResProtocolHandler.idl (via nsISubstitutingProtocolHandler),
+// engine/netwerk/base/nsIFileURL.idl, engine/modules/libjar/nsIJARURI.idl and nsIZipReader.idl.
+interface XPCOMInterfaces {
+  nsIResProtocolHandler: nsIJSIID<nsIResProtocolHandler>;
+  nsIFileURL: nsIJSIID<nsIFileURL>;
+  nsIJARURI: nsIJSIID<nsIJARURI>;
+  nsIZipReader: nsIJSIID<nsIZipReader>;
+}
+interface nsIResProtocolHandler extends nsISupports {
+  resolveURI(uri: nsIURI): string;
+}
+interface nsIFileURL extends nsIURI {
+  readonly file: nsIFile;
+}
+interface nsIJARURI extends nsIURI {
+  readonly JARFile: nsIURI;
+  readonly JAREntry: string;
+}
+interface nsIZipReader extends nsISupports {
+  open(file: nsIFile): void;
+  hasEntry(entry: string): boolean;
+  close(): void;
 }
 // The members of the product's XPCOM interfaces that only the tests use (the IDL files are named
 // in types/firefox.d.ts). An update check's result has the updates it found; runAsync calls
