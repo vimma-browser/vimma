@@ -354,7 +354,9 @@ add_task(async function next_workspace_re_renders_the_panel_for_the_next_workspa
 add_task(async function a_tab_opened_while_open_gets_a_row() {
   await openPanel();
   const n = rows().length;
-  prefix("c");
+  // A page opened in a new foreground tab (a link from another app, `vimma-ctl open`): the new
+  // tab page's URL bar would close the panel (#1481, the next task).
+  gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, `${PAGE}?row`);
   await until(() => rows().length === n + 1, "a new tab shows up as a row");
   Assert.ok(isOpen(), "the panel stays open");
   Assert.ok(rows()[n].classList.contains("vimma-panel-active"), "the new tab is the active one");
@@ -616,4 +618,36 @@ add_task(async function sidebar_command_opens_it() {
   await until(isOpen, ":sidebar opens the panel");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "closed");
+});
+
+// #1481: a new tab opened from the panel focuses its URL bar, and what is typed there is the
+// URL bar's, not the panel's keys (m would open the workspace picker): ctrl+t, Vimma's new tab
+// and the tab strip's + button (its command), and a click into the URL bar (no new tab).
+add_task(async function a_new_tab_from_the_panel_types_in_its_url_bar() {
+  for (const [open, tabs] of /** @type {[() => void, number][]} */ ([
+    [() => EventUtils.synthesizeKey("t", { ctrlKey: true }), 1],
+    [() => prefix("c"), 1],
+    [
+      // A XUL <command>, which getElementById types as an HTML element.
+      () =>
+        /** @type {XULElement} */ (
+          /** @type {Element} */ (document.getElementById("cmd_newNavigatorTab"))
+        ).doCommand(),
+      1,
+    ],
+    [() => gURLBar.select(), 0],
+  ])) {
+    await openPanel();
+    const n = gBrowser.tabs.length;
+    open();
+    await until(() => gBrowser.tabs.length === n + tabs, "a new tab opens, or none");
+    await until(() => gURLBar.focused, "its URL bar has focus");
+    EventUtils.sendString("moz");
+    Assert.ok(!pickerOpen(), "m opened no workspace picker");
+    Assert.equal(gURLBar.value, "moz", "the URL bar has what was typed");
+    Assert.equal(VimmaHost.status(window).mode, "insert", "the window types, not panel mode");
+    Assert.ok(!isOpen(), "the panel has closed");
+    gURLBar.handleRevert();
+    if (tabs) BrowserTestUtils.removeTab(gBrowser.selectedTab);
+  }
 });

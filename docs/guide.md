@@ -3665,6 +3665,9 @@ highlighted and its number coloured; a tab playing sound shows `♪`, one from a
 | `Esc`                   | End a range; else clear the marks (with a split: put its marks back); else close the panel, and the page has the keys again.                                                                               |
 | `ctrl+b b`              | Close the panel.                                                                                                                                                                                           |
 
+A new tab (`ctrl+t`, `ctrl+b c` or the `+` button) closes the panel and you type in its
+address bar, as does a click into the address bar; the bookmarks panel does the same.
+
 A window with workspaces has no pinned tabs: they are unpinned at once
 ([Managing workspaces](#managing-workspaces)). A private window keeps them: the panel lists them,
 but `x` does not close one (`pinned tab: unpin it to close it`), `m` does not move one
