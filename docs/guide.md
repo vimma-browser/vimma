@@ -4798,7 +4798,8 @@ from the keyboard with the same half-second wait:
 | `Esc` | Closes the bar, as its close button does, without pressing any of its buttons, also with focus on a button.        |
 
 The bar names its keys beside its buttons, `Tab buttons · Esc close`, and `Enter press · Esc
-close` once focus is on a button. While you type in a page
+close` once focus is on a button; `Enter` presses the focused button on macOS as on Linux. While
+you type in a page
 field, and in link hints, copy mode and element mode, the keys are theirs and the line says
 `Esc, then Tab buttons`. A bar without a close button takes only `Tab`, and in the
 [agent workspace](#agent-workspace) no key answers a bar. While a bar is up, `Esc` closes it before it

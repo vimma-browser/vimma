@@ -133,6 +133,8 @@ export function popupBarHint({ inField = false, locked = false }) {
  * @property {boolean} [buttons]  the bar has buttons of its own
  * @property {boolean} [dismissable]  the bar has a close button
  * @property {boolean} [inBar]  focus is on the bar itself, its buttons or its close button
+ * @property {boolean} [onButton]  focus is on one of the bar's own buttons (not its close
+ *   button), and the button is enabled
  */
 
 /**
@@ -142,16 +144,20 @@ export function popupBarHint({ inField = false, locked = false }) {
  * where Firefox's own Tab, Enter and Space work, and `Esc` closes it as its close button does.
  * Both have the pop-up bar's guards: only once armed, never held, from a field or during a key
  * sequence, and an early key stays the page's: a page can raise a bar just as it is pressed.
- * With focus on the bar, every key but Esc stays Firefox's, and Esc closes the bar at once, since
- * the user moved focus there.
+ * With focus on the bar, Esc closes the bar at once, since the user moved focus there, and Enter
+ * on one of its buttons presses it: Firefox does that on Linux, but on macOS it leaves Enter on a
+ * focused XUL button to the window's default button (XULButtonElement::PostHandleEvent), and a
+ * bar has none. Every other key stays Firefox's.
  * @param {string} key
  * @param {BarState} s
- * @returns {{ kind: "pass" | "focus" | "close" }}
+ * @returns {{ kind: "pass" | "focus" | "close" | "press" }}
  */
 export function barKey(key, s) {
   if (s.inBar) {
-    const close = s.open && !s.pending && !s.repeat && !s.agent && key === "esc" && s.dismissable;
-    return { kind: close ? "close" : "pass" };
+    if (!s.open || s.pending || s.repeat || s.agent) return { kind: "pass" };
+    if (key === "esc" && s.dismissable) return { kind: "close" };
+    if (key === "enter" && s.onButton) return { kind: "press" };
+    return { kind: "pass" };
   }
   if (!s.open || s.pending || s.inField || s.agent || !s.armed || s.repeat) {
     return { kind: "pass" };
