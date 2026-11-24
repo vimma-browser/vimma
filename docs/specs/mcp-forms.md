@@ -580,6 +580,20 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     fires before the page's `submit` listener can change the destination; setting
     `SANDBOXED_FORMS` on agent tabs, because it would stop the user's own logins and searches in
     the agent workspace too.
+    (Since changed: the observer is `http-on-opening-request`, which the parent notifies as it
+    opens the request, for an ordinary submission in the order the page's process started it,
+    because
+    `http-on-modify-request` comes only after the proxy lookup off the main thread: a page's
+    submission started before a fill's last field could reach it after the allowance for the
+    asked one opened, take that allowance and be sent in its place; issue #1484.)
+    (Since changed: the allowance is the step's own request alone. The child names the request
+    its submission or click started by its channel id, and the parent lets through only that
+    request, triggered from that child's process, because a page's submission to the same method
+    and destination, opened after the question allowed it and before the step ran, or opened late
+    by Firefox (a copied upload stream, a prefetch in flight, a form of a frame in another
+    process aimed at this one), could otherwise take the allowance. A form aimed at another
+    frame of the tab is then cancelled even when asked, because the child names only its own
+    frame's loads, and following another frame's would widen what a page could have named.)
 17. **What cannot be caught.** A page that sends data with `fetch` from a button's click
     listener, without a form submission, cannot be told apart from any other button. Such a click
     is an ordinary `vimma_activate`, whose question names the element's text; the guide says

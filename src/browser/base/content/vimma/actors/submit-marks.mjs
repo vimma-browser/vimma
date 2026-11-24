@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The agent's submission blocker and step counts (docs/specs/mcp-forms.md F16; security.md M28;
-// issue #1028): the marks of the tabs an agent stepped in, and the http-on-modify-request
+// issue #1028): the marks of the tabs an agent stepped in, and the http-on-opening-request
 // observer that cancels a submission the user was not asked about. One instance per parent
 // process: import this module only by its relative path, so that every importer shares the
 // marks with the one observer.
@@ -11,12 +11,21 @@
 /** @import { HintTarget } from "./VimmaActors.sys.mjs" */
 
 /**
+ * The one submission a question allowed: `channel` is 0 until the child of the step names the
+ * request it started (`Vimma:AgentSubmitting`), and nothing is let through before that; `from`
+ * is the remote type of that child's process; `since` is the number of the last step sent before
+ * the allowance opened, so that a late claim of an earlier call's step names nothing.
+ * @typedef {{ method: string, where: string, channel: number, since: number, from?: string }}
+ *   Allowed
+ */
+
+/**
  * Agent tabs an agent just stepped in (docs/specs/mcp-forms.md F16; security.md M28), by their
  * browserId, which survives a move to another window: the top document of the step, the one
  * submission a question allowed during the running call (its method and destination without
- * query), and the hosts of the submissions stopped since the step began.
- * @type {Map<number, { doc: number, allowed: { method: string, where: string } | null,
- *   blocked: string[] }>}
+ * query, and the channel id of the request the agent's step started, once its child names it),
+ * and the hosts of the submissions stopped since the step began.
+ * @type {Map<number, { doc: number, allowed: Allowed | null, blocked: string[] }>}
  */
 const submitMarks = new Map();
 /** @type {typeof onRequest | null} */
@@ -24,6 +33,15 @@ let submitObserver = null;
 
 /** The number of the agent's last click or submission sent to a child (`nextStep`). */
 let stepCount = 0;
+
+/**
+ * A new allowance for `method` to `where`, which only a step sent after it can claim.
+ * @param {string} method @param {string} where
+ * @returns {Allowed}
+ */
+export function newAllowed(method, where) {
+  return { method, where, channel: 0, since: stepCount };
+}
 /**
  * The agent's last click or submission sent to each frame's document, by its window global:
  * its element and its number, which the child says back if it skips it (issue #1028).
@@ -75,6 +93,13 @@ export const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
  * cancelled unless it is the one the question allowed, to the method and destination it named.
  * The request carries its document's transient user activation, which an agent's click never
  * gives, so a submission with it is the user's, and it ends the mark.
+ * The allowed one is known by its channel id, which the child of the step names before the
+ * parent opens the request (agent-page.mjs `#claimSubmission`) and Firefox gives the parent's
+ * request too (`DocumentLoadListener::Open`): a page's submission to the same method and
+ * destination, whenever its request is opened, is not it. It must also have been triggered from
+ * that child's process (`triggeringRemoteType`, which the parent sets from the sender), so that a
+ * form of a frame in another process, aimed at this one, is not it either. Checked as the parent
+ * opens the request (issue #1484), before anything is sent.
  * @param {unknown} subject  an nsISupports
  */
 function onRequest(subject) {
@@ -104,6 +129,9 @@ function onRequest(subject) {
   const allowed = mark.allowed;
   if (
     allowed &&
+    allowed.channel &&
+    allowed.channel === channel.channelId &&
+    allowed.from === info.triggeringRemoteType &&
     allowed.method === String(channel.requestMethod).toLowerCase() &&
     allowed.where === whereOf(uri)
   ) {
@@ -130,7 +158,7 @@ export function markOf(browser) {
 export function forgetMark(id) {
   submitMarks.delete(id);
   if (!submitMarks.size && submitObserver) {
-    Services.obs.removeObserver(submitObserver, "http-on-modify-request");
+    Services.obs.removeObserver(submitObserver, "http-on-opening-request");
     submitObserver = null;
   }
 }
@@ -150,7 +178,7 @@ export function setMark(top, doc, allowed) {
   }
   if (!submitObserver) {
     submitObserver = onRequest;
-    Services.obs.addObserver(submitObserver, "http-on-modify-request");
+    Services.obs.addObserver(submitObserver, "http-on-opening-request");
   }
   let where = null;
   if (allowed) {
@@ -162,9 +190,33 @@ export function setMark(top, doc, allowed) {
   }
   submitMarks.set(top.browserId, {
     doc,
-    allowed: allowed && where ? { method: allowed.method, where } : null,
+    allowed: allowed && where ? newAllowed(allowed.method, where) : null,
     blocked: [],
   });
+}
+
+/**
+ * The child of `wg` names the request of the agent's submission it started (AgentActors.
+ * agentSubmitting, `Vimma:AgentSubmitting`): the allowed submission of its tab is that request
+ * alone. Taken only for the last step sent to that document, and once: a later claim, or one
+ * from another frame, changes nothing.
+ * @param {CanonicalBrowsingContext | null | undefined} bc
+ * @param {WindowGlobalParent | null} wg
+ * @param {unknown} data  `{ step, channel }`
+ */
+export function noteSubmitting(bc, wg, data) {
+  const id = bc?.top?.browserId;
+  const mark = id ? submitMarks.get(id) : undefined;
+  if (!mark?.allowed || mark.allowed.channel || !wg) return;
+  if (!data || typeof data !== "object" || !("step" in data) || !("channel" in data)) return;
+  const { step, channel } = data;
+  if (typeof step !== "number" || step !== sentSteps.get(wg)?.step) return;
+  if (step <= mark.allowed.since) return;
+  if (typeof channel !== "number" || !Number.isSafeInteger(channel) || channel <= 0) return;
+  const from = wg.domProcess?.remoteType;
+  if (!from) return;
+  mark.allowed.channel = channel;
+  mark.allowed.from = from;
 }
 
 /**

@@ -39,6 +39,9 @@ const { validateMessage } = ChromeUtils.importESModule(
 const { questionLine } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/agent-prompt.mjs",
 );
+const { AgentActors } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/actors/AgentActors.sys.mjs",
+);
 
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -166,10 +169,10 @@ function requestStatus(prefix) {
     const observe = (/** @type {nsISupports} */ subject) => {
       const channel = subject.QueryInterface(Ci.nsIHttpChannel);
       if (!channel.URI.spec.startsWith(prefix)) return;
-      Services.obs.removeObserver(observe, "http-on-modify-request");
+      Services.obs.removeObserver(observe, "http-on-opening-request");
       Services.tm.dispatchToMainThread(() => resolve(channel.status));
     };
-    Services.obs.addObserver(observe, "http-on-modify-request");
+    Services.obs.addObserver(observe, "http-on-opening-request");
   });
 }
 
@@ -235,6 +238,57 @@ addTidyTask(async function test_page_script_submit_after_a_click_is_cancelled() 
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });
+
+// The allowance is the agent's own click's submission alone: a page's submission to the same
+// method and destination, opened after the question allowed it and before the child presses the
+// button, is stopped as the page's, and the asked one is sent.
+addTidyTask(
+  async function test_a_page_submit_opened_before_the_asked_click_cannot_take_its_place() {
+    await mcp(true);
+    const tab = await openAgentTab();
+    const c = await agentClient();
+    const by = await labels(c, tab);
+    const press = AgentActors.agentActivate;
+    /** The status of the page's submission's request as it was opened. */
+    const pageStatus = { code: /** @type {number | null} */ (null) };
+    AgentActors.agentActivate = async (...args) => {
+      const opened = requestStatus(`${PAGE}?page=`);
+      await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+        const d = content.document;
+        const form = d.createElement("form");
+        form.method = "get";
+        form.action = "file_vimma_agent_page.html";
+        const field = d.createElement("input");
+        field.name = "page";
+        field.value = "own";
+        form.append(field);
+        d.body.append(form);
+        form.submit();
+      });
+      pageStatus.code = await opened;
+      // Its load has ended in the tab before the agent's starts, so that the click's wait for
+      // the page sees only the agent's.
+      await until(
+        () => !tab.linkedBrowser.webProgress?.isLoadingDocument,
+        "the page's own load has ended",
+      );
+      return press.apply(AgentActors, args);
+    };
+    try {
+      const r = await activate(c, tab, by.Search);
+      Assert.ok(r.ok, `the click ran: ${JSON.stringify(r.error)}`);
+      Assert.equal(pageStatus.code, Cr.NS_BINDING_ABORTED, "the page's own submission was stopped");
+      Assert.equal(r.result.blocked, "example.com", "the result says Vimma stopped it");
+      Assert.equal(r.result.navigated, true, "the asked submission was sent");
+      Assert.equal(r.result.url, `${PAGE}?q=cats&from=fixture`, "to its destination");
+    } finally {
+      AgentActors.agentActivate = press;
+    }
+    c.close();
+    BrowserTestUtils.removeTab(tab);
+    await mcp(false);
+  },
+);
 
 /** The click fixture's forms whose button is skipped, then sends the form itself (M28). */
 const BOUNCES = [

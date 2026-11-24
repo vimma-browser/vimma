@@ -71,6 +71,9 @@ const stepOf = (asked) => (isIndex(asked.step) ? asked.step : -1);
  *   test hook names, read only in automation (M28); null otherwise
  */
 
+/** Firefox's own pref: a form's navigation runs in a task of its own (nsDocShell::OnFormSubmit). */
+const ASYNC_SUBMIT_PREF = "dom.forms.submit_async_navigation";
+
 export class AgentPage {
   /** @type {JSWindowActorChild} */
   #actor;
@@ -117,6 +120,12 @@ export class AgentPage {
    * @type {{ doc: Document, at: number, last: number | null, observer: MutationObserver | null } | null}
    */
   #stepWatch = null;
+  /**
+   * The listener that names the agent's own submission to the parent (`#claimSubmission`), kept
+   * here while it listens: a docshell holds its progress listeners only weakly.
+   * @type {nsIWebProgressListener | null}
+   */
+  #claim = null;
 
   /**
    * @param {JSWindowActorChild} actor  the VimmaChild: its document, window, docshell and
@@ -363,7 +372,7 @@ export class AgentPage {
       }
       sent.outcome = "clicked";
       this.#startStepWatch();
-      form.requestSubmit(again.submitter ?? undefined);
+      this.#claimSubmission(sent.step, () => form.requestSubmit(again.submitter ?? undefined));
       return "clicked";
     });
     return "ok";
@@ -402,10 +411,12 @@ export class AgentPage {
       }
       this.#startStepWatch();
       // A busy page can delay this past the parent's wait: then nothing is clicked.
-      const ran =
+      const press = () =>
         Date.now() <= until &&
         this.#hooks.onPage(el) &&
         this.#hooks.press(el, () => this.#asAsked(el, asked));
+      // Only a click the question named as a submission has one to name (M28).
+      const ran = asked.submit ? this.#claimSubmission(click.step, press) : press();
       return ran ? "clicked" : "skipped";
     });
     return "ok";
@@ -593,6 +604,114 @@ export class AgentPage {
       // The actor is going away with its document. For the top frame the mark goes with the
       // page; for a subframe removed this way the allowance stays open until the call ends,
       // still only for the method and destination the question named.
+    }
+  }
+
+  /**
+   * Runs `send`, the agent's submission or its click on a submit, and names the request it starts
+   * to the parent (security.md M28), which lets through only the request with that channel id:
+   * a page's submission to the same method and destination is never the asked one, however its
+   * request is timed. The first document load this frame starts from here until the task queued
+   * just after `send` is the step's. Firefox runs a form's navigation in a task of its own, queued
+   * as the form is submitted (`nsDocShell::OnFormSubmit`), so before that end; any other load of
+   * this frame that starts first cancels it (`nsDocShell::StopInternal`), and a submission the
+   * page makes in a later task is queued after the end. So the load named is the step's, or one
+   * the page's handlers started as the step ran, which can change the step's own anyway, or one
+   * that stopped the step's; the parent checks the rest: a form submission, triggered from this
+   * frame's process, to the method and destination the question named.
+   * The name reaches the parent ahead of the request: the load group starts the document's
+   * progress before `DocumentChannelChild` asks the parent to open it, and the actor's messages
+   * and the page's loads go over the same PContent channel, in order.
+   * @template T
+   * @param {number} step  the parent's number for this step
+   * @param {() => T} send
+   * @returns {T}
+   */
+  #claimSubmission(step, send) {
+    this.#endClaim();
+    const bc = this.#actor.browsingContext;
+    /** @type {nsIWebProgress | undefined} */
+    let progress;
+    try {
+      progress = this.#actor.docShell
+        ?.QueryInterface(Ci.nsIInterfaceRequestor)
+        .getInterface(Ci.nsIWebProgress);
+    } catch {
+      // no docshell: nothing is named, and the parent lets nothing through
+    }
+    if (!bc || !progress) return send();
+    const { STATE_START } = Ci.nsIWebProgressListener;
+    /** @type {nsIWebProgressListener} */
+    const listener = {
+      QueryInterface: ChromeUtils.generateQI([
+        "nsIWebProgressListener",
+        "nsISupportsWeakReference",
+      ]),
+      onStateChange: (wp, request, flags) => {
+        if (!(flags & STATE_START) || this.#claim !== listener || wp?.browsingContext !== bc) {
+          return;
+        }
+        /** @type {nsIIdentChannel} */
+        let channel;
+        try {
+          channel = request.QueryInterface(Ci.nsIIdentChannel);
+        } catch {
+          return;
+        }
+        if (!(channel.loadFlags & Ci.nsIChannel.LOAD_DOCUMENT_URI)) return;
+        this.#endClaim();
+        try {
+          this.#actor.sendAsyncMessage("Vimma:AgentSubmitting", {
+            step,
+            channel: channel.channelId,
+          });
+        } catch {
+          // The actor is going away with its document: nothing is named, nothing let through.
+        }
+      },
+      onProgressChange() {},
+      onLocationChange() {},
+      onStatusChange() {},
+      onSecurityChange() {},
+      onContentBlockingEvent() {},
+    };
+    try {
+      progress.addProgressListener(
+        listener,
+        Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT | Ci.nsIWebProgress.NOTIFY_STATE_REQUEST,
+      );
+    } catch {
+      return send(); // nothing is named, and the parent lets nothing through
+    }
+    this.#claim = listener;
+    try {
+      const sent = send();
+      // A step that did not run names nothing. With the form's navigation made at once (a user's
+      // `dom.forms.submit_async_navigation` set to false), the step's own load has started
+      // inside `send`, and a submission of a later task must not be named after it.
+      if (sent === false || !Services.prefs.getBoolPref(ASYNC_SUBMIT_PREF, true)) {
+        this.#endClaim();
+      }
+      return sent;
+    } finally {
+      Services.tm.dispatchToMainThread(() => {
+        if (this.#claim === listener) this.#endClaim();
+      });
+    }
+  }
+
+  /** Stops listening for the agent's own submission (`#claimSubmission`). */
+  #endClaim() {
+    const listener = this.#claim;
+    if (!listener) return;
+    this.#claim = null;
+    try {
+      this.#actor.docShell
+        ?.QueryInterface(Ci.nsIInterfaceRequestor)
+        .getInterface(Ci.nsIWebProgress)
+        .removeProgressListener(listener);
+    } catch {
+      // the docshell went away, and its listeners with it
     }
   }
 
