@@ -31,6 +31,7 @@ report = {
     "args": sys.argv[1:],
     "cwd": os.getcwd(),
     "env": sorted(os.environ.keys()),
+    "path": os.environ.get("PATH"),
     "lines": [],
     "calls": [],
     "mcp_config_mode": None,
