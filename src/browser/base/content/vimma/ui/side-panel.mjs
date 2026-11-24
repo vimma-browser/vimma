@@ -122,6 +122,9 @@ export class SidePanel {
       const el = this.win.document.activeElement;
       if (this.isOpen && el?.localName === "browser") this.list?.focus();
     };
+    this.onFocusIn = () => {
+      if (this.isOpen && addressBarFocused(this.win)) this.close();
+    };
   }
 
   get isOpen() {
@@ -141,6 +144,7 @@ export class SidePanel {
     const tabs = this.#tabContainer();
     for (const type of TAB_EVENTS) tabs?.addEventListener(type, this.onTabEvent);
     this.win.addEventListener("TabSwitchDone", this.onSwitchDone);
+    this.win.addEventListener("focusin", this.onFocusIn);
     // The list, which carries aria-activedescendant (m7-a11y).
     /** @type {HTMLElement} */ (this.list).focus();
     return true;
@@ -161,6 +165,7 @@ export class SidePanel {
     const tabs = this.#tabContainer();
     for (const type of TAB_EVENTS) tabs?.removeEventListener(type, this.onTabEvent);
     this.win.removeEventListener("TabSwitchDone", this.onSwitchDone);
+    this.win.removeEventListener("focusin", this.onFocusIn);
     const box = /** @type {HTMLElement} */ (this.box);
     // Focus first, then hide: hiding the focused list would drop focus to the body.
     giveFocusBack(this.win, box, this.opener);
@@ -400,6 +405,18 @@ function tabsOf(win) {
  */
 export function rememberFocus(win) {
   return { el: Services.focus.focusedElement, tab: tabsOf(win)?.selectedTab ?? null };
+}
+
+/**
+ * Whether the address bar has focus: a panel open then closes (#1481). A new tab (ctrl+t, Vimma's
+ * new tab, the + button) focuses it on the new tab page, as does a click into it; left open, the
+ * modal `panel` mode kept every key typed there, and `m` opened the workspace picker.
+ * @param {BrowserWindow} win
+ */
+export function addressBarFocused(win) {
+  const urlbar = /** @type {{ gURLBar?: { focused: boolean } }} */ (/** @type {unknown} */ (win))
+    .gURLBar;
+  return !!urlbar?.focused;
 }
 
 /**
