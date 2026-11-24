@@ -20,6 +20,7 @@ const PAGE = ROOT + "file_vimma_insert_focus.html";
 const LOGIN = ROOT + "file_vimma_insert_autofocus.html";
 const TRAP = ROOT + "file_vimma_insert_trap.html";
 const TAB_FRAME = ROOT + "file_vimma_insert_tab_frame.html";
+const CARET = ROOT + "file_vimma_insert_caret.html";
 
 /** Vimma's j step, in CSS pixels. */
 const STEP = 60;
@@ -666,4 +667,112 @@ add_task(async function esc_the_page_takes_keeps_its_focus() {
     await SpecialPowers.spawn(browser, [], () => {});
     Assert.equal(await activeId(browser), "button", "the button keeps focus");
   });
+});
+
+/**
+ * The caret of the text field `#id`: its selection's start and end.
+ * @param {XULBrowserElement} browser
+ * @param {string} id
+ * @returns {Promise<{ start: number, end: number, length: number }>}
+ */
+function fieldCaret(browser, id) {
+  return SpecialPowers.spawn(browser, [id], (i) => {
+    const el = /** @type {HTMLInputElement} */ (content.document.getElementById(i));
+    return { start: el.selectionStart ?? -1, end: el.selectionEnd ?? -1, length: el.value.length };
+  });
+}
+
+/**
+ * Asserts that `#id`'s caret is collapsed at the end of its text.
+ * @param {XULBrowserElement} browser
+ * @param {string} id
+ */
+async function assertCaretAtEnd(browser, id) {
+  const { start, end, length } = await fieldCaret(browser, id);
+  Assert.deepEqual([start, end], [length, length], `#${id}'s caret is at the end of its text`);
+}
+
+// Behaviour 9: `i` and `gi` put the caret at the end of a field the user has not been in.
+add_task(async function i_puts_the_caret_at_the_end_of_a_prefilled_field() {
+  await withPage(async (browser) => {
+    EventUtils.synthesizeKey("i");
+    await waitForMode(browser, "insert");
+    await waitForActive(browser, "query");
+    await assertCaretAtEnd(browser, "query");
+    EventUtils.sendString("x");
+    await TestUtils.waitForCondition(
+      async () => (await fieldValue(browser, "query")) === "vimma queryx",
+      "the typed text follows the field's text",
+    );
+  }, CARET);
+});
+
+add_task(async function gi_puts_the_caret_at_the_end_of_a_prefilled_textarea() {
+  await withPage(async (browser) => {
+    EventUtils.synthesizeKey("2");
+    EventUtils.synthesizeKey("g");
+    EventUtils.synthesizeKey("i");
+    await waitForMode(browser, "insert");
+    await waitForActive(browser, "notes");
+    await assertCaretAtEnd(browser, "notes");
+  }, CARET);
+});
+
+add_task(async function gi_puts_the_caret_at_the_end_of_an_editor() {
+  await withPage(async (browser) => {
+    EventUtils.synthesizeKey("3");
+    EventUtils.synthesizeKey("g");
+    EventUtils.synthesizeKey("i");
+    await waitForMode(browser, "insert");
+    await waitForActive(browser, "editor");
+    const after = await SpecialPowers.spawn(browser, [], () => {
+      const doc = content.document;
+      const editor = /** @type {HTMLElement} */ (doc.getElementById("editor"));
+      const sel = /** @type {Selection} */ (doc.getSelection());
+      if (!sel.isCollapsed || !sel.focusNode) return null;
+      const rest = doc.createRange();
+      rest.setStart(sel.focusNode, sel.focusOffset);
+      rest.setEnd(editor, editor.childNodes.length);
+      return rest.toString();
+    });
+    Assert.strictEqual(after, "", "the editor's caret is collapsed after all of its text");
+  }, CARET);
+});
+
+add_task(async function i_puts_the_caret_at_the_end_of_a_last_field_the_page_focused() {
+  await withPage(async (browser) => {
+    await pageFocuses(browser, "notes");
+    await waitForMode(browser, "insert");
+    await leaveInsert(browser);
+    EventUtils.synthesizeKey("i");
+    await waitForMode(browser, "insert");
+    await waitForActive(browser, "notes");
+    await assertCaretAtEnd(browser, "notes");
+  }, CARET);
+});
+
+add_task(async function i_keeps_the_caret_the_user_left_in_the_last_field() {
+  await withPage(async (browser) => {
+    EventUtils.synthesizeKey("i");
+    await waitForMode(browser, "insert");
+    await waitForActive(browser, "query");
+    await SpecialPowers.spawn(browser, [], () =>
+      /** @type {HTMLInputElement} */ (content.document.getElementById("query")).setSelectionRange(
+        5,
+        5,
+      ),
+    );
+    EventUtils.synthesizeKey("KEY_ArrowRight");
+    await TestUtils.waitForCondition(
+      async () => (await fieldCaret(browser, "query")).start === 6,
+      "the user's key moved the caret",
+    );
+    await leaveInsert(browser);
+    await waitForActive(browser, "");
+    EventUtils.synthesizeKey("i");
+    await waitForMode(browser, "insert");
+    await waitForActive(browser, "query");
+    const { start, end } = await fieldCaret(browser, "query");
+    Assert.deepEqual([start, end], [6, 6], "the caret is where the user left it");
+  }, CARET);
 });

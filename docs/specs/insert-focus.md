@@ -6,7 +6,8 @@ patches: none · ADR: none
 
 Issues: [#165](https://github.com/vimma-browser/vimma/issues/165),
 [#298](https://github.com/vimma-browser/vimma/issues/298) (the follow-up below),
-[#850](https://github.com/vimma-browser/vimma/issues/850) (the second follow-up)
+[#850](https://github.com/vimma-browser/vimma/issues/850) (the second follow-up),
+[#1522](https://github.com/vimma-browser/vimma/issues/1522) (the third follow-up)
 
 ## Summary
 
@@ -46,7 +47,8 @@ explicit `i` ([m1-actor-insert-scroll](m1-actor-insert-scroll.md), "Per-browser 
    editable,
    including a field in a cross-origin frame and a contenteditable editor. Otherwise it focuses
    the page's first visible text field, as before. With neither, it is the pass-through insert of
-   [m1-actor-insert-scroll](m1-actor-insert-scroll.md).
+   [m1-actor-insert-scroll](m1-actor-insert-scroll.md). (Since changed: the caret goes to the end
+   of a field the user has not been in; see "Follow-up: the caret on `i`".)
 4. **Focus insert is unchanged.** Insert entered by focusing a field (a click, `Tab`, a page's
    `autofocus`) follows the focus: a page moving focus from one field to another keeps insert,
    and focus moving to a button, a link or the body returns to normal. (Since changed: after
@@ -425,6 +427,90 @@ so that the keys and the blur wait there together:
 
 - `docs/security/13-page-modes.md`: rule K4 names the three tests.
 - `CHANGELOG.md`: a Fixed line, added by the maintainer at merge time.
+
+## Follow-up: the caret on `i`
+
+`i` and `gi` put the caret before the text of a field the page had filled
+([#1522](https://github.com/vimma-browser/vimma/issues/1522)).
+
+### Problem
+
+A search results page fills its search field with the query. `i` focused that field, and the
+caret landed before the query, so adding a word or deleting the query with backspace took a move
+to the end first.
+
+### Behaviour
+
+9. **`i` and `gi` put the caret at the end of a field the user has not been in.** When `i` or `gi`
+   focuses a text field (`input`, `textarea`) or an editor (`contenteditable`) that the user has
+   not been in during this visit to the page, its caret goes to the end of its text, collapsed.
+   A field the user has been in keeps its caret: `i` back to the field the user left mid-text
+   resumes there, as Vim's `gi` resumes where insert stopped. A field the page focused on its own
+   counts as not been in until the user presses a key in it or clicks it. A hint on a field is
+   unchanged.
+
+### Research
+
+- **Firefox.** A value from markup leaves a field's selection at 0, and a scripted `focus()` does
+  not move it (the red runs of the tests below, Firefox 160.0.1). Setting `value` from script
+  moves the caret to the end of the new value (HTML, the `value` attribute's "value" mode), which
+  is why a field a page fills from script already worked.
+- **Firefox.** `HTMLInputElement.setSelectionRange` throws for types without a selection
+  (`email`, `number`), and `nsIEditor.endOfDocument` "Sets the selection to the end of the last
+  leaf child/descendant or the root element" (`editor/nsIEditor.idl:411-416`, Firefox 160.0.1) for
+  any editor, which the chrome-only `editor` attribute of an input or textarea reaches
+  (`MozEditableElement`, `dom/webidl/HTMLInputElement.webidl:214-219`).
+- **Vim.** `i` inserts before the cursor, and `gi` where insert last stopped (`:help gi`). A
+  browser field has no cursor of its own until the user puts one there, so the end of the text,
+  where Vim's `A` appends, is the useful place.
+
+### Design
+
+The child keeps a `WeakSet` of the editable elements the user has been in (`#userFields`): the
+focused field on every trusted `keydown` the page gets, a field that takes focus while the page
+handles the user's input (a click, `Tab`; not Vimma's own `#focus`), and a focused field a
+trusted `mousedown` lands in. `#focusLast` and `#focusInput` call `#focusAtEnd`, which focuses
+the field and, when it took focus and is not in the set, moves its caret to the end: through the
+text editor's `endOfDocument` for an `input` or `textarea`, and by collapsing the document's
+selection to the end of the element for a `contenteditable`.
+
+### Decisions
+
+15. **The end of the text, not a select-all,** because the common next steps on a filled field
+    are adding to it and deleting it with backspace, and both work from the end; a select-all, as
+    `Tab` into a field gives, makes the first typed key replace the text, which is the wrong
+    default for adding a word to a query.
+16. **Only a field the user has not been in,** because a caret the user placed is the place they
+    chose, and `i` is how they return to it after scrolling. "Been in" is a key, a click or a
+    focus from the user's input, not a focus alone, so that a field the page focused on load, or
+    one Vimma's own `i` focused before the user typed, still gets the end on the next `i`.
+17. **Per document,** as the child actor is: a new visit to the page starts with no field been
+    in, and a page restored from the back-forward cache keeps its set with its fields.
+18. **Hints are unchanged,** because a hint stands for a click on the field, which puts the caret
+    where Firefox puts it for a click; moving it there too is a separate decision.
+
+### Security and privacy
+
+The set holds weak references to elements of the child's own document, filled from trusted
+events only; nothing new crosses to the parent. A page can move the caret of its own fields at any
+time already, so a page that tricks the set (by moving focus as the user types) changes nothing
+it could not change itself.
+
+### Tests
+
+`tests/browser/browser_vimma_insert_focus.js`, fixture `file_vimma_insert_caret.html` (an input,
+a textarea and a contenteditable editor, each with text from markup):
+
+- `i_puts_the_caret_at_the_end_of_a_prefilled_field` (typed text follows the field's text),
+  `gi_puts_the_caret_at_the_end_of_a_prefilled_textarea`,
+  `gi_puts_the_caret_at_the_end_of_an_editor`,
+  `i_puts_the_caret_at_the_end_of_a_last_field_the_page_focused`: failed before the change.
+- `i_keeps_the_caret_the_user_left_in_the_last_field`: guards what already held.
+
+### Docs and changelog
+
+- `docs/guide.md`, "Normal and insert mode": where the caret goes on `i`.
+- `CHANGELOG.md`: from the commit.
 
 ## Open questions
 

@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_insert_focus.js: fields the page fills before the user is in them,
+   - as a search results page fills its search field. A value from markup leaves the field's
+   - selection at 0, where a scripted focus keeps it. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma insert caret</title>
+  </head>
+  <body>
+    <input id="query" value="vimma query" />
+    <textarea id="notes">
+line one
+line two</textarea>
+    <div id="editor" contenteditable="true">edited <b>text</b></div>
+  </body>
+</html>

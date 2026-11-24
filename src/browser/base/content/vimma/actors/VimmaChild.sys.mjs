@@ -326,6 +326,13 @@ export class VimmaChild extends JSWindowActorChild {
   #dragging = false;
   /** @type {WeakRef<Element> | null} the text field that last took focus here, for `i` */
   #lastField = null;
+  /**
+   * The editable elements the user has been in on this page (a key, a click, a focus from their
+   * input): `i` and `gi` keep their caret, and put any other field's at the end of its text
+   * (docs/specs/insert-focus.md, behaviour 9).
+   * @type {WeakSet<Element>}
+   */
+  #userFields = new WeakSet();
   /** This actor is focusing an element (`i`, a hint): the focus is the user's, not the find's. */
   #focusing = false;
   /**
@@ -503,6 +510,14 @@ export class VimmaChild extends JSWindowActorChild {
         const el = target?.nodeType === 1 ? target : deepActiveElement(doc);
         if (el && !FRAMES.has(el.localName) && isEditable(describe(el)).editable) {
           this.#lastField = new WeakRef(el);
+          // A click or Tab put the caret there; Vimma's own focus and the page's script did not.
+          if (
+            !this.#focusing &&
+            !this.#agentPress &&
+            this.contentWindow?.windowUtils.isHandlingUserInput
+          ) {
+            this.#userFields.add(el);
+          }
         }
         this.#report(el, "focusin");
         return;
@@ -512,6 +527,7 @@ export class VimmaChild extends JSWindowActorChild {
         const el = deepActiveElement(doc);
         const keys = this.#keys;
         keys.focus.push({ n: keys.count++, el: el ? new WeakRef(el) : null });
+        if (el && el !== doc.body && isEditable(describe(el)).editable) this.#userFields.add(el);
         if (keys.focus.length > KEYS_KEPT) keys.focus.shift();
         return;
       }
@@ -553,7 +569,10 @@ export class VimmaChild extends JSWindowActorChild {
         // A click into an editable root whose window already has focus, or into a field that
         // already has focus (the page put it back after Esc), fires no focus event.
         const el = this.#editableRoot() ?? this.#focusedFieldUnder(event.originalTarget);
-        if (el) this.#report(el, "focusin");
+        if (el) {
+          if (event.isTrusted) this.#userFields.add(el);
+          this.#report(el, "focusin");
+        }
         // A trusted mousedown is the user's (an agent's is untrusted, #press), though it may
         // move no focus (a toolbar item that prevents its mousedown): what the page focuses after
         // it is not the page's own doing, and a field the page focused is the user's now. The
@@ -1484,8 +1503,7 @@ export class VimmaChild extends JSWindowActorChild {
     if (!isEditable(describe(el)).editable || !el.checkVisibility({ visibilityProperty: true })) {
       return false;
     }
-    this.#focus(el);
-    return deepActiveElement(this.document) === el;
+    return this.#focusAtEnd(el);
   }
 
   /**
@@ -1504,7 +1522,33 @@ export class VimmaChild extends JSWindowActorChild {
     const el = /** @type {HTMLElement | undefined} */ (
       fields[inputIndex(Number(count) || undefined, fields.length)]
     );
-    if (el) this.#focus(el);
+    if (el) this.#focusAtEnd(el);
     return !!el;
+  }
+
+  /**
+   * Focuses `el` for `i` or `gi`, and puts its caret at the end of its text unless the user has
+   * been in it: a page fills its field from markup with the selection at 0, where a scripted
+   * focus keeps it (#1522).
+   * @param {HTMLElement} el
+   * @returns {boolean} whether it took focus
+   */
+  #focusAtEnd(el) {
+    this.#focus(el);
+    if (deepActiveElement(this.document) !== el) return false;
+    if (this.#userFields.has(el)) return true;
+    try {
+      if (el.localName === "input" || el.localName === "textarea") {
+        // The field's own editor: setSelectionRange throws for an email or number input.
+        /** @type {HTMLInputElement} */ (el).editor?.endOfDocument();
+      } else {
+        const sel = this.document.getSelection();
+        sel?.selectAllChildren(el);
+        sel?.collapseToEnd();
+      }
+    } catch {
+      // A field the page removed or made read-only while it took focus keeps its caret.
+    }
+    return true;
   }
 }
