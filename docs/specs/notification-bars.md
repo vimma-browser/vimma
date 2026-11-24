@@ -11,7 +11,8 @@ Firefox shows notification bars over a page for many reasons: a private window's
 broken? Reload the page to temporarily lower your tracking protection", a crashed plugin, a
 redirect it stopped. Apart from the pop-up blocked bar, these bars needed the mouse in Vimma.
 Now `Tab` moves focus onto the bar's buttons, where Firefox's own `Tab`, `Enter` and `Space`
-work, and `Esc` closes the bar, with the guards the pop-up blocked bar already has.
+work, and `Esc` closes the bar, with the guards the pop-up blocked bar already has. (Since
+changed: `Enter` on a bar button is Vimma's, Behaviour item 1.)
 
 ## Problem
 
@@ -109,7 +110,7 @@ and `PromptKeys` hands a key for any other bar to `barKey` (`core/prompt-keys.mj
 No new surface: the keys focus or close a bar in the user's own window, and every button is
 still pressed by the user with Firefox's own keys. The agent workspace is left out, as for the
 pop-up blocked bar, so no key from that workspace's pages acts on a bar. (Since changed: `Enter`
-clicks the bar button that has focus, which only the user's own `Tab` or a click puts there; a
+clicks the bar button that has focus, which only the user's own keys or clicks put there; a
 held `Enter` does not count, a button Firefox's clickjacking delay disabled again stays
 unpressed, and Firefox's own check of that delay in `NotificationMessage.handleEvent` still
 applies to the click.)

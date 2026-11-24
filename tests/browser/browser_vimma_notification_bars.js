@@ -124,6 +124,23 @@ add_task(async function tab_moves_focus_onto_the_buttons_where_enter_runs_one() 
   BrowserTestUtils.removeTab(tab);
 });
 
+add_task(async function enter_waits_while_firefox_restarts_the_bars_own_delay() {
+  const tab = await pageTab();
+  const ran = await showBar();
+  await until(() => lineShows(LINE), "armed");
+  EventUtils.synthesizeKey("KEY_Tab");
+  await until(() => document.activeElement === buttons()[0], "Tab focuses the first button");
+  // Firefox disables the bar's buttons again when the window regains focus
+  // (notificationbox.js, _startClickJackingDelay): Vimma's Enter must not press one then.
+  window.dispatchEvent(new FocusEvent("focus"));
+  Assert.ok(buttons()[0].disabled, "Firefox restarted the bar's delay");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await wait(100);
+  Assert.ok(bar(), "Enter left the bar up");
+  Assert.deepEqual(ran, [], "and pressed no button");
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function esc_on_a_focused_button_closes_the_bar() {
   const tab = await pageTab();
   const ran = await showBar();
