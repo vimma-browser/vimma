@@ -46,9 +46,10 @@ const lineShows = (text) =>
   line()?.textContent === text &&
   found(line()).hasAttribute("armed") &&
   getComputedStyle(found(line())).visibility === "visible";
+/** The bar's buttons: XUL `<button>`s up to Firefox 161, `<moz-button>`s from 162. */
 const buttons = () => [
   .../** @type {NodeListOf<HTMLButtonElement>} */ (
-    bar()?.querySelectorAll("button.notification-button") ?? []
+    bar()?.querySelectorAll(".notification-button") ?? []
   ),
 ];
 
