@@ -7,6 +7,7 @@
 "use strict";
 
 /* global focusContent -- from head.js */
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 /* global BrowserCommands, OpenBrowserWindow -- browser window globals (browser.js) */
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -18,6 +19,9 @@ const { HomePage } = ChromeUtils.importESModule("resource:///modules/HomePage.sy
 const START = "chrome://browser/content/vimma/start/start.html";
 const CMDLINE_ID = "vimma-cmdline";
 const HELP_ID = "vimma-help";
+
+// The small-pane task lays the page out at about 120 sizes.
+requestLongerTimeout(2);
 
 registerCleanupFunction(() => {
   while (gBrowser.tabs.length > 1) {
@@ -191,4 +195,112 @@ add_task(async function the_logo_sits_on_the_page_with_no_tile_in_any_scheme() {
   Assert.equal(state.dark, "rgba(0, 0, 0, 0)", "a dark theme shows the page behind the logo");
   Assert.equal(state.light, "rgba(0, 0, 0, 0)", "and so does a light one");
   BrowserTestUtils.removeTab(tab);
+});
+
+// Pane sizes from a lone pane down to the smallest of eight in a dwindle layout (#1275): every
+// width at a tall and at a just-shown height, every height at a just-shown and at a wide width.
+const WIDTHS = [100, 140, 180, 220, 240, 241, 260, 300, 360, 420, 480, 560, 640, 800, 960];
+const HEIGHTS = [60, 90, 120, 121, 150, 160, 161, 180, 220, 241, 260, 280, 281, 300, 360, 400, 640];
+const PANE_SIZES = [
+  ...WIDTHS.flatMap((w) => [/** @type {const} */ ([w, 281]), /** @type {const} */ ([w, 640])]),
+  ...HEIGHTS.flatMap((h) => [/** @type {const} */ ([241, h]), /** @type {const} */ ([960, h])]),
+];
+// start.css's thresholds (spec start-page, "Small panes"): at or below them the part is hidden.
+const HINT_HIDDEN = { width: 240, height: 280 };
+const VERSION_HIDDEN = { width: 240, height: 160 };
+// A font named before the generic one: Gecko then sizes the root at the 16px default rather
+// than the 13px of a lone `monospace`, so the hint and version line grow, as under an Omarchy
+// theme's font. The family need not exist for that.
+const FONTS = [null, '"Vimma Test Mono", monospace'];
+// Longer than a release's, so a version line that wraps is caught too.
+const LONG_VERSION = "Vimma 0.10.0-alpha.12";
+
+add_task(async function the_logo_hint_and_version_never_overlap_in_a_small_pane() {
+  const tab = await openStartTab();
+  const browser = tab.linkedBrowser;
+  await SpecialPowers.spawn(browser, [LONG_VERSION], async (version) => {
+    const doc = content.document;
+    await ContentTaskUtils.waitForCondition(
+      () => doc.getElementById("vimma-version")?.textContent,
+      "start.mjs has filled in the version",
+    );
+    /** @type {HTMLElement} */ (doc.getElementById("vimma-version")).textContent = version;
+    // The longest hint: the theme tip shows under a stock theme, so it is shown here in any.
+    /** @type {HTMLElement} */ (doc.getElementById("vimma-theme-tip")).hidden = false;
+  });
+  const area = browser.getBoundingClientRect();
+  Assert.ok(
+    area.width >= 960 && area.height >= 640,
+    `the content area (${area.width}×${area.height}) holds the largest pane size`,
+  );
+
+  try {
+    for (const font of FONTS) {
+      await SpecialPowers.spawn(browser, [font], (f) => {
+        const root = content.document.documentElement;
+        if (f) root.style.setProperty("--vimma-font", f);
+        else root.style.removeProperty("--vimma-font");
+      });
+      for (const [width, height] of PANE_SIZES) {
+        // A pane is a smaller <browser>; capping this one's box gives its page the same viewport.
+        browser.setAttribute("style", `max-width: ${width}px; max-height: ${height}px`);
+        const state = await SpecialPowers.spawn(browser, [width, height], async (w, h) => {
+          await ContentTaskUtils.waitForCondition(
+            () => content.innerWidth === w && content.innerHeight === h,
+            `the page is ${w}×${h}`,
+          );
+          const doc = content.document;
+          /** @param {string} selector */
+          const box = (selector) => {
+            const el = /** @type {Element} */ (doc.querySelector(selector));
+            const r = el.getBoundingClientRect();
+            return {
+              selector,
+              shown: r.width > 0 && r.height > 0,
+              top: r.top,
+              bottom: r.bottom,
+              left: r.left,
+              right: r.right,
+            };
+          };
+          const root = doc.documentElement;
+          return {
+            boxes: [box(".vimma-logo"), box(".hint"), box(".version")],
+            scrolls: root.scrollHeight > h || root.scrollWidth > w,
+          };
+        });
+        const at = `at ${width}×${height}${font ? ` in ${font}` : ""}`;
+        const [logo, hint, version] = state.boxes;
+        Assert.ok(logo.shown, `${at}: the logo shows`);
+        Assert.equal(
+          hint.shown,
+          width > HINT_HIDDEN.width && height > HINT_HIDDEN.height,
+          `${at}: the hint shows only above its threshold`,
+        );
+        Assert.equal(
+          version.shown,
+          width > VERSION_HIDDEN.width && height > VERSION_HIDDEN.height,
+          `${at}: the version line shows only above its threshold`,
+        );
+        const shown = state.boxes.filter((b) => b.shown);
+        for (const b of shown) {
+          Assert.ok(
+            b.top >= 0 && b.left >= 0 && b.bottom <= height && b.right <= width,
+            `${at}: ${b.selector} is inside the page (${b.left},${b.top} to ${b.right},${b.bottom})`,
+          );
+        }
+        for (const [i, a] of shown.entries()) {
+          for (const b of shown.slice(i + 1)) {
+            const apart =
+              a.bottom <= b.top || b.bottom <= a.top || a.right <= b.left || b.right <= a.left;
+            Assert.ok(apart, `${at}: ${a.selector} and ${b.selector} do not overlap`);
+          }
+        }
+        Assert.ok(!state.scrolls, `${at}: the page has nothing to scroll`);
+      }
+    }
+  } finally {
+    browser.removeAttribute("style");
+    BrowserTestUtils.removeTab(tab);
+  }
 });

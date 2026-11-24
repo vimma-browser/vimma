@@ -5,7 +5,10 @@
 # cask is checked the same way, with brew style, brew audit and an install of a stub dmg on a
 # hosted Mac; release.yml's macos-smoke job runs the same script on the real dmg. Spec
 # rpm-package: the .rpm built from a stub tarball is installed with dnf on Fedora and with zypper
-# on openSUSE; release.yml's package job runs the same script on the real release build.
+# on openSUSE; release.yml's package job runs the same script on the real release build. Spec
+# package-repositories: the OpenPGP signer and the repository tool are tested with every verifier
+# and tool installed, and the apt, dnf, zypper and pacman repositories they build with a
+# throwaway key are installed from, upgraded and tampered with in containers (repos-smoke.sh).
 name: pkgbuild
 
 on:
@@ -122,6 +125,48 @@ jobs:
 
       - name: Build and install the .rpm from a stub tarball
         run: tools/package/rpm-smoke.sh --stub
+
+  repos:
+    name: package repositories (apt, dnf, zypper, pacman) with a throwaway key
+    needs: covered
+    if: ${{ !cancelled() && needs.covered.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # vitest for the tests below; the tools themselves use Node's built-ins only.
+      - name: npm ci
+        run: npm ci
+
+      # The verifiers and tools the tests and the release jobs use, from Ubuntu's archive: sqv
+      # beside gpgv, rpm 4.18 (rpmsign, as release.yml signs with), apt-ftparchive, createrepo_c
+      # and repo-add (with makepkg's libraries, which it sources).
+      - name: Verifiers and repository tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends sqv rpm createrepo-c apt-utils \
+            pacman-package-manager makepkg libarchive-tools zstd
+
+      # Locally these tests skip a tool that is not installed; here a missing one fails.
+      - name: Signer and repository tool tests, every tool required
+        env:
+          VIMMA_REQUIRE_TOOLS: >-
+            gpg,gpgv,sqv,rpm,rpmbuild,rpmsign,dpkg-deb,apt-ftparchive,createrepo_c,repo-add,zstd,bsdtar
+        run: >-
+          npx --no -- vitest run tools/package/test/openpgp-kms.test.ts tools/package/test/repos.test.ts
+          tools/package/test/repos-serve.test.ts tools/package/test/check-signed-packages.test.ts
+          tools/update/test/update-workflow.test.ts
+
+      - name: Install, upgrade and tamper with each repository in containers
+        run: tools/package/repos-smoke.sh
 
   cask:
     name: Homebrew cask on macOS (brew install --cask)

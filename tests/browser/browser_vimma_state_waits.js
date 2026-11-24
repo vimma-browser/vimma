@@ -27,6 +27,9 @@ const { UrlbarTestUtils } = ChromeUtils.importESModule(
 const { ProvidersManager } = ChromeUtils.importESModule(
   "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs",
 );
+const { SetupHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
+);
 const { PdfOps } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/pdf-ops.mjs");
 const { PDF_OUTLINE_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/outline-ops.mjs",
@@ -38,7 +41,7 @@ const PDF = `https://example.com${DIR}file_vimma_outline.pdf`;
 
 /** The focused window's state, checked against the protocol as the server sends it. */
 function state() {
-  const result = /** @type {any} */ (VimmaControl._commands.state());
+  const result = VimmaControl._commands.state();
   const v = validateMessage(
     { type: "response", id: 1, ok: true, result },
     { kind: "response", command: "state" },
@@ -57,22 +60,23 @@ function type(text, win = window) {
   for (const ch of text) EventUtils.synthesizeKey(ch, {}, win);
 }
 
-/** @param {Window} [win] */
-const grepDialog = (win = window) => win.document.getElementById("vimma-grep");
+/** Live grep's dialog (ui/grep.mjs), once a window has made it. @param {Window} [win] */
+const grepDialog = (win = window) =>
+  /** @type {HTMLDialogElement | null} */ (win.document.getElementById("vimma-grep"));
 
 /**
  * ctrl+b f g from the selected page of `win`; waits for the dialog.
- * @param {Window} [win]
+ * @param {BrowserWindow} [win]
  */
 async function openGrep(win = window) {
-  const browser = /** @type {any} */ (win).gBrowser.selectedBrowser;
+  const browser = win.gBrowser.selectedBrowser;
   await until(() => !browser.webProgress?.isLoadingDocument, "the page has loaded");
   if (win === window) await focusContent(browser);
   else await SimpleTest.promiseFocus(browser);
   EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
   EventUtils.synthesizeKey("f", {}, win);
   EventUtils.synthesizeKey("g", {}, win);
-  await until(() => !!(/** @type {any} */ (grepDialog(win))?.open), "ctrl+b f g opens live grep");
+  await until(() => !!grepDialog(win)?.open, "ctrl+b f g opens live grep");
 }
 
 /** @param {Record<string, string>} params */
@@ -112,10 +116,10 @@ add_task(async function test_state_reports_live_grep_as_drawn() {
   Assert.ok(dialog.querySelector(".vimma-grep-preview-match"), "its line is marked");
 
   // The first Esc may leave the query's insert for the picker's normal keys; the next closes.
-  for (let i = 0; i < 3 && /** @type {any} */ (grepDialog())?.open; i++) {
+  for (let i = 0; i < 3 && grepDialog()?.open; i++) {
     EventUtils.synthesizeKey("KEY_Escape");
   }
-  await until(() => !(/** @type {any} */ (grepDialog())?.open), "Esc closes it");
+  await until(() => !grepDialog()?.open, "Esc closes it");
   Assert.strictEqual(state().grep, null, "closed again: null");
 
   // A private window's search is part of its browsing: the socket never hears of it.
@@ -149,7 +153,6 @@ add_task(async function test_state_reports_the_suggestion_list_as_drawn() {
   });
   Assert.strictEqual(state().urlbar, null, "the list closed: null");
 
-  /** @type {any} UrlbarInput: the harness's type names only what other tests use */
   const bar = gURLBar;
   bar.focus();
   bar.select();
@@ -177,9 +180,9 @@ add_task(async function test_state_reports_the_suggestion_list_as_drawn() {
   // What a private window's address bar suggests is part of its browsing: withheld.
   const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
   await SimpleTest.promiseFocus(priv);
-  /** @type {any} */ (priv).gURLBar.focus();
+  priv.gURLBar.focus();
   type("about:blank", priv);
-  await until(() => /** @type {any} */ (priv).gURLBar.view.isOpen, "its list opens");
+  await until(() => priv.gURLBar.view.isOpen, "its list opens");
   const hidden = state();
   Assert.strictEqual(hidden.private, true, "sanity: state reads the private window");
   Assert.strictEqual(hidden.urlbar, null, "a private window's suggestions stay out of state");
@@ -207,7 +210,6 @@ add_task(async function test_a_query_under_way_is_not_settled_even_heard_late() 
   const manager = ProvidersManager.getInstanceForSap("urlbar");
   manager.registerProvider(provider);
 
-  /** @type {any} UrlbarInput: the harness's type names only what other tests use */
   const bar = gURLBar;
   bar.focus();
   bar.select();
@@ -219,7 +221,10 @@ add_task(async function test_a_query_under_way_is_not_settled_even_heard_late() 
   Assert.deepEqual(state().urlbar, { settled: false }, "heard from the start: still under way");
 
   // Listening only from now on, as on a window that heard no focus.
-  const queries = /** @type {any} */ (VimmaHost._state(window)).urlbarQueries;
+  // Not null: the state above read the list from it.
+  const queries = /** @type {NonNullable<HostState["urlbarQueries"]>} */ (
+    /** @type {HostState} */ (VimmaHost._state(window)).urlbarQueries
+  );
   queries.destroy();
   Assert.deepEqual(state().urlbar, { settled: false }, "heard late: still under way");
   await TestUtils.waitForTick();
@@ -241,13 +246,13 @@ add_task(async function test_a_query_under_way_is_not_settled_even_heard_late() 
  * @param {BrowserWindow} [win]
  */
 function holdJumps(win = window) {
-  const session = /** @type {any} */ (VimmaHost._state(win)).grep;
+  const session = /** @type {HostState} */ (VimmaHost._state(win)).grep;
   const ask = session.ask;
   /** @type {((reply?: unknown) => void)[]} */
   const waiting = [];
   session.ask = (
-    /** @type {unknown} */ bc,
-    /** @type {unknown} */ data,
+    /** @type {Parameters<GrepSession["ask"]>[0]} */ bc,
+    /** @type {Parameters<GrepSession["ask"]>[1]} */ data,
     /** @type {string} */ name,
   ) =>
     name === "Vimma:GrepJump"
@@ -265,7 +270,7 @@ function holdJumps(win = window) {
   };
 }
 
-/** @param {Window} [win] */
+/** @param {BrowserWindow} [win] */
 async function grepCredit(win = window) {
   await openGrep(win);
   type("credit", win);
@@ -285,7 +290,7 @@ add_task(async function test_state_reports_a_grep_jump_until_it_has_drawn() {
   try {
     await grepCredit();
     EventUtils.synthesizeKey("KEY_Enter");
-    Assert.ok(!(/** @type {any} */ (grepDialog())?.open), "Enter closes the picker");
+    Assert.ok(!grepDialog()?.open, "Enter closes the picker");
     Assert.deepEqual(state().grep, { busy: true }, "read at once: the jump is under way");
     await until(() => jumps.held() === 1, "the jump asks the frame");
     Assert.equal(gBrowser.selectedTab, tabs[0], "the match's tab is selected");
@@ -426,13 +431,91 @@ add_task(async function test_state_reports_the_pdf_viewer_as_drawn() {
   await SpecialPowers.popPrefEnv();
 });
 
+// #1298: the setup page's screen as drawn, a fixed word (welcome, a step's id, stop), so an e2e
+// scenario waits for the screen it photographs; null on any other page.
+add_task(async function test_state_reports_the_setup_screen() {
+  // The content blocker step asks AMO for its add-ons: a closed local port answers at once.
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.setup.amoApi", "http://127.0.0.1:1/"]] });
+  Assert.strictEqual(state().setup, null, "another page: null");
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma-setup");
+  try {
+    const browser = tab.linkedBrowser;
+    const doc = /** @type {Document} */ (browser.contentDocument);
+    await until(() => doc.documentElement.dataset.step === "welcome", "the welcome screen");
+    Assert.deepEqual(state().setup, { screen: "welcome" });
+    await focusContent(browser);
+    // The content blocker's add-on list, held until the test lets it answer.
+    const realCurated = SetupHost.curated;
+    /** @type {(v?: unknown) => void} */
+    let answer = () => {};
+    const held = new Promise((resolve) => (answer = resolve));
+    SetupHost.curated = async () => {
+      await held;
+      return realCurated.call(SetupHost);
+    };
+    const realStepView = SetupHost.stepView;
+    let read = false;
+    SetupHost.stepView = async (...args) => {
+      const v = await realStepView.apply(SetupHost, args);
+      read = true;
+      return v;
+    };
+    registerCleanupFunction(() => {
+      SetupHost.curated = realCurated;
+      SetupHost.stepView = realStepView;
+    });
+    EventUtils.synthesizeKey("KEY_Enter", {}, /** @type {Window} */ (doc.defaultView));
+    await until(() => doc.documentElement.dataset.step === "content_blocker", "the step opens");
+    await until(() => read, "its choices are read");
+    await TestUtils.waitForTick();
+    Assert.equal(state().setup?.screen, "loading", "the add-on list still to come: loading");
+    answer();
+    SetupHost.curated = realCurated;
+    SetupHost.stepView = realStepView;
+    // The step's id is set as it opens, its choices once its view has loaded: `loading` until then.
+    const seen = new Set();
+    await until(() => {
+      const screen = state().setup?.screen;
+      if (screen) seen.add(screen);
+      if (screen === "content_blocker") {
+        Assert.equal(doc.documentElement.dataset.viewReady, "true", "named once its view is drawn");
+        Assert.greater(doc.querySelectorAll("#v2-addons li").length, 0, "with its add-on list");
+      }
+      return screen === "content_blocker";
+    }, "the first step");
+    Assert.ok(
+      [...seen].every((w) => ["welcome", "loading", "content_blocker"].includes(w)),
+      `only these words on the way: ${[...seen].join(", ")}`,
+    );
+  } finally {
+    BrowserTestUtils.removeTab(tab);
+  }
+  Assert.strictEqual(state().setup, null, "closed: null");
+
+  // A private window's pages stay out of state, the setup page too.
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const privBrowser = priv.gBrowser.selectedBrowser;
+  BrowserTestUtils.startLoadingURIString(privBrowser, "about:vimma-setup");
+  await BrowserTestUtils.browserLoaded(privBrowser, false, "about:vimma-setup");
+  await until(
+    () => privBrowser.contentDocument?.documentElement?.dataset.step === "welcome",
+    "the private window's setup page draws its welcome screen",
+  );
+  const hidden = state();
+  Assert.strictEqual(hidden.private, true, "sanity: state reads the private window");
+  Assert.strictEqual(hidden.setup, null, "a private window's setup page stays out of state");
+  await BrowserTestUtils.closeWindow(priv);
+  await SimpleTest.promiseFocus(window);
+  await SpecialPowers.popPrefEnv();
+});
+
 // The downloads picker opens only once its rows are read, and draws them as it opens: `mode:
 // "help"` is the e2e scenarios' wait for its rows, with `downloads: null` for the `↓` segment
 // that opening it clears.
 add_task(async function test_the_downloads_picker_opens_with_its_rows() {
-  const s = /** @type {any} */ (VimmaHost._state(window));
+  const s = /** @type {HostState} */ (VimmaHost._state(window));
   const open = s.downloadRows.open;
-  /** @type {PromiseWithResolvers<object[]>} */
+  /** @type {PromiseWithResolvers<Awaited<ReturnType<typeof open>>>} */
   const rows = Promise.withResolvers();
   s.downloadRows.open = () => rows.promise;
   try {

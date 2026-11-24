@@ -56,7 +56,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -87,7 +87,7 @@ async function openAgentTab(url = SHOP) {
   return tab;
 }
 
-/** The connections the running task opened. @type {any[]} */
+/** The connections the running task opened. @type {Client[]} */
 const clients = [];
 
 /** What a task leaves when it ends, passed or not (tidyTask). */
@@ -120,7 +120,7 @@ async function question() {
 /**
  * The list's elements by what they say; the first list of the connection is answered with a
  * grant of 15 minutes, which covers every tool after it (mcp-grants G1).
- * @param {any} c @param {any} tab
+ * @param {Client} c @param {MozTabbrowserTab} tab
  */
 async function grantedLabels(c, tab) {
   // Every line, also those as in the last list of the site (agent-speed S4): the map needs all.
@@ -139,7 +139,7 @@ async function grantedLabels(c, tab) {
   return by;
 }
 
-/** What the page counted of the clicks. @param {any} tab */
+/** What the page counted of the clicks. @param {MozTabbrowserTab} tab */
 const clicked = (tab) =>
   SpecialPowers.spawn(tab.linkedBrowser, [], () =>
     [...content.document.querySelectorAll("#log li")].map((li) => li.textContent),
@@ -300,7 +300,7 @@ addTidyTask(async function test_a_followed_pay_link_in_a_cross_site_frame_names_
   const list = await c.call("agent-keys", { tab: idOf(tab), keys: "f" });
   Assert.ok(list.ok, "f lists the links under the grant");
   const line = list.result.links
-    .split("\n")
+    ?.split("\n")
     .find((/** @type {string} */ l) => l.includes('"Pay by bank"'));
   Assert.ok(line, "the frame's link is listed");
   const id = c.request("agent-keys", { tab: idOf(tab), keys: `f${line.split(" ")[0]}` });
@@ -318,11 +318,11 @@ addTidyTask(async function test_a_no_stops_the_step_and_keeps_the_grant() {
   const c = await agentClient();
   const by = await grantedLabels(c, tab);
   const until0 = grantEnd();
-  for (const answer of [{ kind: "deny" }, { kind: "mute" }]) {
+  for (const answer of /** @type {GateAnswer[]} */ ([{ kind: "deny" }, { kind: "mute" }])) {
     const id = c.request("agent-activate", { tab: idOf(tab), label: by["Vahvista tilaus"] });
     const q = await question();
     // `x` is a plain no at a checkpoint (Behaviour 2): it does not mute the agent.
-    AgentGate.answer(q.id, /** @type {any} */ (answer));
+    AgentGate.answer(q.id, answer);
     const r = await c.response(id);
     Assert.equal(r.error?.reason, "user", `${answer.kind}: the step is denied`);
   }
@@ -341,7 +341,7 @@ addTidyTask(async function test_the_stated_total_is_quoted() {
   // The confirm button: the total before it, not the subtotal, the delivery or one after it.
   const id = c.request("agent-activate", { tab: idOf(tab), label: by["Vahvista tilaus"] });
   const q = await question();
-  Assert.equal(q.what.pay.total, "Yhteensä 42,90 €", "the nearest total before the button");
+  Assert.equal(q.what.pay?.total, "Yhteensä 42,90 €", "the nearest total before the button");
   AgentGate.answer(q.id, { kind: "deny" });
   await c.response(id);
   // With no total on the page, none is quoted.
@@ -421,7 +421,7 @@ addTidyTask(async function test_checkpoint_notice_log_row_and_notification() {
   const alerts = [];
   const cid = MockRegistrar.register("@mozilla.org/alerts-service;1", {
     QueryInterface: ChromeUtils.generateQI(["nsIAlertsService"]),
-    showAlert(/** @type {any} */ alert) {
+    showAlert(/** @type {nsIAlertNotification} */ alert) {
       alerts.push(alert.text);
     },
     showAlertNotification() {},
@@ -445,11 +445,11 @@ addTidyTask(async function test_checkpoint_notice_log_row_and_notification() {
 // only when it pays or sends text, personal details, a secret or a file (K1, K2); `a` on such a
 // question allows that button on that site for the rest of the grant (K5), never on a payment.
 
-/** `agent-activate` of `label` in `tab`, and its response. @param {any} c @param {any} tab */
+/** `agent-activate` of `label` in `tab`, and its response. @param {Client} c @param {MozTabbrowserTab} tab */
 const activate = (c, tab, /** @type {string} */ label) =>
   c.request("agent-activate", { tab: idOf(tab), label });
 
-/** Back to the basket page, and its labels. @param {any} c @param {any} tab */
+/** Back to the basket page, and its labels. @param {Client} c @param {MozTabbrowserTab} tab */
 async function backToBasket(c, tab) {
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, BASKET);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, BASKET);
@@ -457,7 +457,7 @@ async function backToBasket(c, tab) {
 }
 
 /** The labels of the basket page's buttons, in order. */
-const basketButtons = async (/** @type {any} */ c, /** @type {any} */ tab) => {
+const basketButtons = async (/** @type {Client} */ c, /** @type {MozTabbrowserTab} */ tab) => {
   const id = c.request("agent-elements", { tab: idOf(tab), full: true });
   const r = await c.response(id);
   /** @type {string[]} */
@@ -534,6 +534,7 @@ addTidyTask(async function test_a_allows_that_button_on_that_site() {
   const c = await agentClient();
   let by = await grantedLabels(c, tab);
   const until0 = grantEnd();
+  /** @type {ControlRequestId<"agent-activate" | "agent-elements">} */
   let id = activate(c, tab, by["Tarkista toimitus"]);
   const q = await question();
   AgentGate.answer(q.id, { kind: "here" });

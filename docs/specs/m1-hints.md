@@ -124,14 +124,18 @@ reverted.
   the labels, and a MutationObserver sees nothing (tested). A shadow-root overlay injected into
   the page was the alternative: the page can detect it (layout, `elementFromPoint`, focus)
   and break it with its own CSS (`all: initial` on `*`, `z-index` wars); we drop it.
-  Colours: `--vimma-hint-bg` / `--vimma-hint-fg` (m5-core-config-and-theme) with Tokyo Night's
+  Colours: `--vimma-hint-bg` / `--vimma-hint-fg` (m5-core-config-and-theme) with the built-in palette's
   yellow as the fallback until M5 sets the tokens.
 - **Messages.** `Vimma:CollectHints { gen, linksOnly }` → `{ targets: [{ id, rect, kind,
-href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. Both are
-  queries the parent sends to a frame it chose; the child never starts a hint message, so the
-  focused-frame rule of focus reports (m1-actor-insert-scroll) has no counterpart here: each
-  reply comes from the frame that was asked. The parent runs every reply through core
-  `parseHintReply` (`hints.mjs`, the counterpart of `parseDescriptor`), which returns a fresh
+href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (Since changed:
+  a wheel over the page while labels show sends the top frame `Vimma:HintsMoved { gen, x, y }`,
+  which answers once the wheel's scroll has ended whether the labelled targets or the frames
+  moved; issues #1308 and #1337; described under Limits, and in `actors/VimmaChild.sys.mjs`,
+  `#hintsMoved`.) Both are queries the parent sends to a frame it chose; the child never
+  starts a hint message, so the focused-frame rule of focus reports (m1-actor-insert-scroll)
+  has no counterpart here: each reply comes from the frame that was asked. The parent runs
+  every reply through core `parseHintReply` (`hints.mjs`, the counterpart of
+  `parseDescriptor`), which returns a fresh
   copy with only the known fields or null, and never throws: caps of 5,000 targets, 64 frames
   and 8 KiB per href (`HINT_REPLY_MAX_*`, which the child also applies to its own reply, so a
   page with 65 frames loses its 65th, not all of them), unique non-negative integer ids,
@@ -150,6 +154,21 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. B
   activation behaviour follows links (SVG elements, which have no `click()`, get a click
   event). `windowUtils.sendMouseEvent` would be a real pointer
   click, but Firefox 157 no longer has it outside tests.
+  (Since changed: the label the user types is their gesture, so the child gives the target's
+  document transient user activation for the press, with `windowUtils.setHandlingUserInput`,
+  which calls `Document::NotifyUserGestureActivation` and marks the press as user input. A link
+  with `target=_blank`, a button's `window.open`, `requestFullscreen` and a select's
+  `showPicker()` now work as after a click, where before the pop-up blocker stopped them or the
+  page refused them (issue #1303). Only `Vimma:ActivateHint` does this, which the parent sends
+  for a label the user typed; an agent's click (mcp-forms F8) shares the press without it. A
+  focus the page's click handler makes during the press counts as the user's
+  (`isHandlingUserInput`), so a hinted button that focuses a field enters insert, also after
+  `Esc` (insert-focus decision 6), as a mouse click on it does. That was already so before the
+  activation: a trusted `click()` from the child runs its listeners in that state.)
+  (Since changed: an agent's press through the same child, mcp-forms F8, dispatches the three
+  mouse events through the page's own `dispatchEvent`, so the page sees them untrusted and a
+  link takes no focus and shows no address in the user's window from them. A label the user
+  types keeps them trusted, as described here. Issue #1321.)
 - **`F`.** Links only (`a[href]`). The parent opens `href` with `openLinkIn(url, "tab",
 { inBackground: true })`, as the context menu's "Open Link in New Tab" does: the frame's
   document principal triggers the load, after `checkLoadURIWithPrincipal`, so a page cannot
@@ -184,6 +203,30 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. B
 
 - Labels are drawn for the layout at `f`: a page that scrolls or moves itself while they show
   leaves them stale (a key or `Esc` still works on the targets).
+  (Since changed: a smooth scroll that Vimma started is ended at its destination before the
+  targets are collected; one on a scroll-snap container, one the user's wheel took over, and
+  one a scrollend came for before it moved (cancelled, or an earlier scroll's end) is waited
+  for instead (at most 1 s); and a wheel
+  over the page while labels show draws them again once its scroll ends (issue #1308). Only
+  the scroll events of that scroller count, or for a wheel those of the page and of the
+  scrollers under it, so a carousel the page turns elsewhere neither ends the wait nor holds
+  it open. A wheel that moved no labelled target and no frame (the page's end, or a page that
+  takes the wheel itself, such as a map) keeps the labels and the keys typed toward them, and
+  then takes the keys typed while they were hidden; one that moved them, or one over a subframe,
+  draws them again and drops every key typed toward the old labels, including those typed while
+  they were hidden, which were aimed at labels that now name other targets. A wheel while the
+  labels are being collected is looked at once they arrive. A scroller inside a shadow root
+  fires its scroll events only within that tree, so a wait for it ends on the quiet timer and
+  can collect while it still moves. Issue #1337; described in `actors/page-scroll.mjs`,
+  `finish`, `settled` and `scrollersUnder`, and in `host/VimmaHost.sys.mjs`, `_wheelCheck`.)
+  (Since changed: the wait for a smooth scroll Vimma started on a scroll-snap container that
+  has not moved yet lets the quiet time count only from its first scroll event, because APZ
+  runs that scroll and the page sees no scroll event until APZ has learnt of it at the next
+  paint and moved the page, which on a busy machine took longer than the quiet time and had
+  the labels collected where the scroll started. On a mandatory snap container whose snap
+  point that way is where the page is (none further on for `j` or `d`, or already at the first
+  or last one for `gg` or `G`), the scroll does not move and the wait ends at its 1 s limit.
+  Issue #1400.)
 - Delegated click handlers on elements with no role, tabindex or listener of their own (some
   React apps) get no hint; no `cursor: pointer` heuristic.
 - Canvas and WebGL apps (Google Docs, Figma, maps, games) draw their own controls: there are no
@@ -192,7 +235,8 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. B
 - Frames inside a CSS-transformed or zoomed `<iframe>` get misplaced labels (offsets assume no
   transform); a frame covered by a fixed element in its parent is clipped, not occlusion-checked.
 - A `select` may not open from a hint (no user activation for `showPicker`); it has focus, so
-  `Alt+Down` opens it.
+  `Alt+Down` opens it. (Since changed: the hint gives activation, so its list opens; issue
+  #1303.)
 - Pinch zoom (the visual viewport) is not accounted for.
 - A frame that takes more than 150 ms to answer (a busy page, a slow process) gets no labels
   that time; press `f` again once it is idle.

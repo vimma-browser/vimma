@@ -18,6 +18,10 @@ import {
   OFF_NOTICE_MS,
   offerAssets,
   parseManifest,
+  REPOSITORY_FILES,
+  savedKey,
+  savedOffer,
+  savedSerial,
   shellQuote,
   signatureComment,
   signedBytes,
@@ -505,6 +509,76 @@ describe("parseManifest", () => {
     }
   });
 
+  // #1237: RegExp.test reads an array as its text, so ["12345678901234"] passed as a serial.
+  const SAVED = {
+    appVersion: "999.0",
+    buildId: "20991231000000",
+    displayVersion: "0.9.0-nightly.20991231",
+    detailsUrl: "https://github.com/vimma-browser/vimma/releases/tag/v0.9.0",
+    urgent: true,
+    advisories: ["MFSA 2099-01"],
+    assets: { deb: { size: 1, sha512: H("d") } },
+    marUrl: `${DL}/vimma.mar`,
+  };
+
+  test("savedOffer keeps a well-formed saved offer, field by field", () => {
+    expect(savedOffer(SAVED)).toEqual(SAVED);
+    expect(savedOffer({ ...SAVED, extra: "x" })).toEqual(SAVED);
+    const { marUrl, ...noMar } = SAVED;
+    expect(marUrl).toMatch(/^https:/);
+    expect(savedOffer(noMar)).toEqual({ ...noMar, marUrl: null });
+    expect(savedOffer({ ...SAVED, marUrl: "http://example.com/x.mar" })).toEqual({
+      ...SAVED,
+      marUrl: null,
+    });
+    expect(savedOffer({ ...SAVED, assets: [1] })).toEqual({ ...SAVED, assets: {} });
+  });
+
+  test.each([
+    ["appVersion", ["999.0"]],
+    ["appVersion", "999"],
+    ["buildId", ["20991231000000"]],
+    ["buildId", 20991231000000],
+    ["buildId", "not digits"],
+    ["displayVersion", ["0.9.0"]],
+    ["displayVersion", "1.0.0; rm -rf ~"],
+    ["detailsUrl", ["https://x/"]],
+    ["detailsUrl", "http://x/"],
+    ["urgent", "true"],
+    ["advisories", "MFSA 2099-01"],
+    ["advisories", [["MFSA 2099-01"]]],
+    ["advisories", ["<b>x</b>"]],
+  ])("savedOffer refuses a saved %s of %j", (field, value) => {
+    expect(savedOffer({ ...SAVED, [field]: value })).toBeNull();
+  });
+
+  test("savedOffer refuses what is not an offer object", () => {
+    for (const v of [null, undefined, "x", 1, [SAVED]]) expect(savedOffer(v)).toBeNull();
+  });
+
+  test("savedSerial keeps only a 14-digit string", () => {
+    expect(savedSerial("20991231000000")).toBe("20991231000000");
+    for (const v of [["20991231000000"], 20991231000000, "2099123100000", null, undefined]) {
+      expect(savedSerial(v)).toBeNull();
+    }
+  });
+
+  test("savedKey keeps a string id and a known slot, and nothing else", () => {
+    expect(savedKey({ id: "k", slot: "primary", x: 1 })).toEqual({ id: "k", slot: "primary" });
+    expect(savedKey({ id: "k", slot: "secondary" })).toEqual({ id: "k", slot: "secondary" });
+    for (const v of [
+      { id: ["k"], slot: "primary" },
+      { id: "k", slot: ["primary"] },
+      { id: "k", slot: "other" },
+      { id: "k" },
+      ["k"],
+      "k",
+      null,
+    ]) {
+      expect(savedKey(v)).toBeNull();
+    }
+  });
+
   test("entities in attributes are decoded", () => {
     const r = parseManifest(
       manifest({
@@ -848,6 +922,7 @@ describe("install type (§3)", () => {
     [{ packaged: true, marker: "vimma-package=pkgbuild-release\n" }, "pkgbuild-release"],
     [{ packaged: true, marker: "vimma-package=appimage\n" }, "appimage"],
     [{ packaged: true, marker: "vimma-package=flatpak\n" }, "flatpak"],
+    [{ packaged: true, marker: "vimma-package=pacman\n" }, "pacman"],
     [{ packaged: true, marker: "" }, "packaged"],
     [{ packaged: true, marker: "vimma-package=snap\n" }, "packaged"],
   ])("%j → %s", (input, type) => {
@@ -1099,6 +1174,89 @@ describe("updateSteps (:update and about:vimma)", () => {
     expect(s.link).toBe(offer.detailsUrl);
   });
 
+  // Spec package-repositories, decision 18: the package from Vimma's pacman repository upgrades
+  // with the system; a fixed command with nothing taken from the manifest.
+  test("install type pacman from vimma-package=pacman", () => {
+    const type = installTypeFrom({ packaged: true, marker: "vimma-package=pacman\n" });
+    expect(type).toBe("pacman");
+    const s = updateSteps(type, hashed, where);
+    expect(s.commands).toEqual(["sudo pacman -Syu"]);
+    expect(s.text).toMatch(/pacman repository/);
+    expect(s.text).not.toMatch(/curl|makepkg/);
+    expect(s.note).toBeUndefined();
+    expect(s.link).toBe(offer.detailsUrl);
+  });
+
+  // The .deb and .rpm are the same file from a release and from a repository, so the repository's
+  // own file, which only its setup writes, says which command works (decision 18).
+  test("the repository files are the fixed paths each setup writes", () => {
+    expect(REPOSITORY_FILES).toEqual({
+      apt: "/etc/apt/sources.list.d/vimma.sources",
+      dnf: "/etc/yum.repos.d/vimma.repo",
+      zypper: "/etc/zypp/repos.d/vimma.repo",
+    });
+    expect(Object.isFrozen(REPOSITORY_FILES)).toBe(true);
+  });
+
+  test("a .deb with the repository set up gets apt's upgrade command", () => {
+    const s = updateSteps("deb", hashed, { ...where, repos: { apt: true } });
+    expect(s.commands).toEqual(["sudo apt update && sudo apt upgrade"]);
+    expect(s.text).toMatch(/apt repository/);
+    expect(s.note).toBeUndefined();
+    // Only apt's own file counts for a .deb.
+    const other = updateSteps("deb", hashed, { ...where, repos: { dnf: true, zypper: true } });
+    expect(other.commands[0]).toMatch(/^curl .* && sudo apt install \.\/vimma_0\.3\.1_amd64\.deb$/);
+  });
+
+  test("a .rpm with the repository set up gets dnf's and zypper's", () => {
+    const both = updateSteps("rpm", hashed, { ...where, repos: { dnf: true, zypper: true } });
+    expect(both.commands).toEqual(["sudo dnf upgrade vimma", "sudo zypper up vimma"]);
+    expect(both.text).toMatch(/dnf.*Fedora.*zypper.*openSUSE/);
+    expect(both.note).toBeUndefined();
+    const dnf = updateSteps("rpm", hashed, { ...where, repos: { dnf: true } });
+    expect(dnf.commands).toEqual(["sudo dnf upgrade vimma"]);
+    expect(dnf.text).not.toMatch(/zypper/);
+    const zypper = updateSteps("rpm", hashed, { ...where, repos: { zypper: true } });
+    expect(zypper.commands).toEqual(["sudo zypper up vimma"]);
+    expect(zypper.text).not.toMatch(/dnf/);
+    // apt's file says nothing about an .rpm.
+    const apt = updateSteps("rpm", hashed, { ...where, repos: { apt: true } });
+    expect(apt.commands).toEqual(updateSteps("rpm", hashed, where).commands);
+  });
+
+  test("a .deb without it keeps the download command", () => {
+    const none = updateSteps("deb", hashed, { ...where, repos: {} });
+    expect(none).toEqual(updateSteps("deb", hashed, where));
+    expect(none.commands[0]).toMatch(
+      /sha512sum -c - && sudo apt install \.\/vimma_0\.3\.1_amd64\.deb$/,
+    );
+    expect(none.note).toBeUndefined();
+  });
+
+  // Decision 22: one line pointing at the guide's repository section, shown only once that
+  // section exists (decision 25: vimma.feature.packageRepos, until the repositories are live).
+  test("without the repository, the download command and, when asked, one line to the guide", () => {
+    for (const type of ["deb", "rpm"] as const) {
+      const plain = updateSteps(type, hashed, where);
+      const hinted = updateSteps(type, hashed, { ...where, repoHint: true });
+      expect(hinted.commands).toEqual(plain.commands);
+      expect(hinted.text).toBe(plain.text);
+      expect(hinted.note).toMatch(/the guide's “Package repositories”/);
+      expect(hinted.note).not.toMatch(/\n/);
+      expect(plain.note).toBeUndefined();
+      // With the repository set up there is nothing to point at.
+      const set = { apt: true, dnf: true, zypper: true };
+      expect(updateSteps(type, hashed, { ...where, repos: set, repoHint: true }).note).toBe(
+        undefined,
+      );
+    }
+    expect(updateSteps("deb", hashed, { ...where, repoHint: true }).note).toMatch(/\bapt\b/);
+    expect(updateSteps("rpm", hashed, { ...where, repoHint: true }).note).toMatch(/dnf.*zypper/);
+    for (const type of ["tarball", "appimage", "pacman", "aur", "flatpak"] as const) {
+      expect(updateSteps(type, hashed, { ...where, repoHint: true }).note).toBeUndefined();
+    }
+  });
+
   test("flatpak: flatpak update, with no download (spec flatpak, decision 10)", () => {
     const s = updateSteps("flatpak", hashed, where);
     expect(s.commands).toEqual(["flatpak update dev.vimma.browser"]);
@@ -1149,34 +1307,29 @@ describe("the version line", () => {
   });
 });
 
-describe("[updates] check (config.toml, schema 2) and the pref", () => {
-  const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+describe("[updates] check (config.toml) and the pref", () => {
+  // A config.toml whose first line is a comment, so errors are on the lines they always were.
+  const cfg = (...lines: string[]) => ["# config.toml", ...lines].join("\n") + "\n";
 
   test("defaults to on; false turns it off", () => {
-    expect(parseConfig(v2()).config?.updates).toEqual({ check: true });
-    expect(parseConfig(v2("[updates]", "check = false")).config?.updates).toEqual({
+    expect(parseConfig(cfg()).config?.updates).toEqual({ check: true });
+    expect(parseConfig(cfg("[updates]", "check = false")).config?.updates).toEqual({
       check: false,
     });
     expect(DEFAULT_CONFIG.updates).toEqual({ check: true });
-    expect(formatDefaultsToml()).toMatch(/^\[updates\]\n(#.*\n)*check = true$/m);
+    expect(formatDefaultsToml()).toMatch(/^\[updates\]\n(#.*\n)*check = true(?: +#.*)?$/m);
   });
 
-  test("a wrong type, an unknown key and schema 1 are errors", () => {
+  test("a wrong type and an unknown key are errors; a schema-1 file may have [updates]", () => {
     const errs = (t: string) =>
       parseConfig(t).errors.map((e) => ({ line: e.line, path: e.path, message: e.message }));
-    expect(errs(v2("[updates]", 'check = "no"'))).toEqual([
+    expect(errs(cfg("[updates]", 'check = "no"'))).toEqual([
       { line: 3, path: "updates.check", message: "expected a boolean, got a string" },
     ]);
-    expect(errs(v2("[updates]", "chekc = false"))).toEqual([
+    expect(errs(cfg("[updates]", "chekc = false"))).toEqual([
       { line: 3, path: "updates.chekc", message: 'unknown key "chekc"' },
     ]);
-    expect(errs("schema = 1\n[updates]\ncheck = false\n")).toEqual([
-      {
-        line: 2,
-        path: "updates",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+    expect(errs("schema = 1\n[updates]\ncheck = false\n")).toEqual([]);
   });
 
   test("a file with errors: a readable check = false holds; else the config in force, or held", () => {
@@ -1293,7 +1446,9 @@ describe("[updates] check (config.toml, schema 2) and the pref", () => {
   test("a file that parses but has errors checks as a valid file would (#741)", () => {
     // A key from a newer build must not lock the user out of the release that accepts it. (An
     // unknown provider cli, the case #741 met, is now only a warning: #742.)
-    const newer = "schema = 2\n[agent]\nfuture_key = 1\n";
+    // A newer build's key with no near miss is only a warning now (#1474); a value only a
+    // newer build accepts is still an error.
+    const newer = "schema = 2\n[agent]\nmax_steps = 100000\n";
     expect(parseConfig(newer).errors).toHaveLength(1);
     expect(rawUpdatesCheck(newer)).toBe("missing");
     expect(rawUpdatesCheck("schema = 2\n[updates]\n")).toBe("missing");

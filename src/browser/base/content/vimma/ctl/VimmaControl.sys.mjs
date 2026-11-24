@@ -39,6 +39,7 @@ import { isCtlVersion } from "../core/ctl-version.mjs";
 import { parseKey } from "../core/keys.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
+import { shownAsleep } from "../services/TabSleep.sys.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { MCP_CHANGED_TOPIC, MCP_ENABLED_PREF, McpHost } from "../host/mcp-ops.mjs";
@@ -79,8 +80,9 @@ const MAX_AGENT_CONNECTIONS = 4;
 const MAX_AGENT_INFLIGHT = 4;
 /**
  * Connections still waiting for their hello. Anyone local can open those, so they are capped
- * apart from the authenticated ones and a new one evicts the oldest: a flood of idle
- * connections cannot lock out a client with the token (security.md S5).
+ * apart from the authenticated ones and a new one evicts the oldest that has not spoken yet (else
+ * the oldest): a flood of idle connections cannot lock out a client with the token, whose hello
+ * may be in its socket before the server has read it (security.md S5, #1344).
  */
 const MAX_WAITING = 2;
 /** Unsent output beyond this means the client is not reading: close it. */
@@ -92,7 +94,11 @@ const DISCOVERY_FILE = "vimma-control.json";
 /** After an error that ends the connection: how long to wait for the client to close first. */
 const DRAIN_MS = 1000;
 
-/** @typedef {{ code: string, message: string, reason?: string }} ProtocolError */
+/**
+ * A refusal: `retryAfter` (milliseconds) only on a used-up rate's busy denial, to a client new
+ * enough to read it (ctl/agent-commands.mjs rateDenied).
+ * @typedef {{ code: string, message: string, reason?: string, retryAfter?: number }} ProtocolError
+ */
 /** @typedef {"agent" | "full"} Role */
 
 /** What a hello for a role that is off is told: the switch that turns it on. */
@@ -275,24 +281,101 @@ function keyInit(chord) {
 }
 
 /**
- * Press and release each chord in `win`, holding its modifiers like a person would.
- * @param {BrowserWindow} win
- * @param {Chord[]} chords
+ * The one processor every send-keys presses through, with its one callback. A key can open a
+ * dialog that Firefox runs in a nested event loop ("Leave page?" in permitUnload, a window's
+ * prompt): the key is still being dispatched until the dialog is answered, and while it is, no
+ * other processor can begin a transaction on the window, but this one, with the same callback,
+ * still can (TextInputProcessor::BeginInputTransactionInternal). So a later send-keys can answer
+ * the dialog (#1306).
+ * Its transaction is never ended, on purpose: ending it from a later send-keys while a key of an
+ * earlier one is still being dispatched would leave that key's keyup to a processor that no
+ * longer owns the window. Holding it takes nothing from anyone: a keyboard's IME or another
+ * processor still takes the window whenever no key of ours is being dispatched, and a closed
+ * window's widget unlinks it (TextInputProcessor::OnRemovedFrom).
+ * @type {nsITextInputProcessor | null}
  */
-function pressChords(win, chords) {
-  const tip = Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
-  if (!tip.beginInputTransaction(win, () => true)) {
+let processor = null;
+const processorCallback = () => true;
+
+/** @param {BrowserWindow} win */
+function beginInput(win) {
+  processor ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
+  let begun = false;
+  try {
+    begun = processor.beginInputTransaction(win, processorCallback);
+  } catch {
+    // NS_ERROR_ALREADY_INITIALIZED: a key of ours waits on a dialog in another window.
+  }
+  if (!begun) {
     throw new ControlError("failed", "another input method owns the window's keyboard input");
   }
-  const KeyboardEvent = win.KeyboardEvent;
-  for (const chord of chords) {
-    const held = MODIFIER_KEYS.filter(([flag]) => chord[flag]);
-    for (const [, key, code] of held) tip.keydown(new KeyboardEvent("", { key, code }));
-    const event = new KeyboardEvent("", keyInit(chord));
-    tip.keydown(event);
-    tip.keyup(event);
-    for (const [, key, code] of held.reverse()) tip.keyup(new KeyboardEvent("", { key, code }));
-  }
+  return processor;
+}
+
+/**
+ * Press and release each chord in `win`, holding its modifiers like a person would; resolves
+ * with how many chords were pressed. The keys go in a task of their own, so that the result can
+ * be answered while a key waits on a dialog it opened: then it is `{ sent, dialog: true }`, with
+ * that key counted, and the keys after it are not pressed, because a dialog takes its keys only
+ * after a wait (docs/specs/firefox-dialogs.md, decision 3) and would drop them (#1306). A
+ * `dialogopen` while the keys are being pressed is a dialog in a nested event loop: one that
+ * opens later, after the keys, does not hold them, and the result is then plain `{ sent }`.
+ * @param {BrowserWindow} win
+ * @param {Chord[]} chords
+ * @returns {Promise<{ sent: number, dialog?: true }>}
+ */
+function pressChords(win, chords) {
+  return new Promise((resolve, reject) => {
+    let sent = 0;
+    let dialog = false;
+    const onDialog = () => {
+      dialog = true;
+      resolve({ sent, dialog: true });
+    };
+    Services.tm.dispatchToMainThread(() => {
+      try {
+        if (win.closed) throw new ControlError("failed", "the window closed");
+        win.addEventListener("dialogopen", onDialog, true);
+        const tip = beginInput(win);
+        // Start with no modifier held: a send-keys whose key waits on a dialog still holds its
+        // own (ctrl of ctrl+f4) in this shared processor, and the answer would go as ctrl+n.
+        tip.shareModifierStateOf(null);
+        const KeyboardEvent = win.KeyboardEvent;
+        for (const chord of chords) {
+          if (dialog) break;
+          sent++;
+          /** @type {Array<[string, string]>} modifiers pressed and not yet released */
+          const down = [];
+          try {
+            for (const [flag, key, code] of MODIFIER_KEYS) {
+              if (!chord[flag]) continue;
+              tip.keydown(new KeyboardEvent("", { key, code }));
+              down.push([key, code]);
+            }
+            const event = new KeyboardEvent("", keyInit(chord));
+            tip.keydown(event);
+            tip.keyup(event);
+          } finally {
+            // Released even when a key threw, so no later send-keys inherits them.
+            for (const [key, code] of down.reverse()) {
+              try {
+                tip.keyup(new KeyboardEvent("", { key, code }));
+              } catch (e) {
+                console.warn("vimma control: releasing", key, e);
+              }
+            }
+          }
+        }
+        resolve({ sent });
+      } catch (e) {
+        // Already answered when a dialog opened: the window may have closed meanwhile.
+        if (dialog) console.warn("vimma control: send-keys after its dialog:", e);
+        reject(e);
+      } finally {
+        win.removeEventListener("dialogopen", onDialog, true);
+      }
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -334,17 +417,27 @@ function splitsState(win, visible) {
 }
 
 /**
+ * A pane of `state.panes`' tree: a tab (its id and visible index), or a split of panes.
+ * @typedef {{ tab: string | null, index: number }
+ *   | { axis: import("../core/panes.mjs").Axis, ratios: number[], children: PaneState[] }} PaneState
+ */
+
+/**
  * One pane tree with state's tab ids (see paneState).
  * @param {BrowserWindow} win
  * @param {MozTabbrowserTab[]} visible
  * @param {import("../core/panes.mjs").Panes} panes
  */
 function treeState(win, visible, panes) {
+  // A split that is not shown names a lazy tab by its uuid (multiple-splits behaviour 10).
+  const view = PaneViews.get(win);
   const tabOf = (/** @type {string | undefined} */ panel) =>
-    win.gBrowser.tabs.find((t) => t.linkedPanel === panel);
+    panel === undefined
+      ? undefined
+      : (win.gBrowser.tabs.find((t) => t.linkedPanel === panel) ?? view?.tabOf(panel));
   const idOf = (/** @type {MozTabbrowserTab | undefined} */ tab) =>
-    tab ? String(tab.linkedBrowser.browserId) : null;
-  /** @param {import("../core/panes.mjs").PaneNode} n @returns {object} */
+    tab ? stateTabId(win, tab) : null;
+  /** @param {import("../core/panes.mjs").PaneNode} n @returns {PaneState} */
   const node = (n) => {
     if (n.type === "leaf") {
       const tab = tabOf(n.tab);
@@ -364,6 +457,22 @@ function treeState(win, visible, panes) {
     zoomed: panes.zoom !== null,
     root: node(panes.root),
   };
+}
+
+/**
+ * `state.tabs[].id` and the panes' tab ids: the tab's browser id, which a lazy tab (restored on
+ * demand, or unloaded) does not have yet (0, the same for all of them); such a tab gets its
+ * workspace uuid instead, so that its panes and its row stay apart from every other lazy tab's,
+ * until it loads (docs/specs/m0-control-protocol-and-vimma-ctl.md, "state"; issue #1332). Read
+ * only: no uuid is handed out here.
+ * @param {BrowserWindow} win @param {MozTabbrowserTab} tab
+ */
+function stateTabId(win, tab) {
+  const id = tab.linkedBrowser.browserId;
+  if (id) return String(id);
+  const uuid = PaneViews.get(win)?.adoption?.idOf?.(tab) ?? "";
+  // A uuid comes from a session value: one edited into digits could pass for another tab's id.
+  return uuid && !/^\d+$/.test(uuid) ? uuid : String(id);
 }
 
 /**
@@ -397,8 +506,7 @@ const COMMANDS = {
     if (typeof keys !== "string") throw new ControlError("invalid-args", "keys must be a string");
     // The validator has already parsed every chord; parse again for the values.
     const chords = keys.split(/\s+/).filter(Boolean).map(parseKey);
-    pressChords(topWindow(), chords);
-    return { sent: chords.length };
+    return pressChords(topWindow(), chords);
   },
 
   state() {
@@ -411,20 +519,25 @@ const COMMANDS = {
     const hidden = lazy.PrivateBrowsingUtils.isWindowPrivate(win);
     // Named one by one: the validator lets unknown top-level fields through, so a field the host
     // added to screen() later would otherwise reach the socket unchecked (security.md S9).
-    const { notice, prompt, chat, agent, downloads, grep, urlbar, pdf } = VimmaHost.screen(win);
+    const { notice, prompt, chat, agent, downloads, grep, urlbar, pdf, setup } =
+      VimmaHost.screen(win);
     return {
       mode: host.mode,
       pending: host.pending.length ? host.pending.join(" ") : null,
       workspace: host.workspace,
       ...(hidden ? { private: true } : {}),
       tabs: visible.map((tab, index) => ({
-        id: String(tab.linkedBrowser.browserId),
+        id: stateTabId(win, tab),
         index,
         url: hidden ? null : tab.linkedBrowser.currentURI.spec,
         title: hidden ? null : tab.label,
         selected: tab.selected,
         pinned: tab.pinned,
         loading: tabLoading(win, tab),
+        // Read from the tab's attributes as `loading` is, so a sleeping tab stays asleep; left
+        // out for an awake tab (docs/specs/tab-sleep.md, behaviour 15). It names no page, so a
+        // private window keeps it.
+        ...(shownAsleep(tab) ? { asleep: true } : {}),
       })),
       panes: paneState(win, visible),
       ...splitsState(win, visible),
@@ -447,6 +560,8 @@ const COMMANDS = {
       // Whether the selected tab's PDF viewer has drawn the pages in view; a private window's
       // documents are its browsing too (security.md S9).
       pdf: hidden ? null : pdf,
+      // The setup page's screen as drawn, a fixed word (#1298); null in a private window too.
+      setup: hidden ? null : setup,
     };
   },
 
@@ -515,6 +630,8 @@ class Connection {
     /** Which handshake line comes next. @type {"hello" | "auth"} */
     this.stage = "hello";
     this.closed = false;
+    /** Some of its bytes have been read. */
+    this.heard = false;
     /** Binary string waiting for the socket to accept it. */
     this.pendingOut = "";
     this.closeAfterWrite = false;
@@ -601,8 +718,22 @@ class Connection {
       this.close();
       return;
     }
+    this.heard = true;
     if (!this.draining) this.receive(bytes);
     this.waitForInput();
+  }
+
+  /**
+   * It has sent something, read or still in its socket: the server takes new connections before
+   * it reads the ones it has, so a client's hello can wait there behind newer connections.
+   */
+  spoke() {
+    if (this.heard) return true;
+    try {
+      return this.input.available() > 0;
+    } catch {
+      return false; // closed or reset: nothing to keep
+    }
   }
 
   /** @param {Uint8Array} bytes */
@@ -1028,7 +1159,7 @@ class Connection {
     this.waitForInput();
   }
 
-  /** @param {object} message */
+  /** @param {{ type: string } & Record<string, unknown>} message  one protocol line */
   write(message) {
     if (this.closed || this.closeAfterWrite) return;
     const bytes = new TextEncoder().encode(JSON.stringify(message) + "\n");
@@ -1121,11 +1252,13 @@ class Server {
   onSocketAccepted(_socket, transport) {
     const connection = new Connection(this, transport);
     if (this.waiting.size >= MAX_WAITING) {
-      // Evict the oldest waiting connection, answering busy so its client can retry; it lingers
-      // in `closing` (not counted) until its client closes or DRAIN_MS pass.
-      const oldest = /** @type {Connection} */ (this.waiting.values().next().value);
-      this.waiting.delete(oldest);
-      this.refuse(oldest, "busy", `evicted: ${MAX_WAITING} newer connections are waiting`);
+      // Evict the oldest waiting connection that has not spoken (else the oldest), answering
+      // busy so its client can retry; it lingers in `closing` (not counted) until its client
+      // closes or DRAIN_MS pass.
+      const waiting = [...this.waiting];
+      const evicted = waiting.find((c) => !c.spoke()) ?? /** @type {Connection} */ (waiting[0]);
+      this.waiting.delete(evicted);
+      this.refuse(evicted, "busy", `evicted: ${MAX_WAITING} newer connections are waiting`);
     }
     this.waiting.add(connection);
     connection.start();
@@ -1288,7 +1421,7 @@ function revoke(ticket) {
  * Atomically, and 0600 from the first byte: create the temporary file with mode 0600, write
  * into it (an "overwrite" write keeps the file's mode), then rename it over the real name.
  * IOUtils.writeJSON's tmpPath would create the temporary file 0644 first.
- * @param {object} discovery
+ * @param {ReturnType<typeof discoveryOf>} discovery
  */
 async function writeDiscovery(discovery) {
   const tmp = await IOUtils.createUniqueFile(PathUtils.profileDir, `${DISCOVERY_FILE}.tmp`, 0o600);

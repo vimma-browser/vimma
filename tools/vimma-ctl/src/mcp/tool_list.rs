@@ -4,7 +4,7 @@
 
 //! The `tools/list` result: every tool's description, input schema and annotations.
 
-use super::args::{ELEMENT_KINDS, MAX_SINCE, exact_f64};
+use super::args::{ELEMENT_KINDS, MAX_BOOKMARKLET_NAME, MAX_SINCE, exact_f64};
 use super::{object, text};
 use crate::json::Value;
 use std::collections::BTreeMap;
@@ -24,6 +24,7 @@ pub fn tools() -> Value {
         fill_tool(),
         screenshot_tool(),
         console_tool(),
+        bookmarklet_tool(),
     ])
 }
 
@@ -399,8 +400,8 @@ fn activate_tool() -> Value {
         "vimma_activate",
         "Vimma: click on a page",
         "Click a button, link, checkbox or other element in a tab of Vimma's agent workspace, by \
-         its tab id and its label from vimma_elements (a label is good for 2 minutes on the page \
-         that listed it). Unless the user allowed this session, Vimma asks them first, so the call \
+         its tab id and its label from vimma_elements (a label lasts until that page changes or \
+         a new list replaces it). Unless the user allowed this session, Vimma asks them first, so the call \
          may wait for their answer and be denied; it is also denied while the user is typing in \
          that tab. The element gets a \
          plain click: nothing is focused, the tab stays in the background, and the page gets no \
@@ -408,8 +409,8 @@ fn activate_tool() -> Value {
          Fields, selects and file fields are not clicked (fill fields with vimma_fill), nor are \
          disabled elements or links to another site (follow those with vimma_keys). A button \
          that submits a form with text or personal details (a message, a name, an address, a \
-         password, a file) is asked every time, also under a grant, naming where the form is \
-         sent and what it sends; a form that sends only the page's own values, such as a \
+         password, a file) is asked also under a grant, unless the user allowed that button for \
+         the grant, naming where the form is sent and what it sends; a form that sends only the page's own values, such as a \
          basket's product and quantity, is asked only until the user allows this session; a \
          form the page tries to submit by itself after the click is stopped. A click that may pay (the page shows a payment card field, or the button says \
          pay, buy, place order or the like) is asked every time too, naming the button, the \
@@ -494,7 +495,8 @@ fn fill_tool() -> Value {
         "vimma_fill",
         "Vimma: fill in a form",
         "Fill fields of a page in a tab of Vimma's agent workspace, by its tab id and the fields' \
-         labels from vimma_elements (a label is good for 2 minutes on the page that listed it). \
+         labels from vimma_elements (a label lasts until that page changes or a new list \
+         replaces it). \
          Unless the user allowed this session, Vimma asks them first, showing each value, so the \
          call may wait for their answer and be denied; it is also denied while the user is typing \
          in that tab. Each field is \
@@ -537,7 +539,7 @@ fn screenshot_tool() -> Value {
         "Vimma: take a screenshot of a page",
         "Take a screenshot of what a tab of Vimma's agent workspace shows, by its id from \
          vimma_tabs or vimma_open: an image of its viewport, taken in the background, at most \
-         1024 pixels wide as a JPEG, or with full set to true at most 1280 pixels wide as a PNG \
+         1024 pixels wide as a PNG or a JPEG, whichever is smaller, or with full set to true at most 1280 pixels wide as a PNG \
          where it fits. Unless the user allowed this session, Vimma asks them first, so the call \
          may wait for their answer and be denied. With labels set to true, the labels of your last \
          vimma_elements list of \
@@ -630,6 +632,50 @@ fn console_tool() -> Value {
     )
 }
 
+/// bookmarklets B12-B16: the bookmarklet's code can change the page and send requests as it, so
+/// not read-only and destructive; a second run may differ, so not idempotent; the page is the
+/// web's, so open-world.
+fn bookmarklet_tool() -> Value {
+    tool(
+        "vimma_bookmarklet",
+        "Vimma: run one of the user's bookmarklets",
+        "Run one of the user's own bookmarklets (a bookmark whose address is javascript: code) in \
+         a tab of Vimma's agent workspace, by the tab's id from vimma_tabs or vimma_open and the \
+         bookmarklet's exact title, which the user tells you. Only works when the user allowed \
+         agents to run bookmarklets in Vimma's config.toml. Vimma asks the user every time (no \
+         grant covers it), so tell them which bookmarklet you are about to run; the call waits \
+         for their answer and may be denied. You cannot pass code: only a title the user saved. \
+         The result says only that it ran; read the page with vimma_read_page to see what it did.",
+        schema(
+            object([
+                ("tab", tab_property(TAB_FROM)),
+                (
+                    "name",
+                    object([
+                        ("type", text("string")),
+                        ("minLength", Value::Number(1.0)),
+                        (
+                            "maxLength",
+                            Value::Number(exact_f64(MAX_BOOKMARKLET_NAME as u64)),
+                        ),
+                        (
+                            "description",
+                            text("The bookmarklet's title, exactly as the user saved it."),
+                        ),
+                    ]),
+                ),
+            ]),
+            &["tab", "name"],
+        ),
+        hints([
+            ("readOnlyHint", false),
+            ("destructiveHint", true),
+            ("idempotentHint", false),
+            ("openWorldHint", true),
+        ]),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -657,7 +703,7 @@ mod tests {
                 !text.contains("Vimma asks the user before it answers"),
                 "{name}: {text}"
             );
-            if name != "vimma_show" && name != "vimma_open" {
+            if name != "vimma_show" && name != "vimma_open" && name != "vimma_bookmarklet" {
                 assert!(
                     text.contains("Unless the user allowed this session, Vimma asks them first"),
                     "{name}: {text}"
@@ -709,7 +755,8 @@ mod tests {
                 "vimma_activate",
                 "vimma_fill",
                 "vimma_screenshot",
-                "vimma_console"
+                "vimma_console",
+                "vimma_bookmarklet"
             ]
         );
     }

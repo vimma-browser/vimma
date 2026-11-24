@@ -203,7 +203,7 @@ proptest! {
                 prop_assert!(id.is_none_or(|id| (1..=MAX_ID).contains(&id)));
                 if let Ok(r) = protocol::decode_result(&command, &result) {
                     match r {
-                        CommandResult::SendKeys { sent } => prop_assert!(sent <= MAX_ID),
+                        CommandResult::SendKeys { sent, .. } => prop_assert!(sent <= MAX_ID),
                         CommandResult::State(s) => {
                             prop_assert!(MODES.contains(&s.mode.as_str()));
                             prop_assert!(s.tabs.iter().filter(|t| t.selected).count() <= 1);

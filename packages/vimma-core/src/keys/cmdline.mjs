@@ -20,6 +20,7 @@ import { LAYOUTS } from "../panes/layouts.mjs";
  * @property {string} action       the action id, run without text (or with it, absent textAction)
  * @property {string} [textAction] the action id when text is given, if it differs
  * @property {string} [text]       fixed text the action always runs with (`:about`)
+ * @property {boolean} [exact]     its name and aliases run only typed in full, never abbreviated
  * @property {string} description
  */
 /** @typedef {{ code: string, message: string, suggestions: readonly string[] }} CommandError */
@@ -54,10 +55,10 @@ import { LAYOUTS } from "../panes/layouts.mjs";
  * @param {CommandDef["argument"]} argument
  * @param {string} action
  * @param {string} description
- * @param {{ aliases?: string[], textAction?: string, text?: string }} [extra]
+ * @param {{ aliases?: string[], textAction?: string, text?: string, exact?: boolean }} [extra]
  * @returns {CommandDef}
  */
-const cmd = (name, argument, action, description, { aliases = [], textAction, text } = {}) =>
+const cmd = (name, argument, action, description, { aliases = [], textAction, text, exact } = {}) =>
   Object.freeze({
     name,
     aliases: Object.freeze(aliases),
@@ -65,6 +66,7 @@ const cmd = (name, argument, action, description, { aliases = [], textAction, te
     action,
     ...(textAction ? { textAction } : {}),
     ...(text ? { text } : {}),
+    ...(exact ? { exact } : {}),
     description,
   });
 
@@ -77,6 +79,12 @@ export const COMMANDS = Object.freeze([
   cmd("open", "required", "page.open", "Open a URL in this tab"),
   cmd("tabnew", "optional", "tab.new", "New tab, optionally opening a URL"),
   cmd("tabrename", "optional", "tab.rename", "Rename tab (without a name: prompt)"),
+  // Issue #1302: `{N}gt` as a command, Vim's `:tabnext N` its alias. Only in full, so `:tabn`
+  // stays `:tabnew` and `:ta` stays ambiguous, as they were before `:tab` came.
+  cmd("tab", "optional", "tab.next", "Go to tab N of this workspace, $ the last (alone: next)", {
+    aliases: ["tabnext"],
+    exact: true,
+  }),
   cmd("q", "none", "pane.close", "Close pane (the last one closes the tab)", {
     aliases: ["quit"],
   }),
@@ -130,11 +138,18 @@ export const COMMANDS = Object.freeze([
     textAction: "grep.open",
   }),
   cmd("sidebar", "none", "sidebar.toggle", "Open / close the side panel"),
+  // docs/specs/tab-line.md decision 6: shows the line where it is not drawn, else hides it.
+  cmd("tabline", "none", "tabline.toggle", "Show / hide the tab line"),
   // docs/specs/toolbar-toggle.md decision 2: show / hide set a known state (vimma-ctl).
   cmd("toolbar", "optional", "toolbar.toggle", "Show / hide the toolbar (show | hide)"),
   // docs/specs/bookmarks.md: with a path, files the page without the prompt.
   cmd("bookmark", "optional", "bookmark.add", "Bookmark this page (optionally folders/title)"),
-  cmd("bookmarks", "none", "bookmarks.toggle", "Open / close the bookmarks panel"),
+  // docs/specs/bookmarks-file.md Behaviour 17, 19: `export`, `export!`, `forget` while it is on.
+  cmd("bookmarks", "optional", "bookmarks.toggle", "Open / close the bookmarks panel"),
+  // docs/specs/bookmark-open.md: one exact title opens; otherwise a picker with the text typed.
+  // No short alias: `:bo` stays `:bookmark`, which it has abbreviated since that came.
+  cmd("bookmarkopen", "optional", "bookmark.open", "Open a bookmark by title (without: picker)"),
+  cmd("bookmarktab", "optional", "bookmark.open_tab", "Open a bookmark by title in a new tab"),
   // docs/specs/bookmarks-toolbar-hidden.md decision 5: Firefox's toggle; a word sets a state.
   cmd(
     "bookmarkstoolbar",
@@ -171,6 +186,9 @@ export const COMMANDS = Object.freeze([
   cmd("site", "none", "site.permissions", "Site permissions of this page: allow, block, reset", {
     aliases: ["permissions"],
   }),
+  // docs/specs/site-unbind-command.md: keys the page gets on this site, until restart or saved.
+  cmd("siteunbind", "optional", "site.unbind", "Give keys to this site's page (--save keeps them)"),
+  cmd("sitebind", "required", "site.bind", "Give keys back to Vimma on this site (--delete)"),
   // docs/specs/popup-blocked.md
   cmd("popups", "none", "popups.picker", "Blocked pop-ups picker"),
   // docs/specs/downloads.md decision 2.
@@ -179,7 +197,7 @@ export const COMMANDS = Object.freeze([
   cmd("rotate", "none", "pdf.rotate", "PDF viewer: rotate the pages 90 degrees clockwise"),
   cmd("dual", "none", "pdf.dual_page", "PDF viewer: two pages side by side, or one"),
   cmd("present", "none", "pdf.presentation", "PDF viewer: presentation mode, or leave it"),
-  // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget);
+  // docs/specs/vimma-mcp.md: AI agents and the agent workspace (on, off, revoke, forget);
   // log: docs/specs/mcp-drive.md D14.
   cmd(
     "mcp",
@@ -275,6 +293,32 @@ export function parseBookmarksToolbarCommand(text) {
   return { kind: "refuse", text: near ? `${refusal}: did you mean "${near}"?` : refusal };
 }
 
+/** The one argument `:tab` refuses with, whatever was typed. */
+const TAB_REFUSAL = ":tab takes a tab number (1, 2, …) or $";
+
+/**
+ * `:tab [N|$]`: tab N of the workspace as `{N}gt` runs it, the last tab as `select_last_tab`,
+ * the next tab without a number. The typed text goes along, so the host can say when there is
+ * no tab N (`noTabText`), which `{N}gt` leaves unsaid as Vim does.
+ * @param {string} text  the argument, trimmed
+ * @returns {CommandResult}
+ */
+function tabCommand(text) {
+  if (!text) return runResult("tab", { id: "tab.next" });
+  if (text === "$") return runResult("tab", { id: "tab.goto_last" }, text);
+  // Six digits at most, as `:{n}`: a longer number is no tab count anyone has.
+  if (/^[1-9]\d{0,5}$/.test(text))
+    return runResult("tab", { id: "tab.next", count: Number(text) }, text);
+  return fail("invalid-argument", TAB_REFUSAL);
+}
+
+/**
+ * What `:tab N` says when the workspace has fewer than N tabs.
+ * @param {string} typed  N as typed
+ * @param {number} length  the workspace's tabs
+ */
+export const noTabText = (typed, length) => `no tab ${typed} (this workspace has ${length})`;
+
 /** @type {Map<string, CommandDef>} */
 const byWord = new Map();
 for (const c of COMMANDS) for (const w of [c.name, ...c.aliases]) byWord.set(w, c);
@@ -290,6 +334,7 @@ const ACTION_NAMES = [...new Set(ACTIONS.map((a) => a.name))];
  */
 function wordIds(word, kind) {
   if (kind === "action") {
+    // Stryker disable next-line OptionalChaining: every ACTION_NAMES entry resolves
     const id = ACTION_NAMES.includes(word) ? resolveActionName(word)?.id : undefined;
     return id ? [id] : [];
   }
@@ -379,7 +424,9 @@ const MAX_SUGGEST = 2 * Math.max(...ALL_WORDS.map((w) => w.length));
 const commandsWithPrefix = (word, hidden = /** @type {readonly string[]} */ ([])) => [
   ...new Set(
     [...byWord]
-      .filter(([w, c]) => w.startsWith(word) && !idsOf(c).some((id) => hidden.includes(id)))
+      .filter(
+        ([w, c]) => w.startsWith(word) && !c.exact && !idsOf(c).some((id) => hidden.includes(id)),
+      )
       .map(([, c]) => c),
   ),
 ];
@@ -391,6 +438,7 @@ const commandsWithPrefix = (word, hidden = /** @type {readonly string[]} */ ([])
  *   not exist now (an unfinished feature's, while its pref is off)
  * @returns {CommandResult}
  */
+// Stryker disable next-line ArrayDeclaration: a default naming no action id hides nothing, as [] does
 export function parseCommandLine(line, { hidden = [] } = {}) {
   const m = /^[\s:]*([^\s:]\S*)([\s\S]*)$/.exec(line);
   if (!m) return Object.freeze({ kind: "empty" });
@@ -449,6 +497,7 @@ export function parseCommandLine(line, { hidden = [] } = {}) {
   if (command.argument === "required" && !text) {
     return fail("missing-argument", `:${command.name} needs an argument`);
   }
+  if (command.name === "tab") return tabCommand(raw);
   const id = text && command.textAction ? command.textAction : command.action;
   return runResult(command.name, { id }, command.text ?? text);
 }
@@ -488,13 +537,17 @@ const CANDIDATES = [
       description: `${c.description} (short for :${c.name})`,
     })),
   ]),
-  ...ACTION_NAMES.map((name) => ({
-    value: name,
-    kind: /** @type {const} */ ("action"),
-    description: /** @type {import("./actions.mjs").ActionDef} */ (
-      ACTIONS.find((a) => a.name === name)
-    ).description,
-  })),
+  // An action whose name is a command running that same action would only repeat its row (#1414).
+  // Stryker disable next-line OptionalChaining: every ACTION_NAMES entry resolves
+  ...ACTION_NAMES.filter((name) => byWord.get(name)?.action !== resolveActionName(name)?.id).map(
+    (name) => ({
+      value: name,
+      kind: /** @type {const} */ ("action"),
+      description: /** @type {import("./actions.mjs").ActionDef} */ (
+        ACTIONS.find((a) => a.name === name)
+      ).description,
+    }),
+  ),
 ].map((c) => Object.freeze(c));
 
 /**
@@ -510,6 +563,8 @@ const ARGUMENT_KINDS = Object.freeze({
   tabnew: { names: "search", kind: "search engine" },
   layout: { names: "layout", kind: "layout", fixed: LAYOUTS },
   private: { names: "private", kind: "private workspace", fixed: ["close"] },
+  // Only the words the host offers: export, export! and forget while bookmarks.toml is on.
+  bookmarks: { names: "bookmarksfile", kind: "bookmarks file" },
   // The two a first-time user reaches for, then back to following the system.
   theme: { names: "theme", kind: "appearance", fixed: ["dark", "light", "system"] },
   toolbar: { names: "toolbar", kind: "toolbar", fixed: TOOLBAR_WORDS },
@@ -519,6 +574,9 @@ const ARGUMENT_KINDS = Object.freeze({
     kind: "bookmarks toolbar",
     fixed: Object.keys(BOOKMARKS_TOOLBAR_WORDS),
   },
+  // docs/specs/site-unbind-command.md decision 9: the option, and the site's keys to give back.
+  siteunbind: { names: "siteunbind", kind: "option", fixed: ["--save"] },
+  sitebind: { names: "sitebind", kind: "key or option" },
   workspace: { names: "workspace", kind: "workspace" },
   wsdelete: { names: "workspace", kind: "workspace" },
   wsmove: { names: "workspace", kind: "workspace" },
@@ -556,6 +614,38 @@ function argumentCandidates(command, kind, text, names) {
 }
 
 /**
+ * `:tab ` lists the workspace's tabs by number, each with its title (`args.tab`, in tab order):
+ * digits keep the numbers they begin, other text the titles it matches fuzzily, best first.
+ * @param {string} command  as typed (`tab`, `tabnext`)
+ * @param {string} text
+ * @param {readonly string[]} titles
+ * @returns {Candidate[]}
+ */
+function tabCandidates(command, text, titles) {
+  const t = text.trim();
+  const numbered = titles.map((title, i) => ({ n: String(i + 1), title }));
+  const shown = /^\d+$/.test(t)
+    ? numbered.filter((r) => r.n.startsWith(t))
+    : t
+      ? numbered
+          .flatMap((r) => {
+            const m = scoreField(r.title, t);
+            return m ? [{ r, score: m.score }] : [];
+          })
+          .sort((a, b) => b.score - a.score)
+          .map((x) => x.r)
+      : numbered;
+  return shown.map(({ n, title }) =>
+    Object.freeze({
+      value: `${command} ${n}`,
+      kind: /** @type {const} */ ("argument"),
+      description: title,
+      label: n,
+    }),
+  );
+}
+
+/**
  * `:open @g` → `open @gh ` (search-engines decision 11): the aliases starting with the one word
  * typed, each with its engine, the words to follow after the space.
  * @param {string} command
@@ -587,12 +677,21 @@ function aliasCandidates(command, text, aliases) {
  *   `hidden`: action ids whose commands are left out (parseCommandLine)
  * @returns {{ word: string, candidates: Candidate[] }}
  */
+// Stryker disable next-line ArrayDeclaration: a default naming no action id hides nothing, as [] does
 export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] } = {}) {
   const rest = line.replace(/^[\s:]*/, "");
   const m = /^(\S*)(\s?)/.exec(rest);
+  // Stryker disable next-line OptionalChaining,StringLiteral: the pattern matches every string, so `m[1]` is a string
   const word = (m?.[1] ?? "").toLowerCase();
+  // Stryker disable next-line OptionalChaining: the pattern matches every string, so `m` is set
   if (m?.[2]) {
     const command = byWord.get(word)?.name;
+    if (command === "tab") {
+      const text = rest.slice(/** @type {string} */ (m[1]).length + 1);
+      const titles = /** @type {readonly string[]} */ (args.tab ?? []);
+      return { word, candidates: tabCandidates(word, text, titles).slice(0, limit) };
+    }
+    // Stryker disable next-line LogicalOperator: no command name is an Object.prototype key: spec is undefined, as null
     const spec = command && Object.hasOwn(ARGUMENT_KINDS, command) ? ARGUMENT_KINDS[command] : null;
     const names =
       spec && Object.hasOwn(args, spec.names)
@@ -606,6 +705,7 @@ export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] }
         candidates: aliasCandidates(
           word,
           text,
+          // Stryker disable next-line ArrayDeclaration: only reached when args.search is set (it is `names`)
           /** @type {readonly AliasCompletion[]} */ (args.search ?? []),
         ).slice(0, limit),
       };
@@ -696,4 +796,32 @@ export function historyNext(h, current) {
  */
 export function resetHistoryCursor(h) {
   return Object.freeze({ ...h, index: null, draft: "" });
+}
+
+/**
+ * @typedef {object} ArrowState
+ * @property {string} line              the input's text
+ * @property {number} shown             candidates the list holds (the cycle's while one runs)
+ * @property {number | null} selected   the selected row while Up / Down or Tab cycle, else null
+ * @property {boolean} browsing         an Up has recalled a history line, with no edit since
+ */
+
+/**
+ * Up / Down on the command line (docs/specs/cmdline-arrow-completion.md, #1222): whether the
+ * key walks history or the completion list. Down with typed text and a list selects its first
+ * row, as Tab; in the list Down moves on (wrapping, as Tab) and Up back, and Up on the first row
+ * leaves the list for the typed text. Otherwise history: an empty line, a line with no matches,
+ * Up before the list is entered (Vim's prefix search), and Down while a recalled line is shown.
+ * @param {ArrowState} state
+ * @param {1 | -1} direction  Down 1, Up -1
+ * @returns {{ kind: "history" } | { kind: "select", index: number } | { kind: "leave" }}
+ */
+export function cmdlineArrow({ line, shown, selected, browsing }, direction) {
+  if (selected !== null && shown > 0) {
+    if (direction > 0) return { kind: "select", index: (selected + 1) % shown };
+    return selected === 0 ? { kind: "leave" } : { kind: "select", index: selected - 1 };
+  }
+  const typed = line.replace(/^[\s:]*/, "") !== "";
+  if (direction > 0 && typed && shown > 0 && !browsing) return { kind: "select", index: 0 };
+  return { kind: "history" };
 }

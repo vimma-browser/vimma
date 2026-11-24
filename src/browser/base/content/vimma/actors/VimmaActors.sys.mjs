@@ -23,6 +23,8 @@ import { pressKeyLater } from "./enter-key.mjs";
 import { forgetMark } from "./submit-marks.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
+/** @import { GrepAsk } from "./grep-page.mjs" */
+/** @import { BlockMessage } from "./block.mjs" */
 
 // System modules have no timer globals; Firefox's actors import them the same way.
 const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
@@ -30,6 +32,8 @@ const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
 );
 
 const BASE = "chrome://browser/content/vimma/actors/";
+/** Cocoa's key bindings run in text fields (docs/specs/page-suggestions.md, Behaviour 3). */
+const MAC = /** @type {{ OS?: string }} */ (Services.appinfo).OS === "Darwin";
 /** What the parent actor's URL must look like: a system module of host/ (ADR-026). */
 const PARENT_URI = /^chrome:\/\/browser\/content\/vimma\/host\/[\w-]+\.sys\.mjs$/;
 /** start/StartPage.sys.mjs START_PAGE_URL; a match pattern needs no import for one string. */
@@ -68,7 +72,7 @@ let hintGen = 0;
 /**
  * The generation of each tab's last blur (Esc). Per tab, so a content process cannot count the
  * Esc presses of other tabs.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<MozBrowser, number>}
  */
 const blurGens = new WeakMap();
 
@@ -76,21 +80,21 @@ const blurGens = new WeakMap();
  * The keydowns the parent let through to each document (WindowGlobalParent) since its last
  * blur (insert-focus behaviour 8), which that blur names so the frame can tell the keys it
  * handled before the blur was asked for from those it handled after.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<WindowGlobalParent, number>}
  */
 const keysSent = new WeakMap();
 /**
  * The live collection of each window, and of each agent tab (docs/specs/mcp-drive.md D12):
  * another window's `f` must not void a window's, and an agent's `f`, keyed by its tab's
  * <browser>, neither voids the user's hint mode in the same window nor is voided by it.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<Window | MozBrowser, number>}
  */
 const liveGen = new WeakMap();
 
 /**
  * Per browser, how its last collection's top frame ended (hintCollectReason), or "threw" when
  * its query rejected. Only read by tests, to say why a collection was empty (#605).
- * @type {WeakMap<object, string>}
+ * @type {WeakMap<MozBrowser, string>}
  */
 const lastReasons = new WeakMap();
 
@@ -193,6 +197,12 @@ export const VimmaActors = {
           mousedown: { capture: true, createActor: false },
           // A drag and drop's end is no mouse selection (m1-copy-mode).
           dragstart: { capture: true, createActor: false },
+          // Text the user puts in without a key Vimma sees as one, which makes a field the page
+          // focused theirs (docs/specs/mcp-drive.md D13): an IME's composition, a drop from
+          // another application, and what an editor gets typed, composed, pasted or dropped.
+          compositionstart: { capture: true, createActor: false },
+          drop: { capture: true, createActor: false },
+          beforeinput: { capture: true, createActor: false },
           // pdf.js's viewer, once it has a document and once its pages are laid out
           // (docs/specs/pdf-mode.md decisions 2 and 20): chrome-only events, which only pdf.js
           // sends. The first lets the viewer take the theme before its pages are drawn.
@@ -202,6 +212,12 @@ export const VimmaActors = {
           // child can still tell the parent (issue #1028). The system group: the page cannot
           // stop it.
           pagehide: { mozSystemGroup: true, createActor: false },
+          // macOS only: a suggestion key's keypress, before the focused field runs Cocoa's key
+          // binding on it (VimmaChild, "keypress"). The field's handler is in the system
+          // group: an <input>'s or <textarea>'s on the field in the bubble phase
+          // (TextInputListener), a contenteditable's at capture on the target these listeners
+          // are on, added after them (EditorEventListener). So this one is at capture too.
+          ...(MAC ? { keypress: { capture: true, mozSystemGroup: true, createActor: false } } : {}),
         },
       },
       allFrames: true,
@@ -283,15 +299,16 @@ export const VimmaActors = {
    * it does a keyboard's.
    * @param {MozBrowser} browser
    * @param {string} command  one of core INSERT_EDIT_COMMANDS, or INSERT_ENTER
+   * @param {() => boolean} [still]  the caller's own check, made again just before an Enter
    */
-  edit(browser, command) {
+  edit(browser, command, still = () => true) {
     if (command === INSERT_ENTER) {
       // The frame focused now: a page that moves focus (into another frame) in the time before
       // the Enter gets none, rather than an Enter where the user did not type.
       const frame = Services.focus.focusedContentBrowsingContext;
       const win = browser.ownerDocument?.defaultView;
       if (!win || !frame) return;
-      pressKeyLater(win, "Enter", () => stillFocused(browser, frame));
+      pressKeyLater(win, "Enter", () => stillFocused(browser, frame) && still());
       return;
     }
     actorFor(framesFor(browser)[0])?.sendAsyncMessage("Vimma:Edit", { command });
@@ -398,10 +415,11 @@ export const VimmaActors = {
    * @param {string} action "hint.follow", "hint.follow_new_tab" or "hint.follow_new_tab_fg"
    *   (links only) or "hint.element"
    *   (text blocks, docs/specs/element-focus.md)
-   * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an agent's `f` in its
-   *   tab (docs/specs/mcp-drive.md D12): links only, each with its text, live per tab, not per
-   *   window; with `elements`, an agent's `vimma_elements` (docs/specs/mcp-forms.md F2): every
-   *   kind but blocks, disabled controls too, each described, kept apart from the user's
+   * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an
+   *   agent's `f` in its tab (docs/specs/mcp-drive.md D12): links only, each with its text, live
+   *   per tab, not per window; with `elements`, an agent's `vimma_elements`
+   *   (docs/specs/mcp-forms.md F2): every kind but blocks, disabled controls too, each
+   *   described, kept apart from the user's
    * @returns {Promise<HintTarget[]>}
    */
   async collectHints(browser, action, { agent = false, elements = false } = {}) {
@@ -517,6 +535,36 @@ export const VimmaActors = {
   },
 
   /**
+   * A wheel over the page while the labels of collection `gen` show (m1-hints, issue #1337):
+   * resolves once the scroll it started has ended, true unless the top frame says that none of
+   * its targets moved (VimmaChild `Vimma:HintsMoved`). The reply is from a content process:
+   * only `false` keeps the labels, and a frame that gave no answer within HINT_TOP_TIMEOUT_MS,
+   * went away or threw counts as moved, so the labels are collected again as before.
+   * @param {MozBrowser} browser
+   * @param {number} gen  the collection whose labels show
+   * @param {{ x: number, y: number }} point  the wheel's, in the page's CSS pixels
+   * @returns {Promise<boolean>}
+   */
+  async hintsMoved(browser, gen, point) {
+    const actor = actorFor(browser.browsingContext);
+    if (!actor) return true;
+    /** @type {number | undefined} */
+    let timer;
+    try {
+      /** @type {Promise<true>} */
+      const late = new Promise((resolve) => {
+        timer = setTimeout(resolve, HINT_TOP_TIMEOUT_MS, true);
+      });
+      const query = actor.sendQuery("Vimma:HintsMoved", { gen, x: point.x, y: point.y });
+      return (await Promise.race([query, late])) !== false;
+    } catch {
+      return true;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
    * Follows a target in its own frame: a click, or focus for a text field.
    * @param {HintTarget} target
    */
@@ -598,7 +646,7 @@ export const VimmaActors = {
 
   /**
    * Drops the window's collection in flight (Esc, tab switch): its reply is ignored.
-   * @param {object} win
+   * @param {Window} win
    */
   cancelHints(win) {
     liveGen.delete(win);
@@ -664,9 +712,14 @@ export const VimmaActors = {
    * Makes the next find start where Vim's would (spec m1-find): at a selection still on screen,
    * else at the top of the viewport, not at the document's first match.
    * @param {MozBrowser} browser
+   * @returns {Promise<void>}  resolves once the anchor is set (or could not be)
    */
-  findAnchor(browser) {
-    actorFor(browser.browsingContext)?.sendAsyncMessage("Vimma:FindAnchor");
+  async findAnchor(browser) {
+    try {
+      await actorFor(browser.browsingContext)?.sendQuery("Vimma:FindAnchor");
+    } catch {
+      // the page went away: its next find starts where Firefox's would
+    }
   },
 
   /**
@@ -734,7 +787,7 @@ export const VimmaActors = {
    * within `ms`.
    * @param {CanonicalBrowsingContext} bc
    * @param {string} name
-   * @param {object} data
+   * @param {GrepAsk} data
    * @param {number} ms
    * @returns {Promise<unknown>}
    */
@@ -764,7 +817,7 @@ export const VimmaActors = {
    * @param {FrameRef} frame  the frame and its document when the block was chosen
    * @param {number} gen
    * @param {string} op
-   * @param {object} [extra]
+   * @param {Omit<BlockMessage, "op" | "gen">} [extra]  the op's own fields (`id`, `count`, `line`)
    * @returns {Promise<BlockReply | null>}
    */
   async block(frame, gen, op, extra = {}) {

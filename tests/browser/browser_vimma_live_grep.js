@@ -475,7 +475,7 @@ add_task(async function a_jump_that_ends_after_grep_reopens_keeps_the_new_search
 /**
  * How many frames' texts the tab's content process holds for grep, once they are dropped or
  * after 2 seconds.
- * @param {any} tab
+ * @param {MozTabbrowserTab} tab
  */
 function grepTextsAfterDrop(tab) {
   return SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
@@ -589,7 +589,7 @@ add_task(async function a_step_whose_tab_switch_ends_after_grep_reopens_stops_th
   // itself is counted.
   const browser = c.linkedBrowser;
   let focusedWhileOpen = 0;
-  browser.focus = function (/** @type {any[]} */ ...args) {
+  browser.focus = function (/** @type {Parameters<typeof browser.focus>} */ ...args) {
     if (session.isOpen) focusedWhileOpen++;
     return Object.getPrototypeOf(browser).focus.apply(browser, args);
   };
@@ -701,7 +701,15 @@ add_task(async function page_text_with_markup_stays_text() {
   await openGrep();
   type("needle");
   await resultsSettle(1);
-  Assert.equal(textOf(rows()[0]), line, "the line shows as text");
+  // The row fits the line to its width (#1274), so it may end in an ellipsis; what it shows of
+  // the markup is text, and its accessible name has the whole line.
+  const shown = textOf(rows()[0]);
+  Assert.ok(shown.includes("<img src=x"), `the line shows as text: ${shown}`);
+  Assert.ok(line.startsWith(shown.replace(/…$/, "")), "from the line's start, the match first");
+  Assert.ok(
+    /** @type {string} */ (rows()[0].getAttribute("aria-label")).startsWith(`${line}, `),
+    "the accessible name has the whole line",
+  );
   Assert.ok(
     /** @type {Element} */ (rows()[0].querySelector(".vimma-grep-tab")).textContent.includes(
       "<i>Markup</i>",
@@ -731,7 +739,16 @@ add_task(async function page_text_with_markup_stays_text() {
   await resultsSettle(2);
   Assert.equal(closedTitle(rows()[0]), markup, "a closed title shows as text");
   const body = /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-preview-body"));
-  await until(() => body.textContent.includes(markup), "the closed tab's preview");
+  // The preview fits the title to its width as it does a line (#1274), cut on the left so the
+  // match stays in view: the title here only just fits the default window (#858). Whatever it
+  // shows of the title is text, markup included.
+  const shownTitle = () =>
+    (body.querySelector(".vimma-grep-preview-match")?.textContent ?? "").replace(/^…|…$/g, "");
+  await until(() => shownTitle().includes("markneedle"), "the closed tab's preview");
+  Assert.ok(
+    markup.includes(shownTitle()) && shownTitle().includes("</i> markneedle"),
+    `the closed title shows as text: ${shownTitle()}`,
+  );
   Assert.equal(
     shownDialog().querySelectorAll("img, b, i").length,
     0,
@@ -989,7 +1006,10 @@ add_task(async function the_grep_page_helper_searches_the_document_it_is_given()
     const before = GrepMatcher.frames.length;
     const badQuery = await grep.search({ query: "", gen: 1 });
     const badGen = await grep.search({ query: "needle", gen: -1 });
-    const found = await grep.search({ query: "needle", gen: 3 });
+    // A search with a query and a newer generation answers (null only for those).
+    const found = /** @type {NonNullable<Awaited<ReturnType<typeof grep.search>>>} */ (
+      await grep.search({ query: "needle", gen: 3 })
+    );
     const older = await grep.search({ query: "needle", gen: 2 });
     const match = found.matches[0];
     const preview = grep.preview({ start: match.start, end: match.end });

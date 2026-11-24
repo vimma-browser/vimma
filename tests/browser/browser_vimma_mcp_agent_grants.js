@@ -52,7 +52,7 @@ registerCleanupFunction(async () => {
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -84,8 +84,8 @@ async function openAgentTab(url = PAGE) {
 async function agentClient(name = "example-agent", session = undefined) {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
   const welcome = await c.handshake({ protocol: 2, role: "agent" });
-  Assert.equal(welcome.type, "welcome", "an agent connection is welcomed");
-  Assert.equal(welcome.role, "agent", "as the agent role");
+  Assert.equal(welcome?.type, "welcome", "an agent connection is welcomed");
+  Assert.equal(welcome?.role, "agent", "as the agent role");
   const hi = await c.call("agent-hello", {
     client: { name },
     via: "example",
@@ -117,6 +117,7 @@ add_task(async function test_denials_timeouts_queue_and_mute() {
 
   let id = read();
   await answer({ kind: "deny" });
+  /** @type {ControlReply<"agent-read" | "agent-tabs">} */
   let r = await c.response(id);
   Assert.deepEqual([r.error?.code, r.error?.reason], ["denied", "user"], "n denies");
 
@@ -136,12 +137,12 @@ add_task(async function test_denials_timeouts_queue_and_mute() {
 
   const d = await agentClient("codex");
   const ids = [0, 1, 2, 3, 4].map(() => d.request("agent-read", { tab: idOf(tab) }));
-  r = await d.response(/** @type {number} */ (ids[4]));
+  r = await d.response(ids[4]);
   Assert.deepEqual([r.error?.code, r.error?.reason], ["denied", "busy"], "a 5th waiting: busy");
   await until(() => AgentGate.waiting.length === 4, "4 wait");
   AgentGate.answer(AgentGate.waiting[0].id, { kind: "mute" });
   for (const i of ids.slice(0, 4)) {
-    const res = await d.response(/** @type {number} */ (i));
+    const res = await d.response(i);
     Assert.equal(res.error?.code, "denied", `request ${i}: x denies it and every queued one`);
   }
   r = await d.call("agent-tabs");
@@ -186,7 +187,7 @@ add_task(async function test_agent_cancel_withdraws_one_waiting_question() {
   d.close();
 
   AgentGate.answer(AgentGate.waiting[0].id, { kind: "mute" });
-  for (const i of ids.slice(1)) await c.response(/** @type {number} */ (i));
+  for (const i of ids.slice(1)) await c.response(i);
   c.close();
   await until(() => AgentGate.waiting.length === 0, "nothing left waiting");
   BrowserTestUtils.removeTab(tab);
@@ -210,6 +211,7 @@ add_task(async function test_one_grant_covers_every_tool_of_its_connection() {
     "and makes one grant of the connection, for no one tool",
   );
 
+  /** @type {ControlReply<"agent-read" | "agent-tabs" | "agent-open">} */
   let r = await c.call("agent-read", { tab: idOf(tab) });
   Assert.equal(r.ok, true, "the next read runs unasked");
   r = await c.call("agent-tabs");
@@ -305,9 +307,9 @@ add_task(async function test_queued_calls_a_grant_releases_show_as_granted() {
   await setSwitches({ mcp: true });
   const tab = await openAgentTab();
   const c = await agentClient();
-  /** @type {any[]} */
+  /** @type {GateEvent[]} */
   const events = [];
-  const listener = (/** @type {any} */ e) => e && events.push(e);
+  const listener = (/** @type {GateEvent | undefined} */ e) => e && events.push(e);
   AgentGate.addListener(listener);
   const read = c.request("agent-read", { tab: idOf(tab) });
   const open = c.request("agent-open", { url: `${PAGE}?queued` });
@@ -357,7 +359,7 @@ add_task(async function test_grants_cannot_flood() {
   const opened = [];
   for (let i = 0; i < 11; i++) opened.push(await c.call("agent-open", { url: `${PAGE}?f${i}` }));
   Assert.equal(opened.filter((r) => r.ok).length, 10, "10 opens a minute");
-  Assert.equal(opened.at(-1).error?.reason, "busy", "the rest are busy");
+  Assert.equal(opened.at(-1)?.error?.reason, "busy", "the rest are busy");
   c.close();
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   await setSwitches({});
@@ -378,7 +380,7 @@ add_task(async function test_a_used_up_open_rate_refuses_before_asking() {
   const asked = AgentGate.log.length;
   const r = await c.call("agent-open", { url: `${PAGE}?a10` });
   Assert.equal(r.error?.reason, "busy", "the 11th open in a minute is refused as busy");
-  Assert.ok(r.error?.retryAfter > 0, "with the wait for the next one");
+  Assert.ok((r.error?.retryAfter ?? 0) > 0, "with the wait for the next one");
   Assert.equal(AgentGate.waiting.length, 0, "and no question waits");
   Assert.equal(AgentGate.log.length, asked, "nor was the user asked");
   c.close();
@@ -393,12 +395,12 @@ add_task(async function test_agents_cannot_take_every_connection() {
   for (let i = 0; i < 4; i++) agents.push(await agentClient(`agent-${i}`));
   const fifth = new Client(/** @type {number} */ (VimmaControl.port));
   const refused = await fifth.handshake({ protocol: 2, role: "agent" });
-  Assert.equal(refused.error?.code, "busy", "a 5th agent connection is busy");
+  Assert.equal(refused?.error?.code, "busy", "a 5th agent connection is busy");
   const full = new Client(/** @type {number} */ (VimmaControl.port));
   // While MCP is on, a full connection asks first (decision 29 C): say yes.
   const welcomed = full.handshake({ protocol: 2, role: "full" });
   await answer({ kind: "once" });
-  Assert.equal((await welcomed).type, "welcome", "while vimma-ctl still gets in");
+  Assert.equal((await welcomed)?.type, "welcome", "while vimma-ctl still gets in");
   full.close();
   for (const a of agents) a.close();
   await setSwitches({});
@@ -412,7 +414,7 @@ add_task(async function test_an_older_vimma_ctl_gets_a_notice_and_still_works() 
   Assert.equal((await discovery()).version, VIMMA_VERSION, "the discovery file names the version");
   /** @type {string[]} */
   const notices = [];
-  /** @param {any} e */
+  /** @param {GateEvent | undefined} e */
   const collect = (e) => {
     if (e?.kind === "notice") notices.push(e.text);
   };

@@ -24,11 +24,14 @@ Usage: vimma-ctl [--profile DIR] [--timeout SECS] COMMAND
 
 Commands:
   send-keys KEYS...   send chords in Vimma's key notation, e.g. send-keys ctrl+b c
+                      (prints dialog open when a key opened a dialog: answer it with
+                      another send-keys, such as y, n, enter or esc)
   state [--json]      print mode, workspace and tabs (--json: the raw result)
   open URL            open an http(s), file or about URL in a new tab
   reload-theme        re-read the Omarchy theme now (prints changed or unchanged)
   mcp                 serve MCP on stdin and stdout for an AI agent tool, through Vimma's
-                      agent workspace; every request is confirmed in Vimma (:mcp on first)
+                      agent workspace; each call waits for your yes in Vimma or runs under a
+                      grant you gave there (:mcp on first)
 
 Options:
   --profile DIR       the Vimma profile (default: VIMMA_PROFILE, else profiles.ini's default)
@@ -123,7 +126,7 @@ pub fn parse_args(args: &[String]) -> Result<Parsed, String> {
         }
         if timeout_given || json {
             return Err(
-                "mcp takes no --timeout or --json: each call waits for the user's answer"
+                "mcp takes no --timeout or --json: each call may wait for the user's answer"
                     .to_string(),
             );
         }
@@ -257,6 +260,11 @@ pub fn run_with_input(
     let result = Client::connect(&discovery, options.timeout)
         .and_then(|mut client| client.call(&options.command));
     match result {
+        // A key opened a dialog that waits for an answer (#1306): say so, so that a script
+        // knows to answer it with another send-keys (y, n, enter or esc).
+        Ok(CommandResult::SendKeys { dialog: true, .. }) => {
+            let _ = writeln!(out, "dialog open");
+        }
         Ok(CommandResult::SendKeys { .. }) => {}
         Ok(CommandResult::Open { tab }) => {
             let _ = writeln!(out, "{tab}");

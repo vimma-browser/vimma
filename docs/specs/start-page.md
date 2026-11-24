@@ -69,6 +69,15 @@ quieter still.
   (`MOZ_APP_VERSION`, the Firefox version). Text in `--vimma-fg-dim` (a text token, readable on
   every surface; no opacity), `0.75rem` for the line and `0.9em` for the Firefox part. Plain text,
   so a screen reader reads it in the footer landmark.
+- **Small panes** (Since changed: added for #1275.) The page is a pane's own document, so in a
+  split its viewport is the pane. In the smallest panes of eight the hint wrapped into the fixed
+  version line, which wrapped too in a narrow pane. `start.css` hides the hint at or below `15rem`
+  wide or `17.5rem` tall, and the version line at or below `15rem` wide or `10rem` tall, with
+  media queries and no script; the logo always stays. Media-query `rem` is the 16px default, and
+  the thresholds leave room for a theme font at that size (a lone `monospace` gives the page a
+  13px root, a named family 16px), the hint with its theme tip and a long version. A hint that
+  wraps, in a pane above those sizes, is centred and breaks between keys, never inside one. A
+  full window is far above the thresholds and looks as before.
 - **Home page:** default pref `browser.startup.homepage` in `firefox-branding.js`. New windows
   open it while `browser.startup.page` is 1 (Firefox's default) or 3 (M3's session restore,
   `BrowserContentHandler.getNewWindowArgs`); at startup it shows with 1, or when nothing is
@@ -87,6 +96,8 @@ quieter still.
 - **URL bar:** the page is `BROWSER_NEW_TAB_URL`, so `isInitialPage` and `isBlankPageURL` treat
   it as Firefox's new tab: empty URL bar, focused on open. `StartPage.init` also adds it to each
   window's `gInitialPages` for a home page opened with the new-tab override off.
+  (Since changed: a line typed there that starts with `:` runs as a command line, not a search;
+  [start-page-commands](start-page-commands.md).)
 - **Vimma keys:** the content actor's `matches` include the page's URL, so it is in normal mode
   (without the actor the host keeps a page in insert, and `:` would not open the command line).
   `f` finds nothing to label; `j`/`k` have nothing to scroll.
@@ -108,6 +119,12 @@ quieter still.
   `start.mjs has filled in the version` timed out.
 
 - The logo has no background in either scheme (no tile, no box).
+- (Since changed: added for #1275.) At pane sizes from 100×60 to 960×640, each width at two
+  heights and each height at two widths, with the theme tip shown, a long version and both the
+  default and a named font: the logo shows; the hint and version line show exactly above their
+  thresholds; what shows lies inside the page without overlapping; the page does not scroll.
+  Red before: `.hint and .version do not overlap` at 22 sizes, and the logo and hint outside the
+  page at 241×60.
 
 `tests/browser/browser_vimma_logo_theme.js` (Logo colours), on the start page and about:vimma:
 under a dark theme the mark's computed `background-color` is the theme's accent (and the page's

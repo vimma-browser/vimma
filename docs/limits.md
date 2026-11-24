@@ -79,7 +79,7 @@ the [user guide](guide.md); planned work is on the
   open in it.
 - In the private workspace, Firefox does not open its "Save password?" prompt: as in any private
   window, it shows only the key icon in the address bar, so `y` and `n` have no prompt to
-  answer. With the toolbar hidden the icon is out of sight too; show the toolbar (`ctrl+b u`)
+  answer. With the toolbar hidden, the default, the icon is out of sight too; show the toolbar (`ctrl+b u`)
   and click the key icon to save the password.
 - [Routing rules](guide.md#routing-which-workspace-a-link-opens-in) do not move a page's own
   navigation or the links a page opens. App rules do not recognise links from Flatpak or other
@@ -93,7 +93,9 @@ the [user guide](guide.md); planned work is on the
 
 - Tags, keywords, separators, sorting and editing a bookmark's address need Firefox's Library
   (`ctrl+shift+o`).
-- Bookmarklets (`javascript:` and `data:` bookmarks) are listed but do not open from Vimma.
+- `data:` bookmarks are listed but do not open from Vimma. Bookmarklets (`javascript:`
+  bookmarks) run only when `[bookmarks] bookmarklets` in `config.toml` allows it; they are off
+  by default ([Bookmarks](guide.md#bookmarks)).
 
 ## Add-ons
 
@@ -148,7 +150,10 @@ the [user guide](guide.md); planned work is on the
   in the parent process.
 - The agent's name in a question (`claude-code`) is what the agent says it is; Vimma cannot check
   it. Grants belong to the connection, and `:mcp` shows the program that started it.
-- A grant covers every agent tool for its minutes, but for the checkpoints: paying, and sending a
+- A grant covers every agent tool until it ends (by default, when the agent quits), but for
+  showing you a page, running a bookmarklet, a dangerous download, one ClamAV could not fully scan
+  or scanned with outdated definitions (without ClamAV nothing is scanned, and that alone does not
+  ask) or one a page started by itself, and the checkpoints: paying, and sending a
   form with text or personal details (free text, a name, an email address, a phone number, an
   address, a birth date, a username or organisation, a password, a payment card or one-time-code
   field, or a file), or one whose fields Vimma cannot read whole. A click that sends a form of only
@@ -177,9 +182,10 @@ the [user guide](guide.md); planned work is on the
 
 ## Vimma's own agent
 
-- The [model bench](agent-bench.md) is all Vimma says about models, and none of the local models
-  it ran on a laptop CPU completed its shopping tasks. Whether a local model calls tools well
-  depends on the model and the server running it.
+- The [model bench](agent-bench.md) is all Vimma says about models, and it ran only local models
+  on one laptop CPU: a 35B mixture-of-experts model completed the ten-item shopping list in 17
+  minutes, and the smaller ones completed few or none of their lists. Whether a local model calls
+  tools well depends on the model and the server running it.
 - A local address may itself forward to a hosted model: the window says `stays on this machine`
   only for a local server's model picked in the window, and `local endpoint` for an address
   typed by hand.
@@ -249,8 +255,8 @@ the [user guide](guide.md); planned work is on the
 
 ## Platforms and packaging
 
-- Vimma is released for Linux x86_64 and for macOS on Apple Silicon. There is no Intel Mac,
-  universal or Windows build.
+- Vimma is released for Linux x86_64 and for macOS 15 or later on Apple Silicon. There is no
+  Intel Mac, universal or Windows build.
 - On macOS, passkeys stored in macOS (iCloud Keychain) do not work (issue #544). Releases 0.1.10
   and earlier, and every CI test build, are ad hoc signed rather than notarised: macOS asks
   once, under Privacy & Security, before such a `.dmg` first opens. Vimma on macOS shows update

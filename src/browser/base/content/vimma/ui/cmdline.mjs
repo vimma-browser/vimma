@@ -6,8 +6,12 @@
 // container at the bottom of the window, above the status bar when there is one. VimmaHost
 // opens and cancels it (`command.open`, `command.cancel` on Esc) and runs what it parses; the
 // input's own keydown handles the line's editing keys: Tab / shift+Tab, Up / Down and Enter.
+// Up / Down walk history, or the completion list once Down enters it
+// (docs/specs/cmdline-arrow-completion.md).
 
+import { focusOpener } from "./toolbar.mjs";
 import {
+  cmdlineArrow,
   completeCommandLine,
   createHistory,
   historyNext,
@@ -64,7 +68,8 @@ function isPrivate(win) {
 /**
  * @typedef {object} Callbacks
  * @property {(result: Extract<CommandResult, { kind: "run" }>) => void} run
- * @property {() => void} [changed]  after it opens or closes (the status bar's mode)
+ * @property {() => void} [changed]  after it opens, closes, loses focus to a dialog or gets it
+ *   back (the status bar's mode)
  * @property {() => import("../core/cmdline.mjs").CompletionArgs} [args]  what commands'
  *   arguments complete to (`{ addon: names }`)
  * @property {() => readonly string[]} [hidden]  action ids whose commands do not exist now (an
@@ -92,7 +97,11 @@ export class CommandLine {
     this.error = null;
     /** @type {Element | null} focused before open; close() returns focus there */
     this.opener = null;
-    /** @type {{ candidates: Candidate[], index: number } | null} while Tab cycles */
+    /**
+     * While Tab or Up / Down cycle the list; `typed` is the line before, which Up on the first
+     * row puts back.
+     * @type {{ candidates: Candidate[], index: number, typed: string } | null}
+     */
     this.cycle = null;
     /** @type {HistoryStore} */
     this.store = isPrivate(win) ? { history: createHistory() } : sharedHistory;
@@ -101,10 +110,20 @@ export class CommandLine {
     this.cursor = { index: null, draft: "" };
     /** @type {ResizeObserver | null} */
     this.resizeObserver = null;
+    /**
+     * While a dialog has focus over the open line: watches where focus goes next.
+     * @type {((e: FocusEvent) => void) | null}
+     */
+    this.afterDialog = null;
   }
 
   get isOpen() {
     return !!this.el && !this.el.hidden;
+  }
+
+  /** Open with focus in its input: not while a dialog over the window or the tab has it. */
+  get focused() {
+    return this.isOpen && this.win.document.activeElement === this.input;
   }
 
   /** @param {string} [text]  the line to start with (`open ` for an unbound `open_url` key) */
@@ -128,6 +147,20 @@ export class CommandLine {
   }
 
   /**
+   * Puts `text` on the line and, with `run`, submits it as if typed there and Enter pressed:
+   * into the history, an error shown on the open line, a command run once the line has closed.
+   * A line left open with other text is closed first, so that text is never the one run. For a
+   * `:` line typed in the start page's address bar (host/urlbar-commands.mjs).
+   * @param {string} text
+   * @param {{ run: boolean }} options
+   */
+  enter(text, { run }) {
+    this.close({ restoreFocus: false });
+    this.open(text);
+    if (run && this.isOpen) this.submit();
+  }
+
+  /**
    * Hides the line. Focus goes back to what had it before `:` unless focus already moved on
    * (`restoreFocus: false`); after a tab switch, or when that element is gone, to the selected
    * browser.
@@ -135,6 +168,7 @@ export class CommandLine {
    */
   close({ restoreFocus = true, tabChanged = false } = {}) {
     if (!this.isOpen) return;
+    this.stopWatching();
     const opener = this.opener;
     this.opener = null;
     this.cycle = null;
@@ -145,7 +179,7 @@ export class CommandLine {
         /** @type {unknown} */ (this.win)
       ).gBrowser?.selectedBrowser.focus();
     } else if (restoreFocus) {
-      /** @type {HTMLElement} */ (opener).focus();
+      focusOpener(this.win, /** @type {Element} */ (opener));
     }
     /** @type {HTMLElement} */ (this.el).hidden = true;
     this.win.document.documentElement.removeAttribute(OPEN_ATTR);
@@ -177,7 +211,33 @@ export class CommandLine {
         break;
       case "ArrowUp":
       case "ArrowDown": {
-        const step = e.key === "ArrowUp" ? historyPrevious : historyNext;
+        const direction = e.key === "ArrowUp" ? -1 : 1;
+        // Core's matches, not the list's rows: an error empties the list but keeps the line,
+        // and Tab still completes it then.
+        const shown =
+          this.cycle?.candidates.length ??
+          completeCommandLine(input.value, { args: this.args(), hidden: this.hidden() }).candidates
+            .length;
+        const move = cmdlineArrow(
+          {
+            line: input.value,
+            shown,
+            selected: this.cycle?.index ?? null,
+            browsing: this.cursor.index !== null,
+          },
+          direction,
+        );
+        if (move.kind === "select") {
+          this.complete(direction);
+          break;
+        }
+        if (move.kind === "leave") {
+          input.value = /** @type {NonNullable<CommandLine["cycle"]>} */ (this.cycle).typed;
+          this.cycle = null;
+          this.refreshList();
+          break;
+        }
+        const step = direction < 0 ? historyPrevious : historyNext;
         const view = Object.freeze({ ...this.store.history, ...this.cursor });
         const next = step(view, input.value);
         this.cursor = { index: next.history.index, draft: next.history.draft };
@@ -208,15 +268,64 @@ export class CommandLine {
   /**
    * Focus left the input. Moving elsewhere in the window (a click, `ctrl+b c`) closes the line
    * without running it; the window losing focus (alt+tab) keeps it, so it is there on return.
+   * A dialog over the window or the tab (a page's `alert`, "Leave page?") keeps it too, as the
+   * `/` prompt is kept: Firefox gives focus back to what had it when the dialog closes
+   * (SubDialog.sys.mjs, `_topLevelPrevActiveElement`), and a closed line would leave focus on
+   * nothing, in insert mode with no field (#1304).
    * @private
    */
   onFocusOut() {
     this.win.setTimeout(() => {
       const doc = this.win.document;
-      if (this.isOpen && doc.activeElement !== this.input && doc.hasFocus()) {
+      if (!this.isOpen || doc.activeElement === this.input) return;
+      if (doc.hasFocus() && !this.isDialogOverLine(doc.activeElement)) {
         this.close({ restoreFocus: false });
+        return;
       }
+      if (doc.hasFocus()) this.watchAfterDialog();
+      // The status bar leaves COMMAND while the dialog has the keys.
+      this.changed();
     }, 0);
+  }
+
+  /**
+   * A dialog frame over the selected tab or over the window (`gDialogBox`), the ones that can
+   * open over the line and give focus back to it. Tab dialogs sit in the tab's container
+   * (browser.js, `TabDialogBox._containerFor`).
+   * @private
+   * @param {Element | null} el
+   */
+  isDialogOverLine(el) {
+    if (!el?.classList.contains("dialogFrame")) return false;
+    if (el.closest("#window-modal-dialog")) return true;
+    const selected = /** @type {{ gBrowser?: { selectedBrowser: Element } }} */ (
+      /** @type {unknown} */ (this.win)
+    ).gBrowser?.selectedBrowser;
+    const container = selected?.closest(".browserSidebarContainer");
+    return !!container && container.contains(el);
+  }
+
+  /**
+   * Focus left the dialog: back on the line, it stays; on another dialog, the watch goes on;
+   * anywhere else (the address bar, a click on the page), the line closes as on any focus move,
+   * so it is never left open behind with no way back to it.
+   * @private
+   */
+  watchAfterDialog() {
+    if (this.afterDialog) return;
+    this.afterDialog = (/** @type {FocusEvent} */ e) => {
+      const target = /** @type {Element} */ (e.target);
+      if (target === this.input) this.stopWatching();
+      else if (!this.isDialogOverLine(target)) this.close({ restoreFocus: false });
+    };
+    this.win.document.addEventListener("focusin", this.afterDialog, true);
+  }
+
+  /** @private */
+  stopWatching() {
+    if (!this.afterDialog) return;
+    this.win.document.removeEventListener("focusin", this.afterDialog, true);
+    this.afterDialog = null;
   }
 
   /** @private */
@@ -256,7 +365,11 @@ export class CommandLine {
         hidden: this.hidden(),
       });
       if (!candidates.length) return;
-      this.cycle = { candidates, index: direction > 0 ? 0 : candidates.length - 1 };
+      this.cycle = {
+        candidates,
+        index: direction > 0 ? 0 : candidates.length - 1,
+        typed: input.value,
+      };
       this.renderList(candidates);
     } else {
       const n = this.cycle.candidates.length;
@@ -394,6 +507,9 @@ export class CommandLine {
     input.addEventListener("keydown", (e) => this.onKeyDown(e));
     input.addEventListener("input", () => this.onInput());
     input.addEventListener("focusout", () => this.onFocusOut());
+    // Back from a dialog: COMMAND again. open() reports its own change, since it may find the
+    // input focused already, with no focus event.
+    input.addEventListener("focus", () => this.changed());
     row.append(prompt, input);
 
     const error = el("div", "vimma-cmdline-error");

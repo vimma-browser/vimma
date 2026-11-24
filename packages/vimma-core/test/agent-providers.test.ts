@@ -14,6 +14,7 @@ import {
   providerErrorText,
 } from "../src/agent/agent-providers.mjs";
 import type { ChatMessage, Provider, ToolDef } from "../src/agent/agent-providers.mjs";
+import { Budget } from "../src/agent/agent-budget.mjs";
 
 const fixture = (name: string) =>
   JSON.parse(
@@ -518,6 +519,77 @@ describe("edge shapes", () => {
       toolCalls: [{ id: "e", name: "", args: {} }],
     });
   });
+
+  // Issue #1225, security.md M41: a count that is not a finite number of at least 0 must not
+  // reach the budget. A string turns the token sum into text; a negative count, Infinity
+  // (`1e400` in the reply's JSON) or NaN makes the token and cost limits comparisons that never
+  // hold. An input or output count the server got wrong is estimated, as a missing usage is.
+  const reply = (provider: Provider, body: string) =>
+    parseReply(provider, JSON.parse(body), "x".repeat(40));
+  const anthropicUsage = (usage: string) => reply(anthropic, `{"content":[],"usage":${usage}}`);
+  const localUsage = (usage: string) =>
+    reply(local, `{"choices":[{"message":{"content":"ok"}}],"usage":${usage}}`);
+  /** What the estimate gives for a request of 40 characters, its input. */
+  const estimatedInput = 10;
+
+  test("cache counts that are not counts count as none", () => {
+    for (const bad of ['"5"', "null", "-1", "1e400", "-1e400"]) {
+      const usage = `{"input_tokens":7,"cache_creation_input_tokens":${bad},"cache_read_input_tokens":${bad},"output_tokens":3}`;
+      expect(anthropicUsage(usage).usage, bad).toEqual({ input: 7, output: 3, estimated: false });
+    }
+  });
+
+  test("counts whose sum is past the largest number still reach max_tokens", () => {
+    const { usage } = anthropicUsage(
+      '{"input_tokens":1e308,"cache_read_input_tokens":1e308,"output_tokens":1}',
+    );
+    expect(usage).toEqual({ input: Number.MAX_VALUE, output: 1, estimated: false });
+    const b = new Budget({ maxTokens: 1000 });
+    b.addUsage(usage);
+    expect(b.exceeded()?.limit).toBe("tokens");
+  });
+
+  test.each(['"7"', "-1", "-1e300", "1e400", "-1e400"])(
+    "an input count of %s is estimated instead",
+    (bad) => {
+      const fromAnthropic = anthropicUsage(`{"input_tokens":${bad},"output_tokens":3}`).usage;
+      expect(fromAnthropic.input).toBe(estimatedInput);
+      expect(fromAnthropic.estimated).toBe(true);
+      const fromLocal = localUsage(`{"prompt_tokens":${bad},"completion_tokens":3}`).usage;
+      expect(fromLocal.input).toBe(estimatedInput);
+      expect(fromLocal.estimated).toBe(true);
+    },
+  );
+
+  test.each(['"9"', "-1", "-1e300", "1e400", "-1e400"])(
+    "an output count of %s is estimated instead",
+    (bad) => {
+      const fromAnthropic = anthropicUsage(`{"input_tokens":7,"output_tokens":${bad}}`).usage;
+      expect(fromAnthropic.input).toBe(7);
+      expect(fromAnthropic.output).toBe(Math.ceil("[]".length / 4));
+      expect(fromAnthropic.estimated).toBe(true);
+      const fromLocal = localUsage(`{"prompt_tokens":9,"completion_tokens":${bad}}`).usage;
+      expect(fromLocal.input).toBe(9);
+      expect(fromLocal.output).toBe(Math.ceil(JSON.stringify({ content: "ok" }).length / 4));
+      expect(fromLocal.estimated).toBe(true);
+    },
+  );
+
+  test("a count of 0 is a count, and an output count of null is a missing one, so 0", () => {
+    const none = { input: 0, output: 0, estimated: false };
+    expect(localUsage('{"prompt_tokens":0,"completion_tokens":0}').usage).toEqual(none);
+    expect(anthropicUsage('{"input_tokens":0,"output_tokens":0}').usage).toEqual(none);
+    expect(localUsage('{"prompt_tokens":4,"completion_tokens":null}').usage).toEqual({
+      input: 4,
+      output: 0,
+      estimated: false,
+    });
+    expect(anthropicUsage('{"input_tokens":4,"output_tokens":null}').usage).toEqual({
+      input: 4,
+      output: 0,
+      estimated: false,
+    });
+  });
 });
 
 // Issue #1119: what the weekly mutation run left unpinned.
@@ -633,6 +705,14 @@ describe("edges the mutation run found", () => {
       "",
     );
     expect(reply.message.toolCalls.map((c) => c.id)).toEqual(["call_1", "call_2"]);
+  });
+
+  test("a maxOutput of 0 sends an OpenAI-compatible server no max_tokens", () => {
+    const req = buildRequest(
+      { ...local, maxOutput: 0 },
+      { key: "", system: "S", tools: [], messages: [] },
+    );
+    expect(JSON.parse(req.body)).not.toHaveProperty("max_tokens");
   });
 
   test("an error of exactly ERROR_CHARS characters is not cut", () => {

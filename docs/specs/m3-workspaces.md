@@ -305,6 +305,16 @@ copying it across would leak data between containers. We do not.
      `lastActive` workspace (read synchronously on first use, as `ContextualIdentityService`
      does with `ensureDataReady`); `null` for private windows and popups, and when workspaces are
      disabled, so upstream behaviour is untouched there.
+     (Since changed: a tab or window an extension opens, whose triggering principal is the
+     extension's own, takes no container, as in Firefox, because an extension's sign-in page
+     must share the cookies its background's requests carry and a workspace's container hid
+     them (#1221). Hunk 1 passes `triggeringPrincipal` to `defaultUserContextId`, and
+     `firstTabUserContextId` reads it from the window's `arguments[8]`; an explicit
+     `cookieStoreId` and an opener tab still win. An about: URL and a window with no URL get
+     that page's principal from Firefox, so they take the workspace's container; a tab with no
+     URL keeps the extension's principal, because Vimma's new tab page is a chrome: page, so hunk
+     1 passes the URL too and the new tab page takes the workspace's container. Security: W8 in
+     `docs/security/03-workspace-deletion-and-containers.md`.)
    - _A third one-line hunk_, `BrowserDOMWindow-sys-mjs.patch` (found in 2a): an external link
      does not reach `addTab` with no container. `#getContentWindowOrOpenURI`
      (`browser/modules/BrowserDOMWindow.sys.mjs:256-259`) passes
@@ -520,7 +530,14 @@ Instead:
   reconcile. This is described now in `WindowWorkspaces.sys.mjs` (`STUCK_RESTORE_MS`,
   `#endStuckRestore`; the test-only pref `vimma.workspaces.stuckRestoreMs` overrides the bound),
   and the about:vimma report that names the restore that never finished, a restore still
-  pending, and the open tabs beside the model's is in `docs/guide.md`, "about:vimma".)
+  pending, and the open tabs beside the model's is in `docs/guide.md`, "about:vimma".) (Since
+  changed: a single-tab bracket can close inside a tab selection. Selecting a tab that has not
+  loaded, or that Firefox unloaded, makes SessionStore restore it while Firefox is still selecting
+  it, before `gBrowser.selectedTab` changes, so a reconcile there read the old selection, focused
+  the old tab's page and so selected that tab again: the new one never showed, issue
+  [#1333](https://github.com/vimma-browser/vimma/issues/1333). The reconcile of such an
+  `SSWindowStateReady`, like one inside a workspace switch, now runs in a microtask, after the
+  selection.)
 - **Tab events outside a bracket** are handled in a microtask, so a path that adds a tab and then
   restores it in the same task (undo close, `duplicateTab`) has set `extData` first; if a bracket
   opened meanwhile, the event waits for its `SSWindowStateReady`.
@@ -862,7 +879,16 @@ dependency for 4b, 5 and parts of 4a.
   restored one: its labels fill tabs that came back without `vimma.tabLabel`, and its pane trees
   go to `PaneView.restore` (the active one shown, the others parked; a lazy member gets its
   browser with `gBrowser.insertBrowser`, as split-view activation does). Firefox restores
-  `hidden`, the split wrappers and the scroll positions.
+  `hidden`, the split wrappers and the scroll positions. (Since changed: only the shown
+  workspace's pane trees go to `PaneView.restore` at once; the other workspaces' stay in uuids
+  until each is first shown, then go to `PaneView.park`, so their tabs stay lazy and keep their
+  saved scroll position and form data; #1305. Within a workspace, only the split PaneView makes
+  current gets panels then; its other splits name a lazy tab by its uuid until they show, and a
+  tab Firefox unloads goes back to its uuid; #1318. A split made current while not on screen, by
+  `#promote` when the current one ends or as a restored hidden view, still gets its tabs'
+  browsers at once; #1332.) (Since changed: such a split keeps its lazy tabs lazy, named by
+  uuid, until it shows, as the other splits do, and so does a tab of it that Firefox unloads;
+  #1332.)
 - **Labels: no consolidation.** The rename seam planned to read `vimma.tabLabel` once into the
   snapshot and drop the tab value. Dropping it would lose a label on undo-close-tab and on a move
   to another window (only tab values travel with a tab), so the tab value stays the source of

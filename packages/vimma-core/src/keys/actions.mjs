@@ -69,6 +69,13 @@ group("Tabs", [
   ["move_tab_left", "tab.move_left", "Move the tab left"],
   ["move_tab_right", "tab.move_right", "Move the tab right"],
   ["restore_tab", "tab.restore", "Reopen the last closed tab"],
+  // docs/specs/tab-line.md: the tab line's labels, and the line itself.
+  [
+    "tabline_hint",
+    "tabline.hint",
+    "Jump to a tab by its label in the tab line (with a count: tab N)",
+  ],
+  ["toggle_tabline", "tabline.toggle", "Show / hide the tab line"],
 ]);
 
 group("Panes", [
@@ -178,8 +185,8 @@ group("Page", [
   ["focus_input", "page.focus_input", "Focus the first text field (with a count: the Nth)"],
   ["view_source", "page.view_source", "View the page's source in a new tab"],
   // docs/specs/page-suggestions.md: ArrowDown and ArrowUp in an open suggestion list.
-  ["suggestion_next", "page.suggestion_next", "Next suggestion in the page's list"],
-  ["suggestion_prev", "page.suggestion_prev", "Previous suggestion in the page's list"],
+  ["suggestion_next", "page.suggestion_next", "Next suggestion in an open list"],
+  ["suggestion_prev", "page.suggestion_prev", "Previous suggestion in an open list"],
 ]);
 
 // docs/specs/firefox-keys.md decision 3: Firefox's own features on Firefox's keys, each running
@@ -371,6 +378,13 @@ group("Side panel", [
     "panel.move",
     "Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder",
   ],
+  // No default key (docs/specs/close-active-tab.md decision 1): a user binds it, as ctrl+w;
+  // after the bound keys, as the row numbers below are.
+  [
+    "panel_close_active_tab",
+    "panel.close_active_tab",
+    "Close the tab the window shows, not the highlighted row's; the panel stays open",
+  ],
   // Unbound since counts came to the panel (docs/specs/side-panel-counts.md): last, so the
   // help overlay lists the keys that work first. `4 Enter` does what `panel_select_4` did.
   ...numbered("panel_select", "panel.select", (n) => `Select row ${n}`),
@@ -379,6 +393,9 @@ group("Side panel", [
 group("Bookmarks", [
   ["toggle_bookmarks", "bookmarks.toggle", "Open / close the bookmarks panel"],
   ["add_bookmark", "bookmark.add", "Bookmark this page (folders/title files it in folders)"],
+  // docs/specs/bookmark-open.md: no default key; :bookmarkopen / :bookmarktab take a title.
+  ["open_bookmark", "bookmark.open", "Open a bookmark by title (picker; runs a bookmarklet)"],
+  ["open_bookmark_tab", "bookmark.open_tab", "Open a bookmark by title in a new tab (picker)"],
   ["bookmarks_collapse", "bookmarks.collapse", "Bookmarks: close the folder, or go to its parent"],
   ["bookmarks_expand", "bookmarks.expand", "Bookmarks: open the folder or the bookmark"],
   ["bookmarks_open_tab", "bookmarks.open_tab", "Bookmarks: open in a new background tab"],
@@ -400,10 +417,13 @@ group("Config", [
   ["setup", "setup.open", "Open the first-run setup (add-ons, search engine)"],
   // docs/specs/theme-appearance.md: no default key; `:theme dark|light|system`.
   ["theme_appearance", "theme.appearance", "Built-in theme: dark, light or the system's (:theme)"],
+  // docs/specs/site-unbind-command.md: no default key; `:siteunbind` and `:sitebind`.
+  ["site_unbind", "site.unbind", "Give keys to this site's page (:siteunbind)"],
+  ["site_bind", "site.bind", "Give keys back to Vimma on this site (:sitebind)"],
 ]);
 
 // docs/specs/addon-manager.md
-// docs/specs/vimma-mcp.md: local AI agents, confined to the agent workspace. `:mcp on|off|forget`;
+// docs/specs/vimma-mcp.md: AI agents, confined to the agent workspace. `:mcp on|off|forget`;
 // prefix+shift+a answers the waiting question (decision 14); `:control on <minutes>` (29 D).
 // docs/specs/builtin-agent.md B13: prefix+i opens the built-in agent's window, as `:agent` does.
 group("Agents", [

@@ -4,10 +4,10 @@ exports[`defaults.toml matches the snapshot 1`] = `
 "# vimma default configuration.
 # Generated from packages/vimma-core/src/config/defaults.mjs by \`npm run gen-docs\`; do not edit.
 # Copy any line into ~/.config/vimma/config.toml to change it.
-schema = 2
 
 [keys]
-prefix = "ctrl+b"
+prefix = "ctrl+b"    # the tmux-style prefix: prefix+c means ctrl+b, then c
+# Each action's keys, in place of its defaults; ctrl+b ? lists every action by name.
 show_keybinds = ["prefix+?"]
 new_tab = ["prefix+c", "ctrl+t"]
 next_tab = ["prefix+n", "ctrl+tab", "ctrl+pagedown"]
@@ -125,14 +125,13 @@ downloads_picker = ["prefix+d"]
 # focus_urlbar = ["ctrl+l", "meta+l"]
 
 [modal]
-leader = " "
-timeout_ms = 800
-# Hint labels are made of these characters, the first ones most often.
-hint_chars = "asdfghjkl"
-# In text fields ctrl+w deletes a word, ctrl+u to the line's start, ctrl+h a character,
-# and ctrl+j and ctrl+m are Enter.
-insert_editing = true
+leader = " "                # what <leader> means in bindings such as "<leader>ff" (" " is space)
+timeout_ms = 800            # how long a sequence like gg waits for its next key (0–10000 ms)
+hint_chars = "asdfghjkl"    # link-hint letters, the first ones most used (2 or more, no capitals)
+insert_editing = true       # in text fields ctrl+w, ctrl+u, ctrl+h delete; ctrl+j, ctrl+m: Enter
 
+# Bindings by mode, in Vim notation (<C-d> is ctrl+d): normal, insert, visual, command, hint,
+# element, help, panel, index, resize and pdf (the PDF viewer).
 [modal.normal]
 "j" = "scroll.down"
 "k" = "scroll.up"
@@ -169,6 +168,7 @@ insert_editing = true
 "x" = "tab.close"
 "gt" = "tab.next"
 "gT" = "tab.previous"
+"gb" = "tabline.hint"
 "b" = "goto.picker"
 "<C-^>" = "workspace.last"
 "<C-6>" = "workspace.last"
@@ -238,6 +238,8 @@ insert_editing = true
 "<Esc>" = "mode.normal"
 "<C-n>" = "page.suggestion_next"
 "<C-p>" = "page.suggestion_prev"
+"<C-j>" = "page.suggestion_next"
+"<C-k>" = "page.suggestion_prev"
 
 [modal.visual]
 "0" = "caret.line_start"
@@ -369,133 +371,135 @@ insert_editing = true
 "q" = "pane.resize_exit"
 
 [unbind]
-normal = []
+normal = []    # default bindings removed in normal mode; one such line per mode
 
-# Firefox's own shortcuts are off; Vimma binds them on the same keys (ctrl+b ? lists them).
-# enable = ["ctrl+j"] gives one back exactly as Firefox runs it.
 [firefox]
-disable = "all"
-enable = []
+disable = "all"    # Firefox's own shortcuts that are off: "all", or a list of keys
+enable = []        # Firefox's shortcuts given back as Firefox runs them, such as ["ctrl+j"]
 
-# Order here is the order ctrl+b ) goes in; each workspace is a Firefox container. None by default.
-# Left-out keys: color = "gray", icon = "circle", autofill = true.
+# Workspaces in ctrl+b ) order, each a Firefox container. None by default.
+# Colours: gray, yellow, orange, red, pink, purple, violet, blue, cyan, green.
+# Icons: circle, fingerprint, briefcase, dollar, cart, vacation, gift, food, fruit, pet,
+# tree, chill, fence.
 [workspaces]
-# work = { color = "blue", icon = "briefcase", home = "https://intranet.example" }
+# [workspaces.work]             # a workspace named work (1 to 32 characters)
+# color = "gray"                # the container's colour, from the list above
+# icon = "circle"               # the container's icon, from the list above
+# home = "https://intra.example"  # opens when you go to the workspace and it has no tab
 
-# The built-in palette \`name\`: "vimma" (vimma.dev's colours, dark or light) or "tokyo-night"
-# (dark). "omarchy" follows your Omarchy theme where Omarchy is installed and uses \`name\`
-# elsewhere; "file" always uses \`name\`.
 [theme]
-source = "omarchy"
-name = "vimma"
-# The built-in palette "dark", "light", or "system" (as the system or Firefox is, live).
-# Left out, :theme dark|light|system sets it and remembers it; set here, it always wins.
-# appearance = "system"
-font = "monospace"
+source = "omarchy"       # "omarchy" follows Omarchy where installed; "file" always uses name
+name = "vimma"           # the built-in palette: "vimma", vimma.dev's colours, dark and light
+# appearance = "system"  # "system", "dark" or "light" variant; unset, :theme sets it
+font = "monospace"       # the font of Vimma's bars, pickers and overlays (a CSS font list)
 
-# Overrides on top of the palette, with the keys of Omarchy's colors.toml.
 [theme.colors]
-# accent = "#7aa2f7"
+# accent = "#7aa2f7"  # one colour over the theme: a colors.toml key, or split_1 to split_9
 
-# The most panes (live pages) one workspace shows at once, 1 to 16.
 [panes]
-max = 8
-# Where ctrl+b enter puts a new pane: "dwindle" splits the focused pane along its longer side,
-# "manual" splits right as ctrl+b v. ctrl+b v and ctrl+b - always keep their direction.
-layout = "dwindle"
-# The main pane's size in the main-vertical and main-horizontal layouts, 20 to 80 percent.
-main_size = 60
-# A new tab opened while a split shows (ctrl+t, a link in a new tab): "alone" shows it by
-# itself next to the split, which waits hidden (]s brings it back); "pane" opens it in the
-# focused pane instead.
-new_tab = "alone"
+max = 8               # most panes a workspace shows (1–16); past it a new split is refused
+max_splits = 9        # most splits a workspace keeps (1–9)
+layout = "dwindle"    # where ctrl+b enter splits: "dwindle" (longer side) or "manual" (right)
+main_size = 60        # the main pane's share in the main-* layouts, in percent (20–80)
+new_tab = "alone"     # a tab opened in a split: "alone" beside it, or "pane" in the focused pane
 
-# The bookmarks panel (ctrl+b shift+b) and ctrl+b a: "workspace" is the current workspace's
-# folder in the Bookmarks Toolbar; "toolbar" the whole toolbar; "all" every bookmark.
 [bookmarks]
-root = "workspace"
+root = "workspace"       # where the bookmarks panel starts: "workspace", "toolbar" or "all"
+bookmarklets = "none"    # who may run bookmarklets: "none", "user" (you) or "agent" (asks you)
+write_back = "all"       # changes saved to bookmarks.toml: "all", "vimma" (Vimma's own), "none"
 
-# Row numbers in the side panel (ctrl+b b): "absolute" is the tab number (alt+N, {N}gt);
-# "relative" the distance from the highlighted row, for 4j and 3k; "hybrid" both: the
-# highlighted row its own number, the others their distance. The bookmarks panel shows
-# distances with "relative" and "hybrid", and no numbers with "absolute".
 [panel]
-numbers = "absolute"
+numbers = "absolute"    # side panel rows: "absolute" (tab numbers), "relative" (for 4j), "hybrid"
 
-# How far j, k, h and l scroll a page, in CSS pixels, 1 to 2000 (3j: three steps).
 [scroll]
-step = 60
+step = 60    # how far j, k, h and l scroll, in CSS pixels (1–2000)
 
-# The private workspace (ctrl+b shift+p): "swap" shows it in place of the Vimma window on
-# Hyprland and macOS, which hide the other one until you switch back; "window" opens it as
-# a window of its own beside it, as on every other system.
 [private]
-placement = "swap"
+placement = "swap"    # "swap" takes this window's place (Hyprland, macOS); "window": beside it
 
-# Firefox's toolbar (the URL bar and add-on buttons) in every window: "shown" or "hidden".
-# Hidden, focusing the address bar shows it; ctrl+b u and :toolbar toggle it until restart.
+# toolbar, bookmarks_toolbar, pdf_outline and tabline apply at startup and when their line
+# changes, so ctrl+b u, ctrl+shift+b and :tabline last until then.
 [ui]
-toolbar = "shown"
-# Firefox's Bookmarks Toolbar, hidden by default (your bookmarks: ctrl+b shift+b):
-# "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,
-# ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.
-# bookmarks_toolbar = "shown"
-# Vimma's outline beside a PDF that has one (Tab focuses it): "shown" when a PDF opens, or
-# "hidden" until you press Tab.
-pdf_outline = "shown"
+toolbar = "hidden"             # Firefox's toolbar, address bar included: "hidden" or "shown"
+# bookmarks_toolbar = "shown"  # "shown", "hidden" or "newtab"; unset, hidden until ctrl+shift+b
+pdf_outline = "shown"          # a PDF's outline as it opens: "shown", or "hidden" until Tab
+tabline = "auto"               # the tab line: "auto" (with 2 or more tabs), "always" or "off"
+tabline_width = 14             # the width of each tab's name in the tab line, in columns (4–60)
 
-# Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request
-# names only the update channel and the platform. false stops every check.
+[statusbar]
+tab = true    # false drops the status bar's tab number and title while the tab line shows them
+
+# [tabs]
+# sleep_after = 120           # minutes unseen before a tab sleeps (5–10080); 0: never
+# sleep_on_low_memory = true  # false: Firefox never unloads tabs when memory runs low
+
+# Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update
+# channel and the platform.
 [updates]
-check = true
+check = true    # false stops every update check, even when this file has a mistake
 
-# Local AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and
-# each asks you first. Left out, :mcp on|off sets enabled and remembers it; set
-# here, it always wins. ask_timeout: seconds a request waits for you (10 to 300). A bare \`a\`
-# allows the agent until it quits (grant_minutes = 0), or for grant_minutes; a count before
-# it allows that many minutes, up to grant_max_minutes (at most 1440).
+# AI agents over MCP (Claude Code, Codex, opencode, Copilot), only in the agent workspace.
 [mcp]
-# enabled = false
-workspace = "agent"
-ask_timeout = 50
-grant_minutes = 0
-grant_max_minutes = 480
-max_read_chars = 200000
-notify = true
-# Downloads from the agent workspace ask first, are saved only here (never your Downloads
-# folder itself), never opened, and refused over download_max_mb (1 to 4096).
-download_dir = "~/Downloads/vimma-agent"
-download_max_mb = 200
-# A ClamAV scan with definitions older than this many days (1 to 90) is never reported
-# clean: keeping the file is asked, as for one ClamAV could not fully scan.
-clamav_max_age_days = 7
+# enabled = false               # unset: :mcp on and :mcp off set it; set here, it always wins
+workspace = "agent"             # the agent workspace's name; not "private"
+ask_timeout = 50                # seconds a request waits for your answer, then is denied (10–300)
+grant_minutes = 0               # a bare a: 0 grants until the agent quits, else that many minutes
+grant_max_minutes = 480         # the longest grant a count before a gives, in minutes (1–1440)
+max_read_chars = 200000         # the most text one page read returns, in characters (1000–500000)
+notify = true                   # a desktop notification when an agent asks while Vimma is hidden
+download_dir = "~/Downloads/vimma-agent"  # where agent downloads are saved; never opened
+download_max_mb = 200           # agent downloads larger than this are refused, in MB (1–4096)
+clamav_max_age_days = 7         # days before ClamAV definitions stop counting a file clean (1–90)
 
-# Per-site insert mode: auto (detect text fields), never (keys stay vimma's), always.
-# A host also covers its subdomains. None by default.
+# Vimma's own agent (ctrl+b i). A model you pick in its window is added here, never a key.
+# [agent]
+# default = "local"             # the provider new conversations use (unset: the first one picked)
+# local_only = false            # true refuses every model that is not on this machine
+# max_running = 3               # how many tasks run at once (1–10)
+# max_steps = 100               # a task stops after this many tool calls (1–1000)
+# max_tokens = 2000000          # a task stops after this many tokens (1000–100000000)
+# max_cost = 2                  # a task stops at this cost, with prices set (above 0, up to 1000)
+# keep_days = 30                # delete conversations unused this long (1–3650 days); unset, kept
+# keep_results = 6              # tool results kept whole (0: all); unset, 20 local, 6 hosted
+# [[agent.providers]]           # a model behind an API, one table each; never its key
+# name = "local"                # what default and the model picker call it (1–32 characters)
+# kind = "openai"               # "openai" (OpenAI-compatible API) or "anthropic" (Messages API)
+# endpoint = "http://127.0.0.1:11434/v1"  # https://, or http:// on this machine
+# model = "qwen3:14b-ctx32768"  # the model's name at that endpoint
+# vision = false                # true: the model reads images, so the agent gets screenshots
+# price_in = 3                  # the price per million input tokens, for max_cost; with price_out
+# price_out = 15                # the price per million output tokens
+# [[agent.providers]]           # an agent CLI (Claude Code, Codex, Gemini CLI) on its own login
+# name = "claude"               # the provider's name
+# kind = "cli"                  # an agent CLI: no endpoint, the CLI decides where requests go
+# cli = "claude-code"           # which CLI: "claude-code", "codex" or "gemini"
+# model = "sonnet"              # the CLI's own model option; unset, its default
+# max_minutes = 30              # the longest one task may run, in minutes (1–1440)
+
+# Per site: a host covers its subdomains; the most specific table wins. None by default.
 # [sites."docs.google.com"]
-# insert = "always"
+# insert = "always"  # text fields take insert mode: "auto" (when detected), "never" or "always"
+# unbind = ["t"]     # keys the page gets instead of Vimma; esc and the prefix stay Vimma's
+# sleep = false      # its tabs never go to sleep on their own
 
-# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the
-# programs that opened it (vimma-open). The first matching rule wins, except that among the
-# app rules above it, the one naming the nearest program wins. None by default.
+# Which workspace a link opens in: the first rule that matches wins. None by default.
+# A routes.toml beside this file, when it exists, holds them (and [routing]) instead.
 # [[routes]]
-# domain = "github.com"
-# workspace = "work"
+# domain = "github.com"         # github.com and its subdomains; "*.corp.example": subdomains only
+# app = "slack"                 # links that program opens (Linux); with domain, both must match
+# workspace = "work"            # the workspace the link opens in
+# [[routes]]
+# url = "file:///home/me/notes/"  # a URL prefix in place of a domain, for file: and about: pages
+# workspace = "work"            # the workspace those pages open in
 
-# Where a link from another program opens when no rule matches. Left out, it opens where
-# Firefox guesses from your open tabs, else in the window's workspace.
 # [routing]
-# default_workspace = "work"
+# default_workspace = "work"  # links from programs that no rule matches; unset, Firefox guesses
 
-# Search engines. default: an installed engine's name (as in Settings > Search), or
-# "@alias" of a URL below. Each alias is typed as @alias before the words, in the URL bar
-# and in :open and :tabnew. A URL with one %s becomes an engine; a name gives that engine
-# the alias. Set here, the default wins at every start; delete the line to choose it in
-# Settings. None by default.
+# Search engines. None by default.
 # [search]
-# default = "DuckDuckGo"
-# [search.aliases]
-# gh = "https://github.com/search?q=%s"
-# w = "Wikipedia (en)"
+# default = "DuckDuckGo"        # an installed engine's name or "@gh" (below); wins at every start
+# [search.aliases]              # typed as @gh before the words: address bar, :open, :tabnew
+# gh = "https://github.com/search?q=%s"  # a URL with one %s becomes an engine
+# w = "Wikipedia (en)"          # an installed engine's name gets this alias
 "
 `;

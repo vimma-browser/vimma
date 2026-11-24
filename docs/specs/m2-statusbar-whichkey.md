@@ -21,8 +21,8 @@ sequence completes, is cancelled, or I press `Esc`.
 - `browser/themes/shared/vimma/statusbar.css`, registered in our `jar.mn` as
   `chrome://browser/skin/vimma/statusbar.css` (as m0-help-overlay did).
 - Theme tokens: until M5 wires the Omarchy adapter, `resolveTheme()` of the built-in theme
-  (Tokyo Night, font `monospace`) through `tokensToCss()`, loaded once per window as an author
-  sheet. Both elements colour themselves only from `--vimma-*` tokens.
+  (the built-in palette of the time, font `monospace`) through `tokensToCss()`, loaded once per
+  window as an author sheet. Both elements colour themselves only from `--vimma-*` tokens.
 - Host seam (additive, small): `VimmaHost.status(win)` → `{ mode, pending }`,
   `VimmaHost.onStateChange(win, fn)` → unsubscribe, and `VimmaHost.runnable()` → `RUNNABLE`
   (m2-tab-keys: `RUNNERS` ∪ `CONTENT_RUNNERS`, the help overlay's set too). The host emits after
@@ -118,7 +118,9 @@ screenshot baselines (the e2e harness).
   from the WindowProxy `init()` keys its state by, so it never matched.
 - **Title and URL.** Title is the browser's `contentTitle`, else the tab's label (lazy tabs,
   `New Tab`); the URL is `Services.io.createExposableURI(uri).displaySpec` (no credentials, IDN
-  shown decoded), none for `about:blank`. Loading is the tab's `busy` attribute; Firefox exposes
+  shown decoded), none for `about:blank`. (Since changed: in Reader View the URL is the
+  article's, `pageUrl` in `core/pageurl.mjs`, as Firefox's address bar shows it; issue #1310.)
+  Loading is the tab's `busy` attribute; Firefox exposes
   no page-load fraction, so the segment reads `loading`.
 - **Tab labels.** `StatusBar` takes a `labelFor(tab)` option (default: none), which the tab
   rename spec fills from its label store; core's `displayLabel` already prefers it.

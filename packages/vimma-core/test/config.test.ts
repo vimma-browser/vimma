@@ -1,10 +1,7 @@
 import { describe, test, expect } from "vitest";
 import {
-  CONFIG_SCHEMA_VERSION,
-  MIGRATIONS,
   formatConfigError,
   mergeWithDefaults,
-  migrate,
   parseConfig,
   reloadConfig,
 } from "../src/config/config.mjs";
@@ -33,19 +30,16 @@ describe("parseConfig: valid input", () => {
   test("the generated defaults.toml parses without errors to the default keymap", () => {
     const r = parseConfig(formatDefaultsToml());
     expect(r.errors).toEqual([]);
-    expect(r.migratedFrom).toBeNull();
     const km = compileKeymap();
     for (const mode of MODES) {
       expect(r.keymap?.sequences(mode)).toEqual(km.sequences(mode));
     }
   });
 
-  test("an empty file is the defaults, migrated from schema 0", () => {
+  test("an empty file is the defaults", () => {
     const r = parseConfig("");
     expect(r.errors).toEqual([]);
-    expect(r.migratedFrom).toBe(0);
     expect(r.config).toEqual(mergeWithDefaults({}));
-    expect(r.config?.schema).toBe(CONFIG_SCHEMA_VERSION);
   });
 
   test("[keys] overrides reach the keymap and are marked overridden", () => {
@@ -199,16 +193,6 @@ describe("parseConfig: errors carry line numbers", () => {
     expect(formatConfigError(e, "config.toml")).toMatch(/^config\.toml:4:\d+: \S/);
   });
 
-  test("a schema from a newer vimma is an error", () => {
-    const e = oneError(toml("# hi", `schema = ${CONFIG_SCHEMA_VERSION + 1}`));
-    expect(e).toMatchObject({ line: 2, path: "schema" });
-    expect(e.message).toMatch(/newer vimma/);
-  });
-
-  test.each([["-1"], ["1.5"], ['"1"']])("schema = %s is an error", (v) => {
-    expect(oneError(toml(`schema = ${v}`)).path).toBe("schema");
-  });
-
   test.each([
     ["-5", /0 and 10000/],
     ["20000", /0 and 10000/],
@@ -231,7 +215,6 @@ describe("parseConfig: errors carry line numbers", () => {
   });
 
   test.each([
-    ["schema = 1.0", "schema", /must be an integer, got a float/],
     ["[modal]\ntimeout_ms = 1e3", "modal.timeout_ms", /expected an integer, got a float/],
     ["[modal]\ntimeout_ms = 800.0", "modal.timeout_ms", /expected an integer, got a float/],
   ])("%j: TOML floats are not integers", (text, path, msg) => {
@@ -396,7 +379,6 @@ describe("parseConfig: errors carry line numbers", () => {
 describe("mergeWithDefaults", () => {
   test("fills every section", () => {
     expect(mergeWithDefaults({})).toEqual({
-      schema: 2,
       keys: {},
       modal: {},
       unbind: {},
@@ -412,7 +394,7 @@ describe("mergeWithDefaults", () => {
         enable: [],
       },
       insertEditing: true,
-      bookmarks: { root: "workspace" },
+      bookmarks: { root: "workspace", bookmarklets: "none", writeBack: "all" },
       panel: { numbers: "absolute" },
       scroll: { step: 60 },
       private: { placement: "swap" },
@@ -427,7 +409,16 @@ describe("mergeWithDefaults", () => {
         downloadMaxMb: 200,
         clamavMaxAgeDays: 7,
       },
-      ui: { toolbar: "shown", bookmarksToolbar: null, pdfOutline: "shown" },
+      ui: {
+        toolbar: "hidden",
+        toolbarSet: false,
+        bookmarksToolbar: null,
+        pdfOutline: "shown",
+        tabline: "auto",
+        tablineWidth: 14,
+      },
+      statusbar: { tab: true },
+      tabs: { sleepAfter: 120, sleepOnLowMemory: true },
       updates: { check: true },
       search: null,
       agent: {
@@ -442,43 +433,6 @@ describe("mergeWithDefaults", () => {
         providers: [],
       },
     });
-  });
-});
-
-describe("migrate", () => {
-  test("v0 → v1 adds schema = 1 and keeps everything else", () => {
-    const raw = { keys: { new_tab: ["prefix+c"] } };
-    const r = migrate(raw, 0, 1);
-    expect(r.applied).toEqual(["0→1"]);
-    expect(r.config).toEqual({ schema: 1, keys: { new_tab: ["prefix+c"] } });
-    expect(raw).toEqual({ keys: { new_tab: ["prefix+c"] } });
-  });
-
-  test("the current version needs no step", () => {
-    const current = { schema: CONFIG_SCHEMA_VERSION };
-    expect(migrate(current, CONFIG_SCHEMA_VERSION)).toEqual({ config: current, applied: [] });
-  });
-
-  test("a chain of steps runs in order", () => {
-    const registry: Record<number, (c: Record<string, unknown>) => Record<string, unknown>> = {
-      0: (c) => ({ ...c, schema: 1, trail: [0] }),
-      1: (c) => ({ ...c, schema: 2, trail: [...(c.trail as number[]), 1] }),
-    };
-    const r = migrate({}, 0, 2, registry);
-    expect(r.applied).toEqual(["0→1", "1→2"]);
-    expect(r.config).toEqual({ schema: 2, trail: [0, 1] });
-  });
-
-  test("a gap in the registry throws", () => {
-    expect(() => migrate({}, 0, 2, { 0: (c) => c })).toThrow(/no migration from schema 1/);
-  });
-
-  test("migrating backwards throws", () => {
-    expect(() => migrate({}, 2, 1)).toThrow(/newer/);
-  });
-
-  test("every version below the current one has a registered step", () => {
-    for (let v = 0; v < CONFIG_SCHEMA_VERSION; v++) expect(MIGRATIONS[v]).toBeTypeOf("function");
   });
 });
 
@@ -526,5 +480,80 @@ describe("reloadConfig keeps the last good config", () => {
     expect(r.kept).toBe(false);
     expect(r.active).not.toBe(first);
     expect(r.active.keymap.bindingsFor("new_tab")).toContain("prefix+c");
+  });
+});
+
+// docs/specs/tab-sleep.md decisions 11 and 12, Behaviour 6.
+describe("[tabs] and [sites] sleep", () => {
+  test("[tabs] sleep_after accepts 0 and 5 to 10080, and rejects other numbers and types", () => {
+    expect(parseConfig(toml()).config?.tabs).toEqual({ sleepAfter: 120, sleepOnLowMemory: true });
+    for (const v of [0, 5, 120, 10080]) {
+      expect(parseConfig(toml("[tabs]", `sleep_after = ${v}`)).config?.tabs).toEqual({
+        sleepAfter: v,
+        sleepOnLowMemory: true,
+      });
+    }
+    for (const v of ["1", "4", "10081", "-5"]) {
+      expect(oneError(toml("[tabs]", `sleep_after = ${v}`))).toEqual({
+        line: 2,
+        path: "tabs.sleep_after",
+        message: "must be 0 (never) or an integer between 5 and 10080 (minutes)",
+      });
+    }
+    expect(oneError(toml("[tabs]", "sleep_after = 2.5"))).toMatchObject({
+      path: "tabs.sleep_after",
+      message: "expected an integer, got a float",
+    });
+    expect(oneError(toml("[tabs]", 'sleep_after = "120"'))).toMatchObject({
+      path: "tabs.sleep_after",
+      message: "expected an integer, got a string",
+    });
+    // Not a near miss of sleep_after: skipped with a warning (#1474).
+    expect(parseConfig(toml("[tabs]", "sleep = 120")).warnings).toEqual([
+      { line: 2, path: "tabs.sleep", message: 'unknown key "sleep"; skipped' },
+    ]);
+  });
+
+  // Decision 21, Behaviour 17.
+  test("[tabs] sleep_on_low_memory accepts a boolean and rejects other types", () => {
+    expect(parseConfig(toml()).config?.tabs.sleepOnLowMemory).toBe(true);
+    for (const v of [true, false]) {
+      expect(parseConfig(toml("[tabs]", `sleep_on_low_memory = ${v}`)).config?.tabs).toEqual({
+        sleepAfter: 120,
+        sleepOnLowMemory: v,
+      });
+    }
+    expect(
+      parseConfig(toml("[tabs]", "sleep_after = 0", "sleep_on_low_memory = true")).config?.tabs,
+    ).toEqual({ sleepAfter: 0, sleepOnLowMemory: true });
+    expect(oneError(toml("[tabs]", 'sleep_on_low_memory = "no"'))).toEqual({
+      line: 2,
+      path: "tabs.sleep_on_low_memory",
+      message: "expected a boolean, got a string",
+    });
+  });
+
+  test('[sites."<host>"] sleep accepts a boolean and rejects other types', () => {
+    const c = parseConfig(
+      toml('[sites."example.com"]', "sleep = false", '[sites."a.example.com"]', "sleep = true"),
+    ).config;
+    expect(c?.sites).toEqual([
+      { match: "example.com", insert: "auto", sleep: false },
+      { match: "a.example.com", insert: "auto", sleep: true },
+    ]);
+    expect(parseConfig(toml('[sites."b.com"]', 'insert = "never"')).config?.sites).toEqual([
+      { match: "b.com", insert: "never", sleep: true },
+    ]);
+    expect(oneError(toml('[sites."example.com"]', 'sleep = "no"'))).toEqual({
+      line: 2,
+      path: 'sites."example.com".sleep',
+      message: "expected a boolean, got a string",
+    });
+  });
+
+  test("defaults.toml sets [tabs] sleep_after = 120", () => {
+    // Commented while vimma.feature.tabSleep is off (spec, Delivery slice 1).
+    expect(formatDefaultsToml()).toMatch(/^# \[tabs\]\n(#.*\n)*# sleep_after = 120 .*$/m);
+    expect(formatDefaultsToml()).toMatch(/^# sleep = false +# .*$/m);
   });
 });

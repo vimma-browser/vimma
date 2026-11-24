@@ -5,7 +5,11 @@
 // Issue #1209 (security.md M21, M31, M7): a page loaded with a user name and password in its
 // URL gives them to every link and form action it resolves, and to its own URL. No reply an
 // agent gets carries them: the tab list, a step's page, a link list, an element list, a read
-// page's text and URL, a screenshot's and a console read's page.
+// page's text and URL, a screenshot's and a console read's page. Reader View's address carries
+// the article's URL percent-encoded in its query, them included (#1324): every reply names the
+// article's URL without them instead. A site's redirect parameter carries another page's URL
+// the same way, in the page's own URL, its links, its form's action and its title (#1348): each
+// loses them, and the page is still named as the page it is.
 
 "use strict";
 
@@ -58,7 +62,7 @@ registerCleanupFunction(async () => {
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -67,8 +71,14 @@ const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.b
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
 /**
+ * The commands about one page, each of which answers with the page's `url`.
+ * @typedef {"agent-keys" | "agent-elements" | "agent-read" | "agent-console"} AgentPageCommand
+ */
+
+/**
  * `command` on an agent connection; the first is answered with a grant, which covers the rest.
- * @param {any} c @param {string} command @param {object} args @param {boolean} [asks]
+ * @template {string} C
+ * @param {Client} c @param {C} command @param {object} args @param {boolean} [asks]
  */
 async function call(c, command, args, asks = false) {
   const id = c.request(command, args);
@@ -114,12 +124,16 @@ add_task(async function test_no_reply_carries_the_pages_user_name_and_password()
   const id = idOf(tab);
 
   const tabs = await call(c, "agent-tabs", {}, true);
-  Assert.equal(tabs.tabs.find((/** @type {any} */ t) => t.id === id)?.url, PAGE, "vimma_tabs");
+  Assert.equal(
+    tabs.tabs.find((/** @type {AgentListedTab} */ t) => t.id === id)?.url,
+    PAGE,
+    "vimma_tabs",
+  );
   noUserinfo("vimma_tabs", tabs);
 
   const keys = await call(c, "agent-keys", { tab: id, keys: "f" });
   Assert.equal(keys.url, PAGE, "vimma_keys' page");
-  Assert.ok(keys.links.includes(`${DIR}file_vimma_agent_page.html?rel`), "the link, without them");
+  Assert.ok(keys.links?.includes(`${DIR}file_vimma_agent_page.html?rel`), "the link, without them");
   noUserinfo("vimma_keys", keys);
 
   const elements = await call(c, "agent-elements", { tab: id });
@@ -159,11 +173,13 @@ add_task(async function test_no_reply_carries_the_pages_user_name_and_password()
   await c2.handshake({ protocol: 2, role: "agent" });
   await c2.call("agent-hello", { client: { name: "example-agent" } });
   const opened = await call(c2, "agent-open", { url: WITH_USERINFO, elements: true }, true);
-  Assert.equal(opened.url, PAGE, "vimma_open's page");
+  // The page was ready, so the open listed it.
+  const listed = /** @type {Extract<typeof opened, { elements: string }>} */ (opened);
+  Assert.equal(listed.url, PAGE, "vimma_open's page");
   noUserinfo("vimma_open", opened);
   /** @type {Record<string, string>} */
   const by = {};
-  for (const line of opened.elements.split("\n").slice(1, -1)) {
+  for (const line of listed.elements.split("\n").slice(1, -1)) {
     const e = JSON.parse(line);
     if ("label" in e) by[e.kind === "field" ? "field" : e.text] = e.label;
   }
@@ -216,7 +232,7 @@ add_task(async function test_a_tab_labelled_with_its_url_gives_no_user_name_and_
   await c.handshake({ protocol: 2, role: "agent" });
   await c.call("agent-hello", { client: { name: "example-agent" } });
   const tabs = await call(c, "agent-tabs", {}, true);
-  const listed = tabs.tabs.find((/** @type {any} */ t) => t.id === idOf(lazy));
+  const listed = tabs.tabs.find((/** @type {AgentListedTab} */ t) => t.id === idOf(lazy));
   Assert.ok(listed, "the unloaded tab is listed");
   Assert.ok(
     !listed.title.includes("ada") && listed.title.includes("file_vimma_agent_untitled.html"),
@@ -224,7 +240,7 @@ add_task(async function test_a_tab_labelled_with_its_url_gives_no_user_name_and_
   );
   noUserinfo("vimma_tabs", tabs);
   const id = idOf(tab);
-  for (const [command, args] of /** @type {[string, object][]} */ ([
+  for (const [command, args] of /** @type {[AgentPageCommand, object][]} */ ([
     ["agent-keys", { tab: id, keys: "f" }],
     ["agent-elements", { tab: id }],
     ["agent-read", { tab: id }],
@@ -268,7 +284,7 @@ add_task(async function test_a_clamped_or_redirected_url_label_gives_no_password
   const tabs = await call(c, "agent-tabs", {}, true);
   noUserinfo("vimma_tabs", tabs);
   const titleOf = (/** @type {MozTabbrowserTab} */ t) =>
-    tabs.tabs.find((/** @type {any} */ x) => x.id === idOf(t))?.title;
+    tabs.tabs.find((/** @type {AgentListedTab} */ x) => x.id === idOf(t))?.title;
   Assert.equal(
     titleOf(long),
     UNTITLED.replace("https://", ""),
@@ -279,7 +295,7 @@ add_task(async function test_a_clamped_or_redirected_url_label_gives_no_password
     REDIRECTED.replace("https://", ""),
     "the redirected tab's title is the URL it is at",
   );
-  for (const [command, args] of /** @type {[string, object][]} */ ([
+  for (const [command, args] of /** @type {[AgentPageCommand, object][]} */ ([
     ["agent-keys", { tab: idOf(moved), keys: "f" }],
     ["agent-elements", { tab: idOf(moved) }],
     ["agent-read", { tab: idOf(moved) }],
@@ -288,6 +304,128 @@ add_task(async function test_a_clamped_or_redirected_url_label_gives_no_password
     Assert.equal(r.url, REDIRECTED, `${command}'s page`);
     noUserinfo(command, r);
   }
+  c.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
+  await VimmaControl.settled();
+});
+
+add_task(async function test_a_reader_view_tab_gives_its_article_url_without_them() {
+  Services.prefs.setIntPref(PHISHY, 255);
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  await VimmaControl.settled();
+  const article = `${DIR}file_vimma_reader_article.html`;
+  const reader = `about:reader?url=${encodeURIComponent(article.replace("https://", "https://ada:secret@"))}`;
+  const tab = gBrowser.addTab(reader, {
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await BrowserTestUtils.waitForContentEvent(tab.linkedBrowser, "AboutReaderContentReady");
+  await until(() => tab.hidden, "the agent tab is hidden in its workspace");
+  Assert.equal(tab.linkedBrowser.currentURI.spec, reader, "the reader's address holds them");
+
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  await c.handshake({ protocol: 2, role: "agent" });
+  await c.call("agent-hello", { client: { name: "example-agent" } });
+  const id = idOf(tab);
+  /** No user name or password, also percent-encoded as the reader's address carries them. */
+  const noneEncoded = (/** @type {string} */ what, /** @type {unknown} */ result) => {
+    noUserinfo(what, result);
+    const text = JSON.stringify(result);
+    Assert.ok(!/ada%3A|ada%40|%3Asecret/i.test(text), `${what}: none percent-encoded`);
+  };
+  const tabs = await call(c, "agent-tabs", {}, true);
+  const listed = tabs.tabs.find((/** @type {AgentListedTab} */ t) => t.id === id);
+  Assert.equal(listed?.url, article, "vimma_tabs names the article's URL");
+  noneEncoded("vimma_tabs", tabs);
+  // The commands that read a page refuse one that is not http or https; neither their result
+  // nor their refusal names them.
+  for (const [command, args] of /** @type {[AgentPageCommand | "agent-screenshot", object][]} */ ([
+    ["agent-keys", { tab: id, keys: "f" }],
+    ["agent-elements", { tab: id }],
+    ["agent-read", { tab: id }],
+    ["agent-screenshot", { tab: id }],
+    ["agent-console", { tab: id }],
+  ])) {
+    const r = await c.response(c.request(command, args));
+    info(`${command}: ${r.ok ? "ran" : JSON.stringify(r.error)}`);
+    if (r.ok) {
+      Assert.deepEqual(validateMessage(r, { command }).errors, [], `a valid ${command} result`);
+      Assert.equal(r.result.url, article, `${command} names the article's URL`);
+    }
+    noneEncoded(command, r.ok && command === "agent-screenshot" ? { ...r.result, image: "" } : r);
+  }
+  c.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
+  await VimmaControl.settled();
+});
+
+add_task(async function test_a_redirect_parameter_gives_no_user_name_and_password() {
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  await VimmaControl.settled();
+  const enc = encodeURIComponent;
+  const bank = "https://ada:secret@bank.example/a";
+  const page = `${DIR}file_vimma_agent_redirect_param.html`;
+  const url = `${page}?continue=${enc(bank)}&lang=fi`;
+  const shown = `${page}?continue=${enc("https://bank.example/a")}&lang=fi`;
+  const next = enc("https://bank.example/");
+  const tab = gBrowser.addTab(url, {
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, url);
+  await until(() => tab.hidden, "the agent tab is hidden in its workspace");
+
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  await c.handshake({ protocol: 2, role: "agent" });
+  await c.call("agent-hello", { client: { name: "example-agent" } });
+  const id = idOf(tab);
+  /** No user name or password, also percent-encoded once or twice. */
+  const noneEncoded = (/** @type {string} */ what, /** @type {unknown} */ result) => {
+    noUserinfo(what, result);
+    const text = JSON.stringify(result);
+    Assert.ok(!/ada%(?:25)?3A|%(?:25)?40bank/i.test(text), `${what}: none percent-encoded`);
+  };
+
+  const tabs = await call(c, "agent-tabs", {}, true);
+  const listed = tabs.tabs.find((/** @type {AgentListedTab} */ t) => t.id === id);
+  Assert.equal(listed?.url, shown, "vimma_tabs names the page, its other parameters kept");
+  Assert.equal(listed?.title, `https://site.example/?next=${next}`, "and its title without them");
+  noneEncoded("vimma_tabs", tabs);
+
+  const keys = await call(c, "agent-keys", { tab: id, keys: "f" });
+  Assert.equal(keys.url, shown, "vimma_keys' page");
+  for (const href of [
+    `${DIR}file_vimma_agent_page.html?next=${next}&lang=fi`,
+    `${DIR}file_vimma_agent_page.html?next=${enc(next)}`,
+    `${DIR}file_vimma_agent_page.html#/login?next=${next}`,
+  ]) {
+    Assert.ok(keys.links?.includes(href), `a link without them: ${href}`);
+  }
+  noneEncoded("vimma_keys", keys);
+
+  const elements = await call(c, "agent-elements", { tab: id });
+  Assert.equal(elements.url, shown, "vimma_elements' page");
+  Assert.ok(
+    elements.elements.includes(`"action":"${DIR}file_vimma_agent_page.html?continue=${next}"`),
+    `the form's action, without them: ${elements.elements}`,
+  );
+  noneEncoded("vimma_elements", elements);
+
+  const read = await call(c, "agent-read", { tab: id });
+  Assert.equal(read.url, shown, "vimma_read_page's page");
+  Assert.ok(read.text.includes("Continue to the bank"), "the page's text was read");
+  noneEncoded("vimma_read_page", read);
+
+  const shot = await call(c, "agent-screenshot", { tab: id });
+  Assert.equal(shot.url, shown, "vimma_screenshot's page");
+  noneEncoded("vimma_screenshot", { ...shot, image: "" });
+
+  const console = await call(c, "agent-console", { tab: id });
+  Assert.equal(console.url, shown, "vimma_console's page");
+  noneEncoded("vimma_console", console);
+
   c.close();
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);

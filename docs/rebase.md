@@ -360,7 +360,11 @@ The generator stops when upstream has a term whose value says Firefox or Mozilla
 name that reads in the strings that use it, and a Mozilla product in `KEEP`. `e2e.yml` runs
 `tools/branding/test/brandings.test.ts` before the import (afterwards upstream's file is a link to
 ours and a CI engine has no history to read it from), so an autopilot PR whose new release changes
-`brandings.ftl` fails there until someone regenerates the file.
+`brandings.ftl` fails there until someone regenerates the file. On a Beta (the canary), that step
+regenerates the file from the Beta's for the run instead of requiring the committed one to be
+current, so the canary reports only an undecided term or a renamed term the Beta dropped (#858);
+a release bump still needs `npm run gen-brandings` run and committed (the autopilot does not
+commit it).
 
 **Upstream pref copies, checked.** `node tools/upstream/upstream-prefs.ts` (after the import)
 compares both copies below with the engine's and prints the line to paste for a stale one; exit

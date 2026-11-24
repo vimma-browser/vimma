@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Firefox's Bookmarks Toolbar (spec: docs/specs/bookmarks-toolbar-hidden.md): Vimma's words for
-// its three states, the notices, and when the one-time migration hides it.
+// its three states, the notices, when the one-time migration hides it, and when to say once
+// that the hidden toolbar hides it too.
 
 /** @typedef {"shown" | "hidden" | "newtab"} BookmarksToolbarSetting */
 /** @typedef {"always" | "never" | "newtab"} BookmarksToolbarVisibility */
@@ -46,13 +47,20 @@ const NOTICES = Object.freeze({
 
 /**
  * Behaviour 6: what a change made through Vimma says. While config.toml sets the key, the next
- * start applies it again (decision 4), so the notice says the change lasts until then.
+ * start applies it again (decision 4), so the notice says the change lasts until then. While
+ * Firefox's toolbar is hidden (its default, toolbar-toggle decision 3), the bookmarks toolbar
+ * hides with it (decision 8), so a notice that shows it says how to show the toolbar too.
  * @param {string} visibility  the pref's value after the change
  * @param {BookmarksToolbarSetting | null} configured  `[ui] bookmarks_toolbar`, null when unset
+ * @param {{ toolbarHidden?: boolean }} [options]  Firefox's toolbar is hidden
  */
-export function bookmarksToolbarNotice(visibility, configured) {
-  const text = NOTICES[/** @type {BookmarksToolbarVisibility} */ (visibility)] ?? NOTICES.always;
-  return configured ? `${text} (config.toml sets "${configured}"; until restart)` : text;
+export function bookmarksToolbarNotice(visibility, configured, { toolbarHidden = false } = {}) {
+  const key = /** @type {BookmarksToolbarVisibility} */ (
+    visibility in NOTICES ? visibility : "always"
+  );
+  const text = NOTICES[key];
+  const said = configured ? `${text} (config.toml sets "${configured}"; until restart)` : text;
+  return toolbarHidden && key !== "never" ? `${said}; the toolbar is hidden: :toolbar show` : said;
 }
 
 /**
@@ -63,4 +71,24 @@ export function bookmarksToolbarNotice(visibility, configured) {
  */
 export function needsMigration({ migrated, configured, userValue }) {
   return !migrated && configured === null && userValue !== null && userValue !== "never";
+}
+
+/** Decision 8, changed for issue #1399: said once, when the hidden toolbar hides what config.toml
+ * shows. */
+export const TOOLBAR_NOTICE =
+  "bookmarks toolbar hidden with the toolbar: :toolbar show shows both; " +
+  '[ui] toolbar = "shown" in config.toml keeps them';
+
+/**
+ * Decision 8, changed for issue #1399: config.toml shows the bookmarks toolbar but leaves
+ * `[ui] toolbar` out, so the hidden default (toolbar-toggle decision 3) hides it too. Said once:
+ * a `[ui] toolbar` line, either value, is a choice made knowing both. Not while the toolbar is
+ * shown (`:toolbar show` earlier in the session), where it would be wrong.
+ * @param {{ noticed: boolean, configured: BookmarksToolbarSetting | null,
+ *   toolbarSet: boolean, toolbarHidden: boolean }} state  `configured`:
+ *   `[ui] bookmarks_toolbar`, null when unset
+ */
+export function needsToolbarNotice({ noticed, configured, toolbarSet, toolbarHidden }) {
+  const shows = configured === "shown" || configured === "newtab";
+  return !noticed && !toolbarSet && toolbarHidden && shows;
 }

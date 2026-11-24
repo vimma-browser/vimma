@@ -52,7 +52,9 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_elements",
-          "arguments": { "tab": "$shop.result.structuredContent.tab" }
+          "arguments": {
+            "tab": "$shop.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace"
+          }
         },
         "as": "elems"
       }
@@ -73,7 +75,10 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_activate",
-          "arguments": { "tab": "$shop.result.structuredContent.tab", "label": "a" }
+          "arguments": {
+            "tab": "$shop.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
+            "label": "a"
+          }
         },
         "as": "basket"
       }
@@ -92,7 +97,10 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_activate",
-          "arguments": { "tab": "$shop.result.structuredContent.tab", "label": "s" }
+          "arguments": {
+            "tab": "$shop.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
+            "label": "s"
+          }
         },
         "as": "pay"
       }
@@ -126,7 +134,9 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_elements",
-          "arguments": { "tab": "$checkout.result.structuredContent.tab" }
+          "arguments": {
+            "tab": "$checkout.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace"
+          }
         },
         "as": "elems2"
       }
@@ -144,7 +154,10 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_activate",
-          "arguments": { "tab": "$checkout.result.structuredContent.tab", "label": "d" }
+          "arguments": {
+            "tab": "$checkout.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
+            "label": "d"
+          }
         },
         "as": "coupon"
       }
@@ -178,7 +191,9 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_elements",
-          "arguments": { "tab": "$hosted.result.structuredContent.tab" }
+          "arguments": {
+            "tab": "$hosted.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace"
+          }
         },
         "as": "elems3"
       }
@@ -196,7 +211,10 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_activate",
-          "arguments": { "tab": "$hosted.result.structuredContent.tab", "label": "a" }
+          "arguments": {
+            "tab": "$hosted.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
+            "label": "a"
+          }
         },
         "as": "hostedpay"
       }

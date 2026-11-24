@@ -98,6 +98,12 @@ pub enum ToolCall {
         tab: String,
         since: Option<u64>,
     },
+    /// bookmarklets B12: one of the user's bookmarklets, by its exact title, run in the tab.
+    /// A title only, never a URL or script.
+    Bookmarklet {
+        tab: String,
+        name: String,
+    },
 }
 
 /// An element list's filters (builtin-agent B2, agent-speed Behaviour 4): words its lines must

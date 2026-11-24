@@ -62,7 +62,8 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [m0-core-dispatcher](specs/m0-core-dispatcher.md), [m1-core-logic](specs/m1-core-logic.md),
   [key-handling-batch](specs/key-handling-batch.md), [firefox-keys](specs/firefox-keys.md),
   [m0-help-overlay](specs/m0-help-overlay.md), [m1-cmdline](specs/m1-cmdline.md),
-  [m2-statusbar-whichkey](specs/m2-statusbar-whichkey.md).
+  [m2-statusbar-whichkey](specs/m2-statusbar-whichkey.md), [site-unbind](specs/site-unbind.md),
+  [site-unbind-command](specs/site-unbind-command.md).
 - **The page:** [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [insert-focus](specs/insert-focus.md), [element-focus](specs/element-focus.md),
   [m1-hints](specs/m1-hints.md), [follow-link-switch](specs/follow-link-switch.md),
@@ -75,6 +76,7 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [tab-search](specs/tab-search.md), [m0-tabstrip-hidden](specs/m0-tabstrip-hidden.md),
   [m3-m4-core-prep](specs/m3-m4-core-prep.md), [m3-m4-core-models](specs/m3-m4-core-models.md),
   [m4-split-panes](specs/m4-split-panes.md), [multiple-splits](specs/multiple-splits.md),
+  [split-from-lone-tab](specs/split-from-lone-tab.md),
   [new-tab-in-split](specs/new-tab-in-split.md),
   [tiling-layouts](specs/tiling-layouts.md), [pane-focus-highlight](specs/pane-focus-highlight.md),
   [m4-side-panel-multiselect](specs/m4-side-panel-multiselect.md),
@@ -82,6 +84,7 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [side-panel-unsplit](specs/side-panel-unsplit.md).
 - **Workspaces:** [m3-workspaces](specs/m3-workspaces.md),
   [workspace-routing](specs/workspace-routing.md), [app-routes](specs/app-routes.md),
+  [routes-file](specs/routes-file.md),
   [private-workspace](specs/private-workspace.md), [private-swap](specs/private-swap.md),
   [private-swap-macos](specs/private-swap-macos.md).
 - **Config, theme and Firefox's own surfaces:** [m5-config-load](specs/m5-config-load.md),
@@ -91,12 +94,15 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [firefox-surfaces-theme](specs/firefox-surfaces-theme.md),
   [firefox-surfaces-trim](specs/firefox-surfaces-trim.md),
   [firefox-sidebar-theme](specs/firefox-sidebar-theme.md),
-  [toolbar-toggle](specs/toolbar-toggle.md),
+  [toolbar-toggle](specs/toolbar-toggle.md), [tab-line](specs/tab-line.md),
   [bookmarks-toolbar-hidden](specs/bookmarks-toolbar-hidden.md),
   [search-engines](specs/search-engines.md), [m7-a11y](specs/m7-a11y.md).
 - **Pages and features of Vimma's own:** [m5-about-vimma](specs/m5-about-vimma.md),
   [start-page](specs/start-page.md), [first-run-setup](specs/first-run-setup.md),
-  [bookmarks](specs/bookmarks.md), [downloads](specs/downloads.md),
+  [setup-v2](specs/setup-v2.md),
+  [bookmarks](specs/bookmarks.md), [bookmarklets](specs/bookmarklets.md),
+  [bookmark-open](specs/bookmark-open.md),
+  [downloads](specs/downloads.md),
   [addon-manager](specs/addon-manager.md), [wake-lock](specs/wake-lock.md).
 - **Control socket and vimma-ctl:** [m0-control-server](specs/m0-control-server.md),
   [m0-control-protocol-and-vimma-ctl](specs/m0-control-protocol-and-vimma-ctl.md),

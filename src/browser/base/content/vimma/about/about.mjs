@@ -61,6 +61,7 @@ const INSTALL_TYPES = /** @type {Record<string, string>} */ ({
   rpm: ".rpm",
   aur: "AUR vimma-bin",
   "pkgbuild-release": "the release's PKGBUILD",
+  pacman: "Vimma's pacman repository",
   flatpak: "Flatpak (Flathub)",
   packaged: "a package this version does not know",
   homebrew: "Homebrew cask",
@@ -159,10 +160,13 @@ function renderUpdates(u) {
   const body = [dl(rows)];
   if (u.offer) {
     const steps = u.offer.steps;
+    // Only a .deb's or .rpm's steps carry a note (core updateSteps); staged steps never do.
+    const note = "note" in steps ? steps.note : undefined;
     body.push(
       el("h3", {}, "How to update"),
       el("p", {}, steps.text),
       ...steps.commands.map((c) => el("pre", { class: "command" }, el("code", {}, c))),
+      ...(typeof note === "string" ? [el("p", { id: "update-note" }, note)] : []),
       el("p", {}, "Release notes: ", el("a", { href: steps.link }, steps.link)),
     );
   }
@@ -232,7 +236,6 @@ function render(d) {
     dl([
       ["Path", c.path],
       ["File", fileText],
-      field("Schema", c.schema ?? "-", "config-schema"),
       ["Overrides", String(d.bindings.filter((b) => b.overridden).length)],
     ]),
     ...(c.errors.length
@@ -391,7 +394,7 @@ function render(d) {
               el(
                 "tr",
                 r.skipped ? { class: "error" } : {},
-                el("td", {}, String(r.index)),
+                el("td", {}, r.line ? `${r.index} · ${routes.file}:${r.line}` : String(r.index)),
                 el("td", {}, r.match),
                 el("td", {}, r.workspace),
                 el(
@@ -408,7 +411,7 @@ function render(d) {
             ),
           ),
         )
-      : el("p", { class: "muted" }, "No [[routes]] in config.toml."),
+      : el("p", { class: "muted" }, `No [[routes]] in ${routes.file}.`),
     el("p", { id: "route-default" }, `[routing] default_workspace: ${dwText}`),
     el(
       "p",
@@ -443,7 +446,9 @@ function render(d) {
         "State",
         mcp.enabled
           ? `on${mcp.from === "config" ? " ([mcp] enabled in config.toml)" : " (:mcp on)"}`
-          : `off${mcp.from === "config" ? " ([mcp] enabled in config.toml)" : " (:mcp on turns it on)"}`,
+          : mcp.from === "session"
+            ? "off (:mcp off, until :mcp on or a restart)"
+            : `off${mcp.from === "config" ? " ([mcp] enabled in config.toml)" : " (:mcp on turns it on)"}`,
       ],
       // Decision 29: while MCP is on, each new full-control connection asks first.
       ["Full control", d.control.status],

@@ -44,12 +44,21 @@ dnf in a Fedora container and with zypper in an openSUSE container and starts it
 with `tools/package/rpm-smoke.sh`, and runs `makepkg -si` on the `PKGBUILD` in an Arch Linux
 container with `tools/package/arch-smoke.sh`; checks the release tarball's updater with
 `tools/update/check-build.ts`, and while `UPDATES_ENABLED` is `true` builds the complete MAR
-from it with a zeroed signature placeholder, `tools/update/mar.ts build`) → `mar-sign` (calls
+from it with a zeroed signature placeholder, `tools/update/mar.ts build`; while
+`PACKAGE_REPOS_ENABLED` is `true`, also builds the pacman package
+`vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst` from `dist/pacman/PKGBUILD` into the
+`packages-unsigned` artifact, never `dist/`, and installs it with `pacman -U`,
+`tools/package/arch-smoke.sh --pacman`) → `package-sign` (with
+`PACKAGE_REPOS_ENABLED`: calls `update-publish.yml`, whose job of that name signs the `.rpm`
+and the pacman package with the Cloud KMS package key, spec package-repositories, and writes
+`SHA256SUMS` again) → `packages` (no secret: both signatures verify under the committed
+certificate and `SHA256SUMS` is package's with the signed files,
+`tools/package/check-signed-packages.sh`; then adds the pacman package to the release) → `mar-sign` (calls
 `update-publish.yml`, whose job of that name signs the MAR with the Cloud KMS update key; see
 "Update signing keys and the update host", step 8) → `mar` (no secret: the signed MAR differs
 from package's only in its signature, verifies under `configs/updater/` with `mar.ts` and with
-the build's own `signmar`, and joins `SHA256SUMS`) → `sign` (cosign; with `mar-sign`, the only
-jobs with `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
+the build's own `signmar`, and joins `SHA256SUMS`) → `sign` (cosign; with `mar-sign` and
+`package-sign`, the only jobs with `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
 `release-failure` issue). `aur.yml`, on publish: `aur` (no GitHub token; the SSH key only) →
 `failure`. `homebrew.yml`, on publish: `start` (`actions: write`, and `contents: read` to read the release; starts `main`'s copy for

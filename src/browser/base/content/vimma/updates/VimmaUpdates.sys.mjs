@@ -29,8 +29,11 @@ import {
   judgeManifest,
   OFF_NOTICE_MS,
   offNotice,
-  offerAssets,
   parseManifest,
+  REPOSITORY_FILES,
+  savedKey,
+  savedOffer,
+  savedSerial,
   staleDays,
   updateNotice,
   updateSteps,
@@ -49,7 +52,9 @@ import { checkDue } from "../core/update-notices.mjs";
 // The control socket's `state.update` names the same outcomes (m6a-updater, decision 41).
 import { UPDATE_OUTCOMES as OUTCOMES } from "../core/control.mjs";
 
-/** @import { InstallType, Offer, PinnedKey, UpdateNotice } from "../core/updates.mjs" */
+/**
+ * @import { InstallType, Offer, PinnedKey, Repositories, UpdateNotice } from "../core/updates.mjs"
+ */
 /** @import { Stage } from "../core/update-notices.mjs" */
 
 /**
@@ -78,6 +83,14 @@ const INTERVAL_PREF = "app.update.interval";
 /** Test-only, honoured only in automation: extra pinned keys, and the install type. */
 const TEST_KEYS_PREF = "vimma.update.testKeys";
 const TEST_TYPE_PREF = "vimma.update.installType";
+/** Test-only, honoured only in automation: a directory standing in for `/` (REPOSITORY_FILES). */
+const TEST_REPO_ROOT_PREF = "vimma.update.testRepoRoot";
+/**
+ * The `.deb` and `.rpm` hint's line pointing at the guide's repository section (spec
+ * package-repositories, decisions 22 and 25), off until the repositories and that section are
+ * published: until then the line would point at nothing.
+ */
+const REPO_HINT_PREF = "vimma.feature.packageRepos";
 /**
  * After the first window's delayed startup (`browser-delayed-startup-finished`): late enough not
  * to compete with session restore, early enough that a due check is not hours away.
@@ -279,6 +292,26 @@ async function detectInstall() {
   return { type, installDir: gre, appImage, appDir, marker, forced: false };
 }
 
+/**
+ * Which package repositories are set up (spec package-repositories, decision 18), for a `.deb`
+ * or `.rpm` only: whether each fixed file exists, never what it holds. Read at each look, so a
+ * repository set up while Vimma runs counts at the next `:update`.
+ * @param {InstallType} type
+ * @returns {Promise<Repositories>}
+ */
+async function repositories(type) {
+  if (type !== "deb" && type !== "rpm") return {};
+  const root = inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";
+  /** @param {string} path */
+  const exists = (path) => IOUtils.exists(`${root}${path}`).catch(() => false);
+  const [apt, dnf, zypper] = await Promise.all([
+    exists(REPOSITORY_FILES.apt),
+    exists(REPOSITORY_FILES.dnf),
+    exists(REPOSITORY_FILES.zypper),
+  ]);
+  return { apt, dnf, zypper };
+}
+
 /** @returns {PinnedKey[]} */
 function pinnedKeys() {
   /** @type {PinnedKey[]} */
@@ -434,16 +467,9 @@ function load() {
   try {
     const saved = JSON.parse(Services.prefs.getStringPref(LAST_PREF, "null"));
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
-    const offer = saved.offer;
-    const valid =
-      offer &&
-      /^\d+\.\d+(?:\.\d+)?(?:[ab]\d+)?$/.test(offer.appVersion) &&
-      /^\d{1,16}$/.test(offer.buildId) &&
-      /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/.test(offer.displayVersion) &&
-      typeof offer.detailsUrl === "string" &&
-      offer.detailsUrl.startsWith("https://") &&
-      typeof offer.urgent === "boolean" &&
-      Array.isArray(offer.advisories);
+    // Each field must be a string of the manifest's own form, never an array whose text matches
+    // (#1237); a malformed offer is dropped whole.
+    const offer = savedOffer(saved.offer);
     const checkedAt = Number.isFinite(saved.checkedAt) ? saved.checkedAt : null;
     const outcome = OUTCOMES.includes(saved.outcome) ? saved.outcome : "never";
     state = {
@@ -457,9 +483,9 @@ function load() {
           : null,
       outcome,
       reason: typeof saved.reason === "string" ? saved.reason : null,
-      offer: valid && !alreadyHave(offer) ? { ...offer, assets: offerAssets(offer.assets) } : null,
-      serial: /^\d{14}$/.test(saved.serial) ? saved.serial : null,
-      key: saved.key && typeof saved.key.id === "string" ? saved.key : null,
+      offer: offer && !alreadyHave(offer) ? offer : null,
+      serial: savedSerial(saved.serial),
+      key: savedKey(saved.key),
       refusals: Number.isInteger(saved.refusals) ? saved.refusals : 0,
     };
     if (state.outcome === "offer" && !state.offer) state.outcome = "current";
@@ -651,11 +677,12 @@ async function checkNow(asked) {
  * Only requests from chrome with no browsing context (Firefox's downloader) and only to a URL
  * the verified offer named, or a redirect from one, are touched; a page's own request to the
  * same URL is left as it is.
- * @param {any} subject @param {string} topic
+ * @param {unknown} subject  an http-on-* topic's, which is always an nsIHttpChannel
+ * @param {string} topic
  */
 function onMarRequest(subject, topic) {
   if (!marUrls.size) return;
-  const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+  const channel = /** @type {nsISupports} */ (subject).QueryInterface(Ci.nsIHttpChannel);
   if (!marUrls.has(channel.URI.spec)) return;
   const info = channel.loadInfo;
   if (!info.loadingPrincipal?.isSystemPrincipal || info.browsingContextID) return;
@@ -1170,6 +1197,7 @@ export const VimmaUpdates = {
   async describe() {
     const where = await installInfo();
     const { offer } = state;
+    const repos = offer ? await repositories(where.type) : {};
     return {
       enabled: enabled(),
       from: offFrom(),
@@ -1190,6 +1218,8 @@ export const VimmaUpdates = {
                 : updateSteps(where.type, offer, {
                     ...where,
                     writable: firefoxMode() ? firefox().canApply : undefined,
+                    repos,
+                    repoHint: Services.prefs.getBoolPref(REPO_HINT_PREF, false),
                   }),
           }
         : null,

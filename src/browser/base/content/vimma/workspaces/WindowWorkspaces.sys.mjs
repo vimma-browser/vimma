@@ -50,15 +50,35 @@ import { CHANGED_TOPIC, WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 /** @import { TabLabels } from "../core/tablabels.mjs" */
 
 /**
- * @typedef {"E10SUtils" | "PrivateBrowsingUtils" | "SessionStore" | "WorkspaceRouter"} LazyName
+ * @typedef {"ContextualIdentityService" | "E10SUtils" | "PrivateBrowsingUtils" | "SessionStore"
+ *   | "WorkspaceRouter"} LazyName
  */
 const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  ContextualIdentityService:
+    "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs",
   E10SUtils: "resource://gre/modules/E10SUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
   WorkspaceRouter: "chrome://browser/content/vimma/workspaces/WorkspaceRouter.sys.mjs",
 });
+
+/** Sent by ContextualIdentityService when a container is renamed or restyled. */
+const IDENTITY_UPDATED_TOPIC = "contextual-identity-updated";
+
+/**
+ * Sets the element's one `identity-<kind>-<value>` class, as Tabbrowser's indicator does.
+ * @param {Element} element
+ * @param {"color" | "icon"} kind
+ * @param {string} value
+ */
+function replaceIdentityClass(element, kind, value) {
+  const prefix = `identity-${kind}-`;
+  for (const name of [...element.classList]) {
+    if (name.startsWith(prefix) && name !== prefix + value) element.classList.remove(name);
+  }
+  element.classList.add(prefix + value);
+}
 
 /** The window value holding core's snapshot. */
 export const WINDOW_KEY = "vimma-workspaces";
@@ -240,6 +260,12 @@ export class WindowWorkspacesImpl {
   #saveQueued = false;
   /** The window value as last written, to tell our own value from a restored one. */
   #written = "";
+  /**
+   * The saved splits (in uuids) of each workspace not shown since the last restore, kept out of
+   * PaneView until it is (#unpark), so that their tabs stay lazy.
+   * @type {Map<string, Splits>}
+   */
+  #unvisited = new Map();
   #onChange;
   #notify;
   /**
@@ -263,6 +289,7 @@ export class WindowWorkspacesImpl {
     win.addEventListener("focus", this.#onFocus, true);
     Services.obs.addObserver(this.#observer, CHANGED_TOPIC);
     Services.obs.addObserver(this.#windowRestored, WINDOW_RESTORED_TOPIC);
+    Services.obs.addObserver(this.#identityUpdated, IDENTITY_UPDATED_TOPIC);
     this.ready = this.#start().catch((e) => console.error("vimma: no workspaces", e));
   }
 
@@ -275,6 +302,7 @@ export class WindowWorkspacesImpl {
     this.#win.clearTimeout(this.#stuckTimer);
     Services.obs.removeObserver(this.#observer, CHANGED_TOPIC);
     Services.obs.removeObserver(this.#windowRestored, WINDOW_RESTORED_TOPIC);
+    Services.obs.removeObserver(this.#identityUpdated, IDENTITY_UPDATED_TOPIC);
     this.#win.gBrowser?.removeTabsProgressListener(this.#progress);
     const view = PaneViews.get(this.#win);
     if (view) {
@@ -315,6 +343,9 @@ export class WindowWorkspacesImpl {
         active: () => /** @type {Workspaces} */ (this.#model).active,
         busy: () => !this.#model || this.#switching || this.#pending,
         notify: (text) => this.#notify(text),
+        // Only a uuid already given: a tab event must not hand out new ones (#rereadIds does).
+        idOf: (tab) => this.#ids.get(tab) ?? "",
+        tabOf: (id) => this.#tab(id) ?? null,
       };
     }
     // A restore under way builds on its SSWindowStateReady, from the restored values.
@@ -593,11 +624,15 @@ export class WindowWorkspacesImpl {
         return;
       case "SSWindowStateReady":
         this.#endPending();
-        // A switch that selects a lazy tab makes SessionStore restore it inside the switch
-        // (insertBrowser, then #restoreTab), which can send this before the switch has selected
-        // that tab: a rebuild then would read the old selection and switch back. Run it after.
-        if (this.#started && this.#switching) this.#win.queueMicrotask(() => this.#reconcile());
-        else if (this.#started) this.#reconcile();
+        // Selecting a lazy or unloaded tab makes SessionStore restore it inside the selection
+        // (insertBrowser, then #restoreTab), which sends this before the selection is done,
+        // inside our own switch or inside Firefox's (#midSelection). A rebuild then would read
+        // the old selection and switch back, or focus the old tab's page, which selects that
+        // tab again (tabbox.js's focus handler) with no TabSelect: the new tab never showed
+        // (issue #1333). Run it after.
+        if (this.#started && (this.#switching || this.#midSelection())) {
+          this.#win.queueMicrotask(() => this.#reconcile());
+        } else if (this.#started) this.#reconcile();
         return;
       case "SSWindowClosing":
         this.#save();
@@ -752,8 +787,50 @@ export class WindowWorkspacesImpl {
     if (this.#model && !this.#win.closed && !this.#pending) this.#sync();
   };
 
+  /**
+   * Observer: a container was renamed or restyled, as `:wsrename` does to its workspace's. Firefox
+   * restyles that container's tabs (Tabbrowser's observe) but leaves the address bar's container
+   * label as it was until the next tab switch (issue #1272); this redraws the label, its tooltip,
+   * colour and icon the way Tabbrowser's #updateUserContextUIIndicator does, when the selected
+   * tab is in that container. It runs in every window, with or without workspaces, since any
+   * container can be renamed (also in Settings).
+   */
+  #identityUpdated = (/** @type {unknown} */ subject) => {
+    const win = this.#win;
+    const ucid = /** @type {{ wrappedJSObject?: ContextualIdentity } | null} */ (subject)
+      ?.wrappedJSObject?.userContextId;
+    if (win.closed || !ucid) return;
+    const browser = win.gBrowser?.selectedBrowser;
+    if (browser?.getAttribute("usercontextid") !== String(ucid)) return;
+    const CIS = lazy.ContextualIdentityService;
+    const identity = CIS.getPublicIdentityFromId(ucid);
+    const doc = win.document;
+    const box = doc.getElementById("userContext-icons");
+    const label = doc.getElementById("userContext-label");
+    const indicator = doc.getElementById("userContext-indicator");
+    if (!identity || !box || !label || !indicator) return;
+    const text = CIS.getUserContextLabel(ucid);
+    label.textContent = text;
+    box.setAttribute("tooltiptext", text);
+    replaceIdentityClass(box, "color", identity.color);
+    replaceIdentityClass(indicator, "icon", identity.icon);
+  };
+
   get #gBrowser() {
     return this.#win.gBrowser;
+  }
+
+  /**
+   * Firefox is selecting a tab: tabbox.js's selectedIndex has unmarked the old tab and marked the
+   * new one, and gBrowser.selectedTab still names the old one until the panel's select event.
+   * This relies on that engine order (tabbox.js MozTabs `set selectedIndex`, then
+   * `getRelatedElement` inserting the browser, then tabpanels' select event running
+   * Tabbrowser's updateCurrentBrowser); after a Firefox bump that changes it,
+   * browser_vimma_split_unloaded_tab.js selecting_it_with_focus_nowhere_shows_its_split fails.
+   */
+  #midSelection() {
+    const tab = this.#gBrowser?.selectedTab;
+    return !!tab && !tab.selected;
   }
 
   /** @param {Tab} tab */
@@ -946,43 +1023,95 @@ export class WindowWorkspacesImpl {
   }
 
   /**
-   * Hands the snapshot's pane trees to the window's PaneView, with the panel ids PaneView uses;
-   * a lazy member gets its browser (not loaded), as Firefox's split view gives it on
-   * activation. Returns whether it did.
+   * Hands the shown workspace's saved pane trees to the window's PaneView, with the panel ids
+   * PaneView uses, and keeps every other workspace's until it is shown. Returns whether it did.
    * @param {Workspaces} saved
    * @param {Workspaces} model  the rebuilt model
    */
   #restorePanes(saved, model) {
     const view = PaneViews.get(this.#win);
     if (!view) return false;
+    this.#unvisited = new Map();
     /** @type {Map<string, Splits>} */
     const trees = new Map();
     for (const w of saved.workspaces) {
-      const ours = findWorkspace(model, { id: w.id });
-      if (!ours) continue;
-      const panel = (/** @type {string} */ id) => {
-        const tab = this.#tab(id);
-        if (!tab || !ours.tabs.includes(id)) return undefined;
-        if (!tab.linkedPanel) this.#gBrowser.insertBrowser(tab);
-        return tab.linkedPanel ?? undefined;
-      };
       // Every split with its number, which one shows and which showed last
       // (docs/specs/multiple-splits.md behaviour 10).
       const own = splitsOf(w);
-      /** @type {NumberedSplit[]} */
-      const list = [];
-      for (const x of own.splits) {
-        const tree = mapTree(x, panel);
-        if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
-      }
-      const kept = (/** @type {number | null} */ n) =>
-        n !== null && list.some((x) => x.number === n) ? n : null;
-      if (list.length) {
-        trees.set(w.id, { splits: list, shown: kept(own.shown), last: kept(own.last) });
+      if (!own.splits.length || !findWorkspace(model, { id: w.id })) continue;
+      // Another workspace's splits stay in uuids until it is first shown (#unpark): giving their
+      // lazy tabs browsers now made SessionStore restore them in the background, and its next
+      // save wrote them without their scroll position and form data (issue #1305).
+      if (w.id !== model.active) this.#unvisited.set(w.id, own);
+      else {
+        const panels = this.#panelSplits(model, w.id, own);
+        if (panels) trees.set(w.id, panels);
       }
     }
     view.restore(trees, model.active);
     return true;
+  }
+
+  /**
+   * Workspace `id`'s saved splits `own` (in uuids) in the ids PaneView uses, or null when none is
+   * left: a loaded tab's panel, a lazy tab's uuid. Nothing gets a browser here: PaneView gives
+   * them to a split once it is on screen (#asCurrent), so the others, and a current split kept
+   * as a hidden view, stay lazy. A browser makes SessionStore restore the tab in the background,
+   * and its next save then writes it without its scroll position and form data (issues #1305,
+   * #1318, #1332).
+   * A tab gone or no longer in the workspace leaves its split.
+   * @param {Workspaces} model
+   * @param {string} id
+   * @param {Splits} own
+   * @returns {Splits | null}
+   */
+  #panelSplits(model, id, own) {
+    const ours = findWorkspace(model, { id });
+    if (!ours) return null;
+    const panel = (/** @type {string} */ uuid) => {
+      const tab = this.#tab(uuid);
+      if (!tab || !ours.tabs.includes(uuid)) return undefined;
+      return tab.linkedPanel || uuid;
+    };
+    /** @type {NumberedSplit[]} */
+    const list = [];
+    for (const x of own.splits) {
+      const tree = mapTree(x, panel);
+      if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
+    }
+    const kept = (/** @type {number | null} */ n) =>
+      n !== null && list.some((x) => x.number === n) ? n : null;
+    return list.length ? { splits: list, shown: kept(own.shown), last: kept(own.last) } : null;
+  }
+
+  /**
+   * Hands workspace `id`'s restored splits to PaneView as it is about to be shown, if it has not
+   * been since the restore.
+   * @param {Workspaces} model
+   * @param {string} id
+   */
+  #unpark(model, id) {
+    const own = this.#unvisited.get(id);
+    if (!own) return;
+    const panels = this.#panelSplits(model, id, own);
+    if (panels) PaneViews.get(this.#win)?.park(id, panels);
+    // Only once PaneView holds them: a conversion that throws keeps them for the next save.
+    this.#unvisited.delete(id);
+  }
+
+  /**
+   * The saved splits (in uuids) of workspace `id` while it has not been shown since a restore,
+   * without the tabs that closed or left it since (a split left with one pane ends); null when
+   * none is left, and for any other workspace, whose splits PaneView holds.
+   * @param {string} id
+   * @returns {Splits | null}
+   */
+  unvisitedSplits(id) {
+    const own = this.#unvisited.get(id);
+    const w = own && this.#model && findWorkspace(this.#model, { id });
+    if (!own || !w) return null;
+    const { splits, shown, last } = withSplits(w, own, (u) => u);
+    return splits?.length ? { splits, shown: shown ?? null, last: last ?? null } : null;
   }
 
   /**
@@ -1131,6 +1260,7 @@ export class WindowWorkspacesImpl {
       if (defs.some((d) => d.id === w.id) || model.workspaces.length === 1) continue;
       const { state, closedTabs } = deleteWorkspace(model, { id: w.id });
       model = state;
+      this.#unvisited.delete(w.id);
       orphans = [...orphans, ...closedTabs];
     }
     const agentId = WorkspaceStore.agent?.id;
@@ -1207,6 +1337,7 @@ export class WindowWorkspacesImpl {
     this.#model = next;
     this.#switching = true;
     try {
+      if (prev.active !== next.active) this.#unpark(next, next.active);
       view?.swap(prev.active, next.active);
       const target = activeWorkspace(next);
       if (!target.activeTab) this.#openHome(target.id, Number(target.container));
@@ -1337,12 +1468,16 @@ export class WindowWorkspacesImpl {
   #withPanes(model) {
     const view = PaneViews.get(this.#win);
     if (!view) return model;
+    // A panel, or a lazy tab's uuid in a split that is not the current one (#panelSplits).
     const uuid = (/** @type {string} */ panel) => {
       const tab = this.#gBrowser.tabs.find((t) => t.linkedPanel === panel && this.#live(t));
-      return tab ? this.#idOf(tab) : undefined;
+      if (tab) return this.#idOf(tab);
+      return this.#tab(panel) ? panel : undefined;
     };
     /** @type {WorkspaceState[]} */
     const workspaces = model.workspaces.map((w) => {
+      const unvisited = w.id === model.active ? undefined : this.#unvisited.get(w.id);
+      if (unvisited) return withSplits(w, unvisited, (id) => id);
       const splits = w.id === model.active ? view.splits : view.parkedSplits(w.id);
       return withSplits(w, splits, uuid);
     });

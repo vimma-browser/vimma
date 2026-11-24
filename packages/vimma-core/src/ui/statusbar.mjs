@@ -78,10 +78,9 @@ function paneText({ index, count, hidden, split, splits = 1 }) {
  * @property {readonly string[]} [alerts]  persistent errors (containers off: no workspaces)
  * @property {FindStatus | null} [find]          the current `/` or `?` find (spec m1-find)
  * @property {{ waiting: number, minutes: number | null, ran: boolean, builtin?: string | null }
- *   | null} [agent]  local AI
- *   agents (docs/specs/vimma-mcp.md decision 24): questions waiting, the shortest grant's
- *   minutes left (Infinity for a grant of the whole connection), a request that just ran, and
- *   the built-in agent's running tasks (docs/specs/builtin-agent.md Behaviour 35)
+ *   | null} [agent]  AI agents (docs/specs/vimma-mcp.md decision 24): questions waiting, the
+ *   shortest grant's minutes left (Infinity for a grant of the whole connection), a request that
+ *   just ran, and the built-in agent's running tasks (docs/specs/builtin-agent.md Behaviour 35)
  * @property {boolean} [toolbarHidden]  Firefox's toolbar is hidden (docs/specs/toolbar-toggle.md):
  *   the bar then carries its security and private-browsing cues; shown, those are left out
  * @property {SecurityLevel} [security]  the selected page's connection (securityFromState)
@@ -97,6 +96,9 @@ function paneText({ index, count, hidden, split, splits = 1 }) {
  *   (popups.mjs popupCue, docs/specs/popup-blocked.md)
  * @property {import("./downloads.mjs").DownloadSegment | null} [downloads]  the window's
  *   downloads (downloads.mjs downloadSegment, docs/specs/downloads.md decision 9)
+ * @property {boolean} [tabLineHasTab]  the tab line is drawn and `[statusbar] tab = false`: the
+ *   line shows the tab's place and name, so the bar leaves them out (docs/specs/tab-line.md
+ *   decision 16); the URL stays
  */
 /**
  * A hint session (docs/specs/follow-link-switch.md decision 8): its action, and the first label
@@ -379,6 +381,7 @@ export function statusSegments(input) {
     popups = null,
     pdf = null,
     downloads = null,
+    tabLineHasTab = false,
   } = input;
   /** @type {Segment[]} */
   const left = [];
@@ -459,7 +462,7 @@ export function statusSegments(input) {
     );
   }
   let urlShownAsTitle = false;
-  if (tab) {
+  if (tab && !tabLineHasTab) {
     left.push(
       seg({
         id: "tab",
@@ -483,7 +486,7 @@ export function statusSegments(input) {
       }),
     );
   }
-  if (tab) {
+  if (tab && !tabLineHasTab) {
     const title = displayLabel(tab);
     // Toolbar hidden: the URL is the origin indicator, so a title cannot stand in for it.
     urlShownAsTitle = !toolbarHidden && !!tab.url && title === tab.url;
@@ -496,7 +499,8 @@ export function statusSegments(input) {
     right.push(seg({ id: "loading", text, fg: "--vimma-fg-dim", side: "right", priority: 6 }));
   }
   if (configErrors.length) {
-    const first = formatConfigError(/** @type {ConfigError} */ (configErrors[0]), configFile);
+    const e = /** @type {ConfigError} */ (configErrors[0]);
+    const first = formatConfigError(e, e.file ?? configFile);
     const n = configErrors.length;
     right.push(
       seg({

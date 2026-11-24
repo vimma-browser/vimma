@@ -1,0 +1,33 @@
+{
+  "description": "a sleeping tab is listed asleep: true and named by its workspace uuid (tab-sleep, behaviour 15)",
+  "kind": "response",
+  "command": "state",
+  "message": {
+    "type": "response",
+    "id": 2,
+    "ok": true,
+    "result": {
+      "mode": "normal",
+      "pending": null,
+      "workspace": "work",
+      "tabs": [
+        {
+          "id": "12",
+          "url": "https://example.com/",
+          "title": "Example Domain",
+          "selected": true,
+          "loading": false
+        },
+        {
+          "id": "{0f3c2a14-6d1b-4c55-9e7a-2b8f7d1e4a90}",
+          "url": "https://example.org/",
+          "title": "Example Org",
+          "selected": false,
+          "loading": false,
+          "asleep": true
+        }
+      ],
+      "panes": null
+    }
+  }
+}

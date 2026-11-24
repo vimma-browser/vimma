@@ -1,7 +1,7 @@
 ## 1. Control socket (`ctl/VimmaControl.sys.mjs`)
 
 Lets `vimma-ctl` and scripts drive Vimma: send keys, read state, open a URL, reload the theme.
-Since protocol 2 it also lets local AI agents use the agent workspace (the `agent` role, §12).
+Since protocol 2 it also lets AI agents use the agent workspace (the `agent` role, §12).
 Specs: [m0-control-server](../specs/m0-control-server.md),
 [m0-control-protocol-and-vimma-ctl](../specs/m0-control-protocol-and-vimma-ctl.md),
 [vimma-mcp](../specs/vimma-mcp.md), [ADR-007](../adr/007-control-socket.md),
@@ -11,7 +11,8 @@ Specs: [m0-control-server](../specs/m0-control-server.md),
 (you, or root) gets past the handshake. Pages and extensions cannot speak the protocol (an HTTP
 request is refused). A connection's hello picks its role. With the `full` role, whoever holds the
 token is treated as you: `send-keys` can do anything your keyboard can. The `agent` role reaches
-only the agent workspace, and every request asks you first (§12).
+only the agent workspace, and each request waits for your yes or runs under a grant you gave
+(§12).
 
 - S1. The socket **must** be off by default and start or stop only with the pref
   `vimma.control.enabled` or `vimma.mcp.enabled` (`:mcp on`, `[mcp] enabled`). Either one starts
@@ -44,12 +45,13 @@ only the agent workspace, and every request asks you first (§12).
   but not the 4 agents, so MCP agents cannot keep out a task Vimma started; a ticket has one
   connection at a time (M51).
   [`test_limits`](../../tests/browser/browser_vimma_control.js),
+  [`test_vimma_ctl_end_to_end`](../../tests/browser/browser_vimma_control.js),
   [`test_agents_cannot_take_every_connection`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`test_mcp_agents_cannot_keep_out_a_ticket`](../../tests/browser/browser_vimma_agent_cli.js)
 - S6. A token file left by a crash **must** be removed at start; a symlink or directory in its
   place is never followed. [`test_stale_discovery_file_removed_at_start`](../../tests/browser/browser_vimma_control.js)
 - S7. Only the commands of the connection's role **must** run (`full`: the four of protocol 1;
-  `agent`: the seven agent commands); anything else, and any unknown argument, is refused.
+  `agent`: the agent commands, `AGENT_COMMANDS` in `control.mjs`); anything else, and any unknown argument, is refused.
   [`test_handshake`](../../tests/browser/browser_vimma_control.js),
   [`protocol version 1 with the commands of ADR-007`](../../packages/vimma-core/test/control.test.ts),
   [`protocols 1 and 2, two roles, the agent commands apart from v1's`](../../packages/vimma-core/test/control-v2.test.ts),
@@ -82,7 +84,12 @@ only the agent workspace, and every request asks you first (§12).
   `null` unless that tab shows the viewer; it **never** carries the page, the page count, the
   document's title or URL, or the outline, and is `null` in a private window. The viewer's own
   report of its drawing (section 20, V6) only ever turns that flag; a viewer that lies about it
-  (its drawing, size or zoom) changes when a script's wait ends, nothing else. Reading the mode
+  (its drawing, size or zoom) changes when a script's wait ends, nothing else. Its `setup` field
+  is the screen the setup page draws, a word from a closed list (`welcome`, a step's id, `loading`, `stop`),
+  and `null` unless the selected tab shows that page; it **never** carries a choice, a search, a
+  line a step writes or what was saved, and is `null` in a private window. A tab's `asleep` is
+  one flag, `true` or left out, read from the tab's attributes so that it never loads a sleeping
+  tab; it names no page, so a private window keeps it. Reading the mode
   writes nothing: a resize mode left with no panes is reported as the mode it would be without
   resize, and its flag is cleared where the panes change (the last pane closes, the split hides),
   never by a read; the status bar's own bookkeeping (the update segment's timer) does not run for
@@ -98,6 +105,7 @@ only the agent workspace, and every request asks you first (§12).
   [`controlUpdateState keeps only the fields the protocol names (m6a-updater 41)`](../../packages/vimma-core/test/control.test.ts),
   [`the_private_workspace_keeps_two_splits_and_state_names_no_page`](../../tests/browser/browser_vimma_private_workspace.js),
   [`control_state_never_inserts_a_lazy_tab`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`state_lists_asleep_true_for_a_sleeping_tab_and_does_not_load_it`](../../tests/browser/browser_vimma_control_state_read.js),
   [`vimma_ctl_state_withholds_private_urls_and_titles`](../../tests/browser/browser_vimma_private_workspace.js),
   [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../../tests/browser/browser_vimma_private_workspace.js),
   [`notice, prompt, chat and agent, when present, are flags and counts only`](../../packages/vimma-core/test/control.test.ts),
@@ -113,7 +121,9 @@ only the agent workspace, and every request asks you first (§12).
   [`test_state_reports_a_grep_jump_until_it_has_drawn`](../../tests/browser/browser_vimma_state_waits.js),
   [`pdf is one flag, or null`](../../packages/vimma-core/test/control.test.ts),
   [`pdfDrawn`](../../packages/vimma-core/test/pdf.test.ts),
-  [`test_state_reports_the_pdf_viewer_as_drawn`](../../tests/browser/browser_vimma_state_waits.js)
+  [`test_state_reports_the_pdf_viewer_as_drawn`](../../tests/browser/browser_vimma_state_waits.js),
+  [`setup is the screen drawn, as a fixed word, or null`](../../packages/vimma-core/test/control.test.ts),
+  [`test_state_reports_the_setup_screen`](../../tests/browser/browser_vimma_state_waits.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../../tests/browser/browser_vimma_control.js),
@@ -182,3 +192,16 @@ only the agent workspace, and every request asks you first (§12).
   [`a_discovery_file_whose_pid_has_exited_is_stale_on_every_unix`](../../tools/vimma-ctl/src/discovery.rs),
   [`ps_tells_a_running_pid_from_an_exited_one`](../../tools/vimma-ctl/src/discovery.rs),
   [`name_from_ps_keeps_the_executable_name`](../../tools/vimma-ctl/src/mcp_serve.rs)
+- S15. A `send-keys` whose key opens a dialog that Firefox runs in a nested event loop ("Leave
+  page?", a window's prompt) **must** answer once the dialog is up (`dialog: true`) and press
+  none of its later keys; the window's keyboard input **never** stays held by it, so a later
+  `send-keys` can answer the dialog. A later `send-keys` **must** start with no modifier held,
+  so the waiting key's own (the ctrl of `ctrl+f4`) never reaches the answer. This adds no
+  reach: the keys are the same `full`-role command, which an agent connection never reaches
+  (S12), and a dialog takes them only after its arming wait, as it does a keyboard's. Known gap:
+  a dialog in a window of its own, or a nested event loop with no `dialogopen`, still holds that
+  `send-keys`' answer and its connection's later requests until it ends; another connection's
+  `send-keys` can still answer it.
+  [`test_send_keys_answer_the_dialog_they_open`](../../tests/browser/browser_vimma_control.js),
+  [`test_send_keys_answer_with_no_modifier_held`](../../tests/browser/browser_vimma_control.js),
+  [`send_keys_says_when_a_key_opened_a_dialog`](../../tools/vimma-ctl/tests/cli.rs)

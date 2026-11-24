@@ -51,7 +51,7 @@ add_task(async function control_state_is_read_only() {
   Assert.equal(snapshot(), before, "state changes no tab, selection, mode or workspace");
   Assert.deepEqual(second, first, "and asking twice gives the same answer");
   Assert.ok(
-    first.tabs.some((/** @type {any} */ t) => t.selected && t.url === `${PAGE}?state`),
+    first.tabs.some((t) => t.selected && t.url === `${PAGE}?state`),
     "sanity: it reports the window",
   );
   while (gBrowser.tabs.length > 1)
@@ -65,10 +65,17 @@ add_task(async function control_state_never_inserts_a_lazy_tab() {
     triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
   });
   Assert.ok(!lazy.linkedPanel, "sanity: the tab is lazy");
-  const entry = VimmaControl._commands
-    .state()
-    .tabs.find((/** @type {any} */ t) => t.id === String(lazy.linkedBrowser.browserId));
+  // By its place: a lazy tab's id is its workspace uuid until it loads (#1332).
+  const index = gBrowser.visibleTabs.indexOf(lazy);
+  Assert.ok(index >= 0, "sanity: the lazy tab is listed");
+  const entry = VimmaControl._commands.state().tabs.find((t) => t.index === index);
   Assert.ok(!lazy.linkedPanel, "state leaves the lazy tab without a browser");
+  Assert.equal(entry?.url, `${PAGE}?lazy`, "the row is the lazy tab's");
+  // Its workspace uuid: the browser id it does not have yet is 0 for every lazy tab (#1332).
+  Assert.ok(
+    /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(entry?.id ?? ""),
+    `named by its workspace uuid, not "0": ${entry?.id}`,
+  );
   Assert.strictEqual(entry?.loading, false, "and reports it as not loading");
   BrowserTestUtils.removeTab(lazy);
 });
@@ -114,8 +121,8 @@ add_task(async function route_add_creates_a_private_config_toml() {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
   await ConfigHost.reload();
 
-  const why = await ConfigHost.addRoute({ domain: "example.org", workspace: 'x" [keys] y = "z' });
-  Assert.equal(why, null, "the rule is written");
+  const r = await ConfigHost.addRoute({ domain: "example.org", workspace: 'x" [keys] y = "z' });
+  Assert.deepEqual(r, { added: "config.toml" }, "the rule is written");
   Assert.equal((await IOUtils.stat(file)).permissions, 0o600, "a new config.toml is 0600");
   Assert.equal(
     (await IOUtils.stat(/** @type {string} */ (PathUtils.parent(file)))).permissions,
@@ -148,7 +155,8 @@ add_task(async function agent_keys_never_reach_the_prefix_the_command_line_or_mc
   );
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
   await VimmaControl.settled();
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  // MCP is on, so the agent workspace exists, with its container.
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const tab = gBrowser.addTab(PAGE, {
     userContextId: agent.userContextId,
     triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
@@ -195,13 +203,74 @@ add_task(async function agent_clicks_never_synthesise_input_or_user_activation()
     "actors/page-scroll.mjs",
   ];
   const forbidden =
-    /\bsend(?:Native)?(?:Mouse|Touch|Wheel|Key|Pointer)\w*\b|\bsynthesize\w*|\bnotifyUserGestureActivation\b/g;
+    /\bsend(?:Native)?(?:Mouse|Touch|Wheel|Key|Pointer)\w*\b|\bsynthesize\w*|\bnotifyUserGestureActivation\b|\bsetHandlingUserInput\b/g;
   for (const file of files) {
     const source = await (await fetch(base + file)).text();
     Assert.greater(source.length, 0, `${file} is read`);
     const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
     Assert.deepEqual(code.match(forbidden) ?? [], [], `${file} synthesises no input (M26)`);
   }
+});
+
+// docs/specs/m1-hints.md and security.md M26: the user's own hint gives the page their user
+// activation (issue #1303), and nothing an agent reaches can. The one place that gives it is
+// actors/user-gesture.mjs; only VimmaChild imports it, and only its handler of the parent's
+// Vimma:ActivateHint, which the parent sends for a label typed in chrome, calls it.
+add_task(async function only_the_users_hints_give_user_activation() {
+  const base = "chrome://browser/content/vimma/";
+  const strip = (/** @type {string} */ source) =>
+    source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+  const read = async (/** @type {string} */ file) => strip(await (await fetch(base + file)).text());
+  const gesture = await read("actors/user-gesture.mjs");
+  Assert.ok(/\bsetHandlingUserInput\(true\)/.test(gesture), "user-gesture.mjs gives activation");
+  for (const file of [
+    "actors/agent-page.mjs",
+    "actors/agent-fields.mjs",
+    "actors/AgentActors.sys.mjs",
+    "actors/VimmaActors.sys.mjs",
+    "ctl/AgentAct.sys.mjs",
+    "ctl/AgentDrive.sys.mjs",
+  ]) {
+    Assert.ok(!(await read(file)).includes("user-gesture.mjs"), `${file} does not import it`);
+  }
+  const child = await read("actors/VimmaChild.sys.mjs");
+  const imported = /import\s*\{\s*(\w+)\s*\}\s*from\s*"[^"]*user-gesture\.mjs"/.exec(child);
+  Assert.ok(imported, "VimmaChild imports it by one name");
+  const { 0: line, 1: name, index: at } = /** @type {RegExpExecArray} */ (imported);
+  const start = child.indexOf("  #activateHint(data) {");
+  const end = child.indexOf("\n  }\n", start);
+  Assert.greater(start, -1, "VimmaChild has #activateHint");
+  const uses = [...child.matchAll(new RegExp(`\\b${name}\\b`, "g"))].map((m) => m.index);
+  const calls = uses.filter((i) => i !== at + line.indexOf(name));
+  Assert.greater(calls.length, 0, `${name} is called`);
+  for (const i of calls) {
+    Assert.ok(i > start && i < end, `${name} is called only in #activateHint`);
+  }
+  Assert.ok(
+    /case "Vimma:ActivateHint":\s*return this\.#activateHint\(/.test(child),
+    "#activateHint runs for Vimma:ActivateHint",
+  );
+  Assert.equal([...child.matchAll(/this\.#activateHint\(/g)].length, 1, "and for nothing else");
+  // The parent sends Vimma:ActivateHint from one function, which only the host's hint keys call.
+  const actors = await read("actors/VimmaActors.sys.mjs");
+  Assert.equal([...actors.matchAll(/"Vimma:ActivateHint"/g)].length, 1, "one sender");
+  Assert.ok(/\n {2}activateHint\(target\) \{/.test(actors), "VimmaActors.activateHint sends it");
+  for (const file of [
+    "actors/AgentActors.sys.mjs",
+    "ctl/AgentAct.sys.mjs",
+    "ctl/AgentDrive.sys.mjs",
+  ]) {
+    const source = await read(file);
+    Assert.ok(!/Vimma:ActivateHint|\.activateHint\(/.test(source), `${file} never sends it`);
+  }
+  const host = await read("host/VimmaHost.sys.mjs");
+  Assert.equal([...host.matchAll(/VimmaActors\.activateHint\(/g)].length, 1, "one caller");
+  const hintKey = host.indexOf("  _hintKey(state, chord) {");
+  const callAt = host.indexOf("VimmaActors.activateHint(");
+  Assert.ok(
+    hintKey > -1 && callAt > hintKey && callAt < host.indexOf("\n  },\n", hintKey),
+    "the host's hint keys call it",
+  );
 });
 
 // docs/specs/mcp-forms.md F13 (security.md M27): an agent's fill never sets a file field. The
@@ -263,6 +332,33 @@ add_task(async function the_submit_check_test_hook_is_read_only_in_automation() 
       "const test = Cu.isInAutomation ? VimmaChild._beforeSubmitCheckForTests : null;",
     ],
     "the hook is declared, and read once, behind Cu.isInAutomation",
+  );
+});
+
+// security.md UP6: the update check's test-only prefs (a forced install type, and a root that
+// moves the package repositories' setup files) are read only behind inAutomation(), so a
+// release ignores them whoever sets them. Comments are left out: they may name the prefs.
+add_task(async function the_update_checks_test_prefs_are_read_only_in_automation() {
+  const file = "chrome://browser/content/vimma/updates/VimmaUpdates.sys.mjs";
+  const source = await (await fetch(file)).text();
+  Assert.greater(source.length, 0, "VimmaUpdates.sys.mjs is read");
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+  const uses = [...code.matchAll(/^.*\b(TEST_TYPE_PREF|TEST_REPO_ROOT_PREF)\b.*$/gm)].map((m) =>
+    m[0].trim(),
+  );
+  Assert.deepEqual(
+    uses,
+    [
+      'const TEST_TYPE_PREF = "vimma.update.installType";',
+      'const TEST_REPO_ROOT_PREF = "vimma.update.testRepoRoot";',
+      'const forced = inAutomation() ? Services.prefs.getStringPref(TEST_TYPE_PREF, "") : "";',
+      'const root = inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";',
+    ],
+    "each pref is declared, and read once, behind inAutomation()",
+  );
+  Assert.ok(
+    /function inAutomation\(\) \{\s*return Cu\.isInAutomation === true;\s*\}/.test(code),
+    "inAutomation() is Cu.isInAutomation",
   );
 });
 

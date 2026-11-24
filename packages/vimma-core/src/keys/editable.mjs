@@ -116,6 +116,18 @@ const INSERT_EDIT_KEYS = Object.freeze({
 });
 
 /**
+ * What each text-field key does in a field, by editor command, for the reason a prefix on one is
+ * refused (the config's and the setup's prefix step: docs/specs/setup-v2.md decision 21).
+ * @type {Readonly<Record<string, string>>}
+ */
+export const INSERT_EDIT_DOES = Object.freeze({
+  cmd_deleteWordBackward: "deletes a word",
+  cmd_deleteToBeginningOfLine: "deletes to the start of the line",
+  cmd_deleteCharBackward: "deletes a character",
+  [INSERT_ENTER]: "is enter",
+});
+
+/**
  * The editor commands a text-field key may run; the content actor takes no other. INSERT_ENTER
  * is not one: the parent presses Enter itself (actors/enter-key.mjs).
  */
@@ -133,6 +145,50 @@ export const INSERT_EDIT_COMMANDS = Object.freeze(
 export function insertEditCommand(chord, { mac = false } = {}) {
   if (mac && chord === "ctrl+h") return null;
   return INSERT_EDIT_KEYS[chord] ?? null;
+}
+
+/**
+ * Every chord of Vim's text-field keys on this platform, with what it runs (insertEditCommand),
+ * for the prefix, which cannot be one of them (config: key-handling-batch.md; setup: setup-v2.md
+ * decision 21).
+ * @param {{ mac?: boolean }} [options]
+ * @returns {[chord: string, command: string][]}
+ */
+export function insertEditChords({ mac = false } = {}) {
+  return Object.keys(INSERT_EDIT_KEYS).flatMap((chord) => {
+    const command = insertEditCommand(chord, { mac });
+    return command ? [[chord, command]] : [];
+  });
+}
+
+/**
+ * The keys the system itself edits text fields with, by what each does, which Vimma takes first
+ * when one is the prefix (setup-v2.md decision 21, #1410). Linux: GTK's word keys and Firefox's
+ * ctrl+insert (dom/events/ShortcutKeyDefinitions.cpp); macOS: Cocoa's Emacs keys
+ * (StandardKeyBinding.dict).
+ * @param {{ mac?: boolean }} [options]
+ * @returns {Record<string, string>}
+ */
+export function nativeFieldKeys({ mac = false } = {}) {
+  if (!mac) {
+    return {
+      "ctrl+backspace": "deletes a word",
+      "ctrl+delete": "deletes the next word",
+      "ctrl+insert": "is copy",
+    };
+  }
+  return {
+    "ctrl+a": "moves to the start of the line",
+    "ctrl+e": "moves to the end of the line",
+    "ctrl+b": "moves back a character",
+    "ctrl+f": "moves forward a character",
+    "ctrl+n": "moves down a line",
+    "ctrl+p": "moves up a line",
+    "ctrl+h": "deletes a character",
+    "ctrl+d": "deletes the next character",
+    "ctrl+k": "deletes to the end of the line",
+    "ctrl+t": "swaps two characters",
+  };
 }
 
 /**
@@ -284,14 +340,15 @@ const isLiteral = (host) => host.includes(":") || /^\d+(\.\d+){3}$/.test(host);
  * `www.example.com`, not `badexample.com`); IP literals match only exactly. The longest match
  * wins, the earlier rule on a tie. Case and a trailing dot are ignored. A host with a port
  * (`example.com:8080`) is not a hostname and matches only a rule written exactly so.
+ * @template {{ match: string }} R
  * @param {string} host
- * @param {readonly InsertSiteRule[]} rules
- * @returns {InsertSiteRule | undefined}
+ * @param {readonly R[]} rules
+ * @returns {R | undefined}
  */
 export function matchSiteRule(host, rules) {
   const h = normaliseHost(host);
   const literal = isLiteral(h);
-  /** @type {InsertSiteRule | undefined} */
+  /** @type {R | undefined} */
   let best;
   let bestLength = -1;
   for (const rule of rules) {

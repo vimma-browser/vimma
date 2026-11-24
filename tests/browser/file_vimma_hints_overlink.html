@@ -1,0 +1,30 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_hints.js (issue #1309): a link the page handles itself, so
+   - following it loads nothing, a same-document link and a link that loads a page. The page
+   - records the mouse events each link gets, in order, in window.seen. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma hints over-link</title>
+  </head>
+  <body>
+    <p>
+      <a id="stay" href="?to=stay">handled by the page</a>
+      <a id="hash" href="#x">same document</a>
+      <a id="away" href="?to=away">loads a page</a>
+    </p>
+    <p id="x">target</p>
+    <script>
+      window.seen = [];
+      for (const a of document.querySelectorAll("a")) {
+        for (const type of ["mouseover", "click", "mouseout", "mouseleave"]) {
+          a.addEventListener(type, () => window.seen.push(`${a.id}:${type}`));
+        }
+      }
+      document.getElementById("stay").addEventListener("click", (e) => e.preventDefault());
+    </script>
+  </body>
+</html>

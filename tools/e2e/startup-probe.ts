@@ -13,7 +13,7 @@
 //   so a main thread that blocks (state S or D, little CPU) tells from one that is busy (R).
 // Names only: no file contents and no symlink targets (the lock's target holds the machine's
 // address), so nothing from the profile reaches a public CI log.
-import { lstatSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** USER_HZ, the unit of utime and stime in /proc/<pid>/stat on every Linux the harness runs on. */
@@ -280,4 +280,156 @@ export function startupProbe({
   if (tmp) parts.push(startupLockReport(tmp, spawnedAtMs));
   if (pid) parts.push(processReport(pid, { proc }));
   return parts.filter(Boolean).join("\n");
+}
+
+/** The machine's counters a sample compares with the previous one; null where not offered. */
+export type MachineCounters = {
+  /** CPU time stolen by the hypervisor, summed over all CPUs (/proc/stat). */
+  stealSeconds: number | null;
+  /** CPU time idle while I/O was outstanding, summed over all CPUs (/proc/stat). */
+  iowaitSeconds: number | null;
+  /** Pressure stall time, "some" (at least one task stalled), from /proc/pressure (PSI). */
+  stallSeconds: { cpu: number; io: number; memory: number } | null;
+};
+
+const PRESSURE = ["cpu", "io", "memory"] as const;
+
+/** The machine's CPU steal and iowait and its pressure stall totals, read without privileges. */
+export function readMachine({ proc = "/proc" }: { proc?: string } = {}): MachineCounters {
+  let stealSeconds: number | null = null;
+  let iowaitSeconds: number | null = null;
+  try {
+    // cpu user nice system idle iowait irq softirq steal ...
+    const f = readFileSync(join(proc, "stat"), "utf8").split("\n")[0]!.trim().split(/\s+/);
+    if (f[0] === "cpu" && f.length >= 9) {
+      iowaitSeconds = Number(f[5]) / CLOCK_TICKS;
+      stealSeconds = Number(f[8]) / CLOCK_TICKS;
+    }
+  } catch {
+    // no /proc (macOS)
+  }
+  let stallSeconds: MachineCounters["stallSeconds"] = null;
+  try {
+    const total = (name: string) => {
+      const m = /^some .*\btotal=(\d+)/m.exec(readFileSync(join(proc, "pressure", name), "utf8"));
+      if (!m) throw new Error(`no "some" line in pressure/${name}`);
+      return Number(m[1]) / 1e6;
+    };
+    const [cpu, io, memory] = PRESSURE.map(total) as [number, number, number];
+    stallSeconds = { cpu, io, memory };
+  } catch {
+    // a kernel without PSI (CONFIG_PSI off, or psi=0)
+  }
+  return { stealSeconds, iowaitSeconds, stallSeconds };
+}
+
+/**
+ * What process `pid` has read from storage so far (read_bytes of /proc/<pid>/io: page cache
+ * misses, not reads the cache served). The launcher is the browser's parent, which may read it.
+ * @returns null where it cannot be read (gone, no /proc, not permitted)
+ */
+export function readDiskBytes(pid: number, { proc = "/proc" }: { proc?: string } = {}) {
+  try {
+    const m = /^read_bytes:\s*(\d+)/m.exec(readFileSync(join(proc, String(pid), "io"), "utf8"));
+    return m ? Number(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Bytes as megabytes, one decimal. */
+export const megabytes = (bytes: number) => `${(bytes / 1e6).toFixed(1)} MB`;
+
+/**
+ * At most this many samples are listed: the first half of them and the latest ones, so a 120 s
+ * warm-up keeps both where it stalled and how it ended.
+ */
+export const PROBE_MAX_SAMPLES = 60;
+
+/**
+ * Issue #901: a sample of start-up about each second, taken by the launcher while it waits for
+ * the socket. One snapshot at the timeout cannot tell a main thread that blocked for 25 s
+ * (state S, its CPU time flat, the machine idle) from one starved of CPU (state R) or from a
+ * machine that stopped as a whole: a paused VM (steal grows, and the harness's own timer comes
+ * late, "harness lag") or a disk stall (iowait and the io pressure grow). Each sample lists the
+ * main thread's state, CPU time and wait channel, what the main process has read from disk so far,
+ * how late the harness's own timer fired, and how much the machine's steal, iowait and pressure stall time grew since the previous sample.
+ */
+export function startupSampler({
+  pid,
+  spawnedAtMs,
+  proc = "/proc",
+  now = Date.now,
+  intervalMs = 1000,
+  maxSamples = PROBE_MAX_SAMPLES,
+}: {
+  pid: number | undefined;
+  spawnedAtMs: number;
+  proc?: string;
+  now?: () => number;
+  intervalMs?: number;
+  maxSamples?: number;
+}) {
+  const head: string[] = [];
+  const tail: string[] = [];
+  let dropped = 0;
+  let lastAt = spawnedAtMs;
+  let last = readMachine({ proc });
+  const delta = (a: number | null, b: number | null) =>
+    a === null || b === null ? null : Math.max(0, a - b);
+  return {
+    sample() {
+      const at = now();
+      const machine = readMachine({ proc });
+      // macOS has no /proc: the harness's lag still shows there
+      let main = existsSync(proc) ? "main gone" : "main unknown (no /proc)";
+      if (pid) {
+        const task = join(proc, String(pid), "task", String(pid));
+        const s = readStat(join(task, "stat"));
+        if (s) {
+          main = `main ${s.state} ${cpu(s.cpuSeconds)} ${readWchan(join(task, "wchan"))}`;
+          const read = readDiskBytes(pid, { proc });
+          if (read !== null) main += `  main process read ${megabytes(read)}`;
+        }
+      }
+      const lag = Math.max(0, at - lastAt - intervalMs) / 1000;
+      const parts = [`  ${secs(at - spawnedAtMs)}  ${main}`, `harness lag ${lag.toFixed(1)} s`];
+      const steal = delta(machine.stealSeconds, last.stealSeconds);
+      const iowait = delta(machine.iowaitSeconds, last.iowaitSeconds);
+      if (steal !== null) parts.push(`steal ${steal.toFixed(2)} s`);
+      if (iowait !== null) parts.push(`iowait ${iowait.toFixed(2)} s`);
+      const stall = machine.stallSeconds;
+      const stallBefore = last.stallSeconds;
+      if (stall && stallBefore) {
+        const stalls = PRESSURE.map(
+          (k) => `${k} ${(delta(stall[k], stallBefore[k]) as number).toFixed(2)}`,
+        );
+        parts.push(`stall ${stalls.join(" ")} s`);
+      }
+      // The first half of the samples stays (where start-up stalled), the rest is the latest.
+      const sample = parts.join("  ");
+      if (head.length < Math.ceil(maxSamples / 2)) head.push(sample);
+      else {
+        tail.push(sample);
+        if (head.length + tail.length > maxSamples) {
+          tail.shift();
+          dropped++;
+        }
+      }
+      lastAt = at;
+      last = machine;
+    },
+    format(): string {
+      if (!head.length) return "start-up samples: none yet";
+      return [
+        "start-up samples about each second since spawn (the main thread's state, CPU time and " +
+          "wait channel; what the main process read from disk so far; how late the harness's " +
+          "own timer fired; the machine's CPU steal and iowait over all CPUs and its pressure " +
+          "stall time since the previous sample):",
+        ...head,
+        ...(dropped ? [`  (${dropped} samples dropped)`] : []),
+        ...tail,
+      ].join("\n");
+    },
+  };
 }

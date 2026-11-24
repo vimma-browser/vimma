@@ -1,7 +1,8 @@
 ## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/agent-tabs.mjs`, `actors/agent-page.mjs`)
 
-Lets local AI agents (Claude Code, Codex, opencode, Copilot) list, read, open and close tabs of
-one workspace, **agent**, through the control socket's `agent` role. Spec:
+Lets AI agents (Claude Code, Codex, opencode, Copilot) use the MCP tools in one workspace,
+**agent**, through the control socket's `agent` role: list, read, open and close its tabs, and
+the tools the specs below add. Spec:
 [vimma-mcp](../specs/vimma-mcp.md), [ADR-019](../adr/019-agents-over-mcp.md).
 
 `ctl/agent-commands.mjs` asks the gate and runs each command; `ctl/agent-tabs.mjs` decides which
@@ -24,7 +25,9 @@ just before (M26 to M28), the wait for the page to settle, the in-place changes 
 it the parent's `Vimma:Agent*` messages, and keeps what it shares with your hints: whether an
 element is still on the frame's page (M25) and the click itself, the same press your `f` sends
 (M26). `agent-page.mjs` is restricted too: `VimmaChild` is its one importer, so no other module
-of the content process acts in a page for an agent.
+of the content process acts in a page for an agent. The press gives no user activation; your own
+hint gets it from `actors/user-gesture.mjs`, which is restricted the same way, to `VimmaChild`,
+where only the handler of the parent's `Vimma:ActivateHint` calls it (M26).
 
 Only the seven modules that call the gate today may import it (ADR-026, `RESTRICTED` in
 `tools/layering/layers.ts`), so a new caller, such as the parent actor, is reviewed against this
@@ -262,6 +265,35 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`frozenCopy refuses data nested deeper than FROZEN_COPY_DEPTH, with a clear error`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`frozenCopy copies shared sub-objects in linear time, and a cycle still becomes null`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`:mcp log keeps its own row: the caller's object and a reader's row change nothing`](../../packages/vimma-core/test/agent-gate.test.ts)
+- M63. `agent-bookmarklet` (`vimma_bookmarklet`, [bookmarklets](../specs/bookmarklets.md) B12-B16)
+  **must** be refused before anything is asked unless `[bookmarks] bookmarklets` in config.toml is
+  `"agent"` (U8). It takes an agent tab (M2) and a bookmark's title, **never** a URL or script, and
+  runs only the one stored bookmark with that exact title whose URL is a `javascript:` bookmarklet;
+  none or several such bookmarks (one message for both), or a page that is not http, https or file,
+  refuse it before the question. It **must** ask every time, under any grant, with `y` and `n` only,
+  and a yes **never** makes a grant; the question names the bookmarklet's folder path and the tab.
+  After the yes it runs only if the level is still `"agent"`, the tab and its URL are as asked (M8)
+  and the stored bookmark's URL and title are unchanged; the script runs in the page's own global
+  with the page's principal, never the system principal, with no popups; the result says only that
+  it ran. At most 6 calls a minute per connection, counted before the bookmark is looked up; whether
+  exactly one bookmarklet has a guessed title leaks at that rate. Accepted race: the re-check reads
+  the parent's view of the tab, which can lag a same-site navigation in the same process, so a page
+  that navigates itself at that moment can receive the script, still with its own web principal
+  ([bookmarklets](../specs/bookmarklets.md), Security and privacy).
+  [`agent_is_refused_below_agent_without_a_question`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`agent_asks_every_time_and_runs_on_yes`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`agent_names_exactly_one_stored_bookmarklet`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`agent_runs_nothing_when_the_tab_changed_after_the_question`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`agent_runs_nothing_when_the_bookmark_changed_after_the_question`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`agent_runs_nothing_when_the_level_dropped_during_the_question`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`takes a tab and a title, and nothing else: no url, no script`](../../packages/vimma-core/test/bookmarklets-agent.test.ts),
+  [`no grant covers it and its answer makes none`](../../packages/vimma-core/test/bookmarklets-agent.test.ts),
+  [`an agent is refused at %s, naming the setting`](../../packages/vimma-core/test/bookmarklets.test.ts),
+  [`bad_bookmarklet_arguments_are_tool_errors_and_never_reach_vimma`](../../tools/vimma-ctl/src/mcp/args.rs).
+  The user's `:bookmarkopen` and `:bookmarktab` ([bookmark-open](../specs/bookmark-open.md)) are
+  not agent paths: `vimma_keys` runs only its whitelist (D9), which has no command line, and no
+  agent command reaches `bookmark.open` or `bookmark.open_tab`.
+  [`vimma_keys can never reach the commands (mcp-drive D9)`](../../packages/vimma-core/test/bookmark-open.test.ts)
 - M2. Agent commands **must** see only tabs of the agent workspace in its container, checked
   when each command runs; **never** another workspace's tab, a foreign or pinned tab, or a
   private window's.
@@ -518,7 +550,32 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   tab, and **never** changes the window's workspace, mode, find bar or hint mode (finds use the
   tab's own finder, history moves stay in the tab's own session history). A tab the user is
   typing in, in copy or hint mode, a key sequence or its own find bar, is denied `in-use`; a call
-  already running stops there.
+  already running stops there. The same rule holds `agent-activate` and `agent-fill` (F27).
+  Insert mode counts as typing only when the user's own input put the tab there: a focus made
+  while the page handled their key or click, one within 5 s after their input to the page (below),
+  or one in a document where they had already made a field theirs. Their input to the page is a
+  key Vimma leaves to the page, a key with no name Vimma binds (an IME's `Process`, a dead key),
+  a key that moves in or picks from the page's suggestions, a trusted mousedown in the frame that
+  has focus (their hints' presses included), and, from the frame that has focus, a trusted
+  composition, drop, or `beforeinput` of typed, composed, pasted or dropped text. Vimma's own
+  keys do not count (a scroll, the keys that open and answer the agent's question), so the user
+  can watch the agent and answer it. A field the page's script focuses on its own with none of
+  these, such as a dialog with autofocus that the agent's own click opened, is not the user's,
+  and the agent may fill it (issue #1325). The page's listeners for the agent's `click()`, and
+  for a checkbox's `click()` in a fill, run as handling user input, as every trusted click's do,
+  so the content actor never counts a focus made during them as the user's. Once the user has
+  made a field of a document theirs, a later focus that document's script makes stays theirs,
+  also after a pause and a blur and focus of the page's own, until they leave insert themselves
+  (Esc, a click outside a field, a Vimma key that leaves the mode) or the tab loads another
+  document. The user's typing **must** always win: every key of theirs reaches the window's key
+  handler first, as its own trusted event, which neither a page nor an agent can make (an
+  agent's presses are untrusted page events), and an IME's composition and a drop are reported
+  by the frame as well; an agent's fill sets values with `setUserInput`, whose
+  `insertReplacementText` is not counted. An agent's mousedown is untrusted, so it never counts
+  as the user's. A compromised content process can make a tab look in use; it cannot make the
+  user's keys count as the page's, though it can report a page focus in a new document, or a
+  blur and focus without the user's mark of the old one, which is no more than it can already do
+  to its own page.
   [`test_keys_scroll_a_background_tab_without_touching_the_window`](../../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_find_uses_the_tabs_finder`](../../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_back_and_forward_stay_in_the_tab`](../../tests/browser/browser_vimma_mcp_keys.js),
@@ -526,6 +583,19 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_keys_in_use_while_the_user_types_in_the_tab`](../../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_stop_when_the_tab_leaves`](../../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_stop_when_the_user_starts_using_the_tab`](../../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_a_field_the_page_focuses_after_the_agents_click_is_not_the_users`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_the_users_key_in_that_field_makes_the_tab_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_the_users_click_in_that_field_makes_the_tab_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_a_page_focus_just_after_the_users_click_is_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_a_page_focus_just_after_the_users_key_is_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_a_page_focus_just_after_the_users_hint_click_is_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_vimmas_own_key_before_a_page_focus_is_not_the_users`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_an_ime_composition_in_that_field_makes_the_tab_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_the_users_insert_stays_theirs_when_the_page_moves_focus`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_a_field_a_fills_checkbox_reveals_is_not_the_users`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_a_field_the_agents_click_on_a_label_opens_is_not_the_users`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_the_agent_aiming_at_the_page_focused_field_leaves_it_the_pages`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_answering_the_agent_is_not_using_the_tab`](../../tests/browser/browser_vimma_mcp_page_focus.js),
   [`test_agent_hints_leave_the_users_hint_mode_alone`](../../tests/browser/browser_vimma_mcp_follow.js)
 - M18. A follow (`f<label>`, mcp-drive D12) **must** load only an http or https href the page
   could link to (`checkLoadURIWithPrincipal` with the page's own principal), from an http or
@@ -649,14 +719,25 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   also after a redirect) **must never** be read: such a label may hold a user name and password,
   only part of one once Firefox cut it at 256 characters, or those of the URL the tab was opened
   at. Every reply that names a title gives the tab's URL instead, without them, as Firefox shows
-  it (no scheme, no `www.`; core's `agentTabTitle`). A page's own title that is a URL with a
-  scheme loses them too (core's `agentTitle`). Any other title, and the page's text, are the
+  it (no scheme, no `www.`; core's `agentTabTitle`). A Reader View tab is named by its article's
+  URL, whose user name and password its `about:reader?url=` address carries percent-encoded
+  (M30, #1324). A link's href, a form's action and the page's URL lose them also from a URL
+  percent-encoded in their query or hash, a site's redirect parameter (M30, #1348), and from
+  a URL written unencoded in their path, an archive's or a redirect service's (M30, #1372). A page's own
+  title that is a URL with a scheme loses them too (core's `agentTitle`), as given and as shown:
+  a fullwidth slash in the user name, which NFKC makes a slash, does not hide them, and neither
+  does a URL percent-encoded in its query, nor invisible characters that fill the part of a
+  long title that is read (a title read only in part is given as `agentUrl` gives it when that
+  part, as shown, is empty or may still begin a scheme; #1372). Any other title, and the page's text, are the
   page's own: a page that writes its address into them is not changed. A link nested in another
   link's text, which some search pages have, comes out of Firefox's extractor escaped
   (`\[a\]\(https://...\)`); its target loses them too (#1217). Only link targets are read: text
   shaped like one (`](scheme://user:password@host)`, white space-free) is rewritten as a target,
   and any other code, email address or URL in the page's text is left byte for byte.
   [`a link's href loses its user name and password`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a link's href loses the user name and password of a URL in its path`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
+  [`a page's markdown link target loses them`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
+  [`a title whose first 32,768 code units are invisible still loses them`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
   [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`a link's href and a form's action lose their user name and password`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-act.test.ts),
@@ -672,6 +753,11 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`any other title is left as the page wrote it`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`test_a_tab_labelled_with_its_url_gives_no_user_name_and_password`](../../tests/browser/browser_vimma_mcp_userinfo.js),
   [`test_a_clamped_or_redirected_url_label_gives_no_password`](../../tests/browser/browser_vimma_mcp_userinfo.js),
+  [`test_a_reader_view_tab_gives_its_article_url_without_them`](../../tests/browser/browser_vimma_mcp_userinfo.js),
+  [`test_a_redirect_parameter_gives_no_user_name_and_password`](../../tests/browser/browser_vimma_mcp_userinfo.js),
+  [`a title with a look-alike in its user name or password loses them (#1348)`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a title holding a URL in its query, encoded or not, loses them (#1348)`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a semicolon in a title's nested user name does not hide it (#1352 review)`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`test_f_lists_links_with_labels_marked_untrusted`](../../tests/browser/browser_vimma_mcp_follow.js),
   [`at most 200 links; the rest are dropped and counted`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`one line per link: the label, the text as JSON cut at 80, the href cut at 2,048`](../../packages/vimma-core/test/agent-keys.test.ts),
@@ -682,7 +768,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`agent-keys: a link list inside the untrusted delimiters, and how many were dropped`](../../packages/vimma-core/test/control-v2.test.ts),
   [`keys_list_links_as_untrusted_content`](../../tools/vimma-ctl/src/mcp/render.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
-  workspace and tab, not only the agent workspace, and that any local AI agent with a shell can
+  workspace and tab, not only the agent workspace, and that any AI agent with a shell on this machine can
   use it, and a yes given after MCP went on or off **never** turns it on; each new full
   connection's question (S13) **must** say `wants full control (every workspace, not only
 "agent")` in its text and accessible name, naming the agent workspace, and its desktop
@@ -710,7 +796,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a call under a grant shows what it did and the time left`](../../packages/vimma-core/test/agent-prompt.test.ts)
 - M24. A tab you did not open inside the agent workspace **never** takes its container: a link from
   another app (the remote command line, `vimma-open`, Firefox's container guess, a `[[routes]]`
-  rule), the control socket's `open`, a tab sent from another device, a new window's first tab, the
+  rule in routes.toml or config.toml), the control socket's `open`, a tab sent from another device, a new window's first tab, the
   other URLs of its command line and the container cached for the next start. It opens in the last
   workspace used that is not the agent's (else the first one), and the window switches to it; "the
   current tab" on an agent tab becomes a new tab there. A login link clicked in a mail app is then
@@ -721,6 +807,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`tabs_loaded_from_outside_skip_the_agent_container`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_guess_for_another_workspace_still_counts`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_route_rule_naming_the_agent_workspace_is_not_followed_from_outside`](../../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`a_routes_toml_rule_naming_the_agent_workspace_is_not_followed_from_outside`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_tab_sent_from_another_device_skips_the_agent_container`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`the_agent_workspace_is_known_before_config_toml_names_it`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`config_toml_naming_the_agent_workspace_retires_the_recorded_one`](../../tests/browser/browser_vimma_agent_outside_opens.js),
@@ -787,13 +874,36 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_console_returns_uncaught_errors_and_console_errors`](../../tests/browser/browser_vimma_mcp_console.js),
   [`test_console_only_of_agent_tabs_and_web_pages`](../../tests/browser/browser_vimma_mcp_console.js)
 - M26. An agent's click (`agent-activate`, mcp-forms F8) **must** be the frame's child calling
-  the element's `click()` after the same untrusted `mouseover`, `mousedown` and `mouseup` your
-  `f` hints send, with no event through `nsIDOMWindowUtils` or the widget, so the page gets no
-  transient user activation: it cannot write or read the clipboard, use credentials or passkeys,
-  or start anything else that needs a real gesture. Vimma **never** gives an agent tab's
-  document user activation. A trusted `click()` still runs the page's click listeners in
-  Firefox's older "handling user input" state, which some checks accept (audible autoplay,
-  pointer lock, a pop-up); pop-ups are refused in agent tabs by their sandbox flags (M10).
+  the element's `click()` after `mouseover`, `mousedown` and `mouseup` that it dispatches as the
+  page's own script would, through the page's own `dispatchEvent` with Xrays waived, so that the
+  call runs in the page's realm (`actors/page-events.mjs`, issue #1321), with no event through
+  `nsIDOMWindowUtils` or the widget. The page sees those three events untrusted, so Gecko runs
+  none of a real press's link handling on them: the link takes no focus, its address shows in
+  none of your windows' link previews, and the page's listeners of them do not run as "handling
+  user input". Two trade-offs are accepted: a page that acts only on a trusted `mouseover`,
+  `mousedown` or `mouseup` (a menu that opens only on a trusted `mousedown`) ignores the agent's
+  press, and untrusted mouse events followed by a trusted click tell a page that an agent
+  pressed, which it could already tell from the missing pointer events. A page that replaces
+  `dispatchEvent` runs only its own code on its own element and events, and loses only its own
+  mouse events: the click still follows. Your own `f` hints dispatch the same events from the
+  child itself, which Firefox marks trusted for system code
+  (`EventDispatcher::DispatchDOMEvent`), as a real press of yours would be. The `click()` is
+  trusted for both. The page gets no transient user activation from an agent's click: it
+  cannot write or read the clipboard, use credentials or passkeys, or start anything else that
+  needs a real gesture. Vimma **never** gives an agent tab's
+  document user activation on an agent's behalf. Your own `f` hints do give the page your
+  activation, as your click would (issue #1303): the child wraps the press in
+  `nsIDOMWindowUtils.setHandlingUserInput` only in `actors/user-gesture.mjs`, called only by its
+  handler of `Vimma:ActivateHint`, which the parent sends only from the hint keys you type in
+  chrome. An agent's click comes as `Vimma:AgentElement`, whose press takes no such option, and
+  a page can send neither message. A full-control connection (`send-keys`) types as your
+  keyboard, so a label it types counts as yours, as every other key it sends does. After your own
+  hint in an agent tab (one `vimma_show` brought forward), the page keeps its transient activation
+  for about 5 seconds, and a handler that an agent's following `vimma_activate` runs could consume
+  it, as after a mouse click of yours in that tab. A trusted `click()` still runs the page's click
+  listeners in Firefox's older "handling user input" state, which some checks accept (audible
+  autoplay, pointer lock, a pop-up); pop-ups are refused in agent tabs by their sandbox flags
+  (M10).
   Before the click the child checks again that the element is still the one asked about (not a
   field, not disabled, a submit only if asked as one and to the same method and destination,
   the same link), and once more after the mouse events, which the page can handle; a changed
@@ -817,10 +927,15 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   element's frame has settled (M28), after the submission allowance of M28 is closed, so it opens
   nothing; a submission the page tries during the call is still stopped and named.
   [`test_activate_gives_the_page_no_user_activation`](../../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_activate_presses_with_untrusted_mouse_events`](../../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_activate_on_a_page_whose_dispatch_event_throws_still_clicks`](../../tests/browser/browser_vimma_mcp_activate.js),
+  [`a_hint_presses_with_the_users_trusted_mouse_events`](../../tests/browser/browser_vimma_hints_activation.js),
   [`test_activate_says_what_changed_in_place`](../../tests/browser/browser_vimma_mcp_activate_changes.js),
   [`activate_says_what_changed_in_place`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`agent-activate: what changed in place, from a fixed list`](../../packages/vimma-core/test/control-v2.test.ts),
   [`agent_clicks_never_synthesise_input_or_user_activation`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`only_the_users_hints_give_user_activation`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`an_agent_click_on_the_same_button_gets_no_activation`](../../tests/browser/browser_vimma_hints_activation.js),
   [`test_activate_reports_a_dialog`](../../tests/browser/browser_vimma_mcp_activate.js),
   [`test_a_click_a_navigation_overtakes_is_skipped_and_said`](../../tests/browser/browser_vimma_agent_click_race.js),
   [`test_a_click_on_a_page_going_into_the_bfcache_is_skipped`](../../tests/browser/browser_vimma_agent_click_race.js),
@@ -1080,7 +1195,44 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   request URL reaches the agent: each is removed, up to the authority's last `@` where a URL
   parser ends the authority, from the URL and from any URL inside a `view-source:`, `jar:` or
   `blob:` one, before the URL is cut to length; an authority longer than what is read is dropped
-  whole, and so is everything past the fourth URL nested in another. Failed requests (HTTP status 400 and above, or a channel error other than a
+  whole, and so is everything past the fourth URL nested in another. Any URL may carry URLs
+  percent-encoded in its query, where no `@` ends an authority: an `about:` address (Reader
+  View's `about:reader?url=`, the error pages' `u=`; #1324), an extension page that wraps the
+  page it blocked (`moz-extension://…/blocked.html?url=`), and a site's own redirect parameter
+  (`?next=`, `?continue=`, `?redirect=`, a single-page app's `#/login?next=`; #1348). Each name
+  and value of the query, and of the whole hash, is decoded as `URLSearchParams` decodes it and
+  stripped as a nested URL in the same two passes, as given and then as shown (a fullwidth slash
+  inside the user name ends no authority, so the host given is the one Firefox loads), also a
+  URL that starts later in it (`#/go/https://…`, `?a=1?next=https%3A…`); the parameters are
+  split at `&` and `;`, then again at `&` alone, as `URLSearchParams` and Reader View split them,
+  so a `;` inside a password does not hide it. One encoded twice, a redirect inside a redirect,
+  is decoded once more; one still encoded past the fourth level, or past four URLs in one value,
+  is dropped. Only a parameter that lost something is written again, encoded as
+  `URLSearchParams` writes it: the page's address and its other parameters stay byte for byte,
+  so the agent still knows which page it is on, and a parameter that holds no URL with a user
+  name or password (an email address, a `mailto:`, a search) is the page's own and is not
+  changed. That reading is bounded: one URL reads at most about four times its read length of
+  query text, all of a read page's link targets together 256 Ki code units, each target only as
+  far as a link's href is read, and a title longer than a page URL's read is read as `agentUrl`
+  reads it; a query or hash past that is dropped. A URL written unencoded in another URL's path,
+  as archive and redirect services write it
+  (`https://web.archive.org/web/2020/https://user:password@host/`), loses them too (#1372): each
+  URL in the path, from its scheme to the end of the path, is stripped as a URL nested one level
+  deeper, and the next is looked for right after its scheme, so an authority that ends later
+  (`foo://a\https://user@host`) hides none; past the fourth URL in a path, or the fourth level,
+  the rest of the URL is dropped, query and hash too. A path without one (`/@ada/posts`,
+  `/mailto:ada@host`, a MediaWiki `/wiki/File:Logo@2x.png`, since a `file:` URL without slashes
+  has no user name) is left byte for byte; a segment in a special scheme's colon form
+  (`/go/http:ada@host`) is a URL to a parser and loses everything up to its `@`. Two known
+  limits: a URL right after a letter, digit, `+`, `-` or `.` (`/web/2020-https://…`) is not read,
+  so that no run of scheme characters is searched from each of its characters, and a URL
+  percent-encoded in a path segment (`/r/https%3A%2F%2F…`) is not decoded: reading every path
+  segment as an encoded URL would rewrite ordinary addresses and change which page the agent is
+  told it is on. `vimma_open`'s reply names the URL the agent passed,
+  as the agent wrote it: it tells the agent nothing it did not send, and the loaded page's URL
+  goes through `agentUrl` in every later reply. A Reader View address that was read whole is then given as its
+  article's URL, as the status bar shows it (core's `readerOriginalUrl`), so a reader tab is
+  named by its article without a user name or password in every reply, its title too. Failed requests (HTTP status 400 and above, or a channel error other than a
   cancel, a redirect or a load turned download) **must** be logged only for channels whose top
   browsing context is a live tab of the agent workspace's container outside private windows,
   only while MCP is on, the last
@@ -1104,7 +1256,25 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`the user name and password end at the authority's last at sign`](../../packages/vimma-core/test/agent-act.test.ts),
   [`the authority ends where a URL parser ends it, not at a look-alike`](../../packages/vimma-core/test/agent-act.test.ts),
   [`any slashes after a special scheme, or none, still lead to the authority`](../../packages/vimma-core/test/agent-act.test.ts),
-  [`a URL inside view-source, jar or blob loses its user name and password too`](../../packages/vimma-core/test/agent-act.test.ts)
+  [`a URL inside view-source, jar or blob loses its user name and password too`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a Reader View address is the article's URL without its user name and password`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a Reader View address the reader cannot show still loses them`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a Reader View address cut short, or long, never shows them`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`inside an about: query too, the authority ends where a URL parser ends it`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`an extension page's query loses them as an about: query does (#1348)`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a redirect parameter loses them; the page and its other parameters stay (#1348)`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a redirect parameter encoded twice, nested or in look-alikes loses them (#1348)`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a redirect parameter in the hash, or after a semicolon, loses them (#1348)`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a redirect parameter cut short, or long, never shows them (#1348)`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a semicolon in a user name or password does not split their URL (#1352 review)`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a URL anywhere in a hash or a parameter's value loses them (#1352 review)`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a value encoded past the nesting read is dropped, not kept (#1352 review)`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a read page's link targets lose them in their queries in bounded time (#1352)`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a long title is read in bounded time (#1352 review)`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`the URL's own authority ends at its slash; a URL in its query loses them apart`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a Reader View tab's title is its article's URL without them (#1324)`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`test_a_reader_view_tab_gives_its_article_url_without_them`](../../tests/browser/browser_vimma_mcp_userinfo.js),
+  [`test_a_redirect_parameter_gives_no_user_name_and_password`](../../tests/browser/browser_vimma_mcp_userinfo.js)
 - M31. `agent-elements`' list **must** be one string inside the untrusted-content delimiters,
   wrapped by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the
   protocol validator **must** refuse a list that is not, or that holds a second delimiter. At
@@ -1163,10 +1333,23 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   only an element of the page now. `query` (at most 200 characters of one line, matched NFKC and
   case-folded against an element's label, text, caption and name as the list writes them, cut at
   80 characters, never its value) and `kinds` (kinds of the list's own) leave out the elements
-  that do not match, and their labels with them; neither reaches the page.
+  that do not match, and their labels with them; neither reaches the page. A filtered list that
+  gives no element says so in Vimma's fixed words in place of its intro, which both renderers
+  decide from the agent's own `query` and `kinds` arguments and the list's shape (empty inside
+  the delimiters, no `repeated`), so no page string and no new field reach the agent by that
+  route. With elements past the 200 left out, which happens before the filter, the words say
+  that none of the listed elements matches and that those left out may, never that nothing on
+  screen matches. No MCP result carries `structuredContent`: Claude Code shows the model that in
+  place of the text when both are there, which dropped `vimma_open`'s untrusted header and its
+  list while the list still counted as the site's last one, so the next list named labels the
+  model never saw (#1336). The text is the only channel, with the header, the delimiters and
+  Vimma's own words in it.
   [`test_repeated_list_leaves_out_unchanged_lines`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_compact_list_keeps_delimiters_and_sensitive_rules`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_query_and_kinds`](../../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_filtered_list_names_unchanged_matches`](../../tests/browser/browser_vimma_mcp_elements.js),
+  [`vimma_elements: a filtered list that gives nothing says nothing matches`](../../packages/vimma-core/test/agent-results.test.ts),
+  [`a_filtered_list_that_gives_nothing_says_nothing_matches`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`test_clear_forgets_the_last_element_lists`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`query matches only what the list writes: text cut at 80 characters, as shown`](../../packages/vimma-core/test/agent-act.test.ts),
   [`an element list leaves out lines given earlier for the same site and counts them`](../../packages/vimma-core/test/agent-act.test.ts),
@@ -1187,6 +1370,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_builtin_open_names_the_error_page`](../../tests/browser/browser_vimma_agent_load_error.js),
   [`a_steps_element_list_is_untrusted_content_as_vimma_elements`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`an_open_with_elements_lists_the_page_it_loaded`](../../tools/vimma-ctl/src/mcp/render.rs),
+  [`tabs_opens_and_closes_say_what_happened`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`a step that returns the element list says so in the question and the notice`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`test_password_and_card_fields_are_sensitive_without_values`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_lists_kinds_fields_and_forms`](../../tests/browser/browser_vimma_mcp_elements.js),
@@ -1327,3 +1511,93 @@ the page's own and can carry tokens it put there; they come only from the agent'
   [`test_an_older_vimma_ctl_gets_a_notice_and_still_works`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`says older for a client that names no version: it predates the check`](../../packages/vimma-core/test/ctl-version.test.ts),
   [`is optional, and refused with the whole hello when it is not a version`](../../packages/vimma-core/test/ctl-version.test.ts)
+- M64. `:mcp off` **must** turn MCP off for the rest of the session, whatever config.toml says
+  and however often it is read again. It sets a hold kept in memory that wins over
+  `[mcp] enabled = true`, and only `:mcp on` (after its `y/N`) or a restart clears it, never a
+  read of the file (the watcher, `:source`, or a write by `:route add` to routes.toml or
+  config.toml, the built-in agent's setup or the setup page); routes.toml holds no `[mcp]`
+  setting, and the hold is tied to no file read. A yes to an `:mcp on` question asked before a later `:mcp off` is
+  refused. `:mcp off` also clears the pref `vimma.mcp.enabled`, so that taking `enabled` out of
+  the file later keeps agents off. Reason: a kill switch that depends on editing a file, or that
+  the next read of the file undoes, is no kill switch ([setup-v2](../specs/setup-v2.md)
+  decision 16). `[mcp] enabled = false` still wins over `:mcp on`.
+  [`with [mcp] enabled = true in config.toml, :mcp off turns agents off until restart`](../../packages/vimma-core/test/agent.test.ts),
+  [`the state: :mcp off first, then the file, then the pref`](../../packages/vimma-core/test/agent.test.ts),
+  [`mcp_off_survives_a_config_reload`](../../tests/browser/browser_vimma_mcp.js),
+  [`mcp_off_survives_a_route_add_to_either_file`](../../tests/browser/browser_vimma_mcp.js),
+  [`mcp_on_after_off_starts_the_agent_role_when_the_pref_was_on`](../../tests/browser/browser_vimma_mcp.js),
+  [`a_yes_to_an_older_mcp_on_question_does_not_undo_a_newer_mcp_off`](../../tests/browser/browser_vimma_mcp.js)
+- M65. The setup page (about:vimma-setup, [setup-v2](../specs/setup-v2.md) behaviour 28 and decision 20) **must** turn MCP on only from a trusted `enter` on its agents step's "On", which is the
+  user's consent as a yes to `:mcp on` is, and is checked as that yes is: it **must** be refused,
+  with nothing written, when there is no agent workspace, when the agent workspace changed, or when
+  `:mcp off` ran after the user arrived at the step. The host takes what it checks against
+  (`McpHost.consentTicket`) when the user arrives at the step, with the cursor on the value in
+  force, and keeps it when the step is drawn again (a read of config.toml, `:mcp on|off` elsewhere),
+  so a redraw **never** stands for a consent given after an `:mcp off`; each `enter` on the step
+  spends it, and a redraw after that takes none, so "On" is refused until the user arrives at the
+  step again. A redraw that changes the row in force moves the cursor to it, and a refusal draws the
+  step anew with the cursor on the row in force, so turning agents on always takes `j` and `enter`
+  on a screen that shows the hold. Only after its `[mcp] enabled = true` is written and read, or
+  when the file says so already, does it end `:mcp off`'s hold, checking again first, as the yes
+  does; the write alone **never** ends the hold (M64). Refused at that second check (the workspace
+  changed or went away during the write), it holds agents off as `:mcp off` does, until `:mcp on` or
+  a restart, so the file just written does not turn them on in this session; it does at the next
+  start, as any `enabled = true` does. "Off" is selected first unless agents are on, so a plain
+  `enter` never turns them on and, under the hold, writes nothing; "On" says that it also ends `:mcp
+off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; without an agent
+  workspace it shows that it writes nothing. The page names only a step and a choice index (section
+  8, F1); no other step and no other choice turns agents on, and only the setup host calls
+  `consentTicket`, `consentRefusal` and `consentFromSetup`, although `ctl/` and `agent/` code import
+  `McpHost`. Neither the control socket's agent role nor an MCP agent can open or drive the page:
+  the socket has no command for it, the agent role's `open` refuses it, and the page acts only on
+  trusted events. Full control (`vimma-ctl send-keys`, S13) presses trusted keys in the focused
+  window and so can drive the page, as it can type `:mcp on` and `y`; that is accepted under M22,
+  whose question says that full control reaches every workspace and tab.
+  [`on writes enabled = true and is the consent; off for the session ends with it`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`off writes enabled = false only while agents are on`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`the notes say what the hold and an adopted workspace mean`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`on without an agent workspace shows that it writes nothing: it is refused`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`ends :mcp off's hold from a consent only in the setup host`](../../tools/security/test/chrome-source.test.ts),
+  [`agents_step_selects_off_first_and_writes_enabled_on_enter`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
+  [`agents_on_ends_mcp_off_as_mcp_on_does`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
+  [`an_mcp_off_after_the_step_was_drawn_wins_over_its_enter`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
+  [`an_mcp_off_the_page_hears_keeps_the_ticket_and_moves_the_cursor`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
+  [`a_config_read_redraw_keeps_the_ticket`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
+  [`a_workspace_gone_during_the_write_holds_agents_off`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
+  [`a_redraw_during_the_load_after_a_refusal_keeps_the_cursor_on_off`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
+  [`a_redraw_with_no_ticket_takes_none`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
+  [`the_page_cannot_name_a_key_or_value`](../../tests/browser/browser_vimma_setup_v2_flow.js),
+  [`agent_role_cannot_open_setup`](../../tests/browser/browser_vimma_setup.js)
+- M66. Tab sleep ([tab-sleep](../specs/tab-sleep.md) decision 8) **must not** unload an agent
+  workspace tab while an agent connection is open, so that a tab id an agent was given never
+  vanishes between two of its calls; it looks again just before each discard, since an agent
+  may connect while the check flushes a tab. With none open, those tabs sleep as others do,
+  including in the gap before a dropped `vimma-ctl mcp` link reconnects (mcp-session-grants
+  S3), where the agent's next call finds its old ids gone and lists the tabs again; only an
+  agent command that already wakes a lazy tab wakes one (vimma-mcp B2).
+  `services/TabSleep.sys.mjs` learns only whether a connection is open, from
+  `McpHost.agentConnected`, which reads whether the gate lists any; it does not import the
+  gate, reads only a tab's URL and state flags, and acts on a tab only through Firefox's own
+  discard and Firefox's `undiscardable` attribute. Firefox's low-memory unloader, which Vimma
+  turns on (decision 21), is held to the same rule: whenever the unloader runs (from the config
+  or from a value set in `about:config`) and a connection is open, `TabSleep` sets
+  `undiscardable` on the agent workspace's tabs, including one as it opens, and clears it when
+  the last connection closes. It learns of the change from `McpHost.watchAgentConnected`, which
+  calls it with no argument when the answer to `agentConnected` changes, so no connection, peer
+  or grant detail reaches it. Residual risks, each bounded by the wake rule above (the agent
+  lists its tabs again): the unloader weighs the marks before it awaits and discards
+  (`TabUnloader.sys.mjs`, `unloadLeastRecentlyUsedTab`), so a mark set in that gap loses to a
+  discard already under way, which only an upstream patch could close; a change of the agent
+  workspace in `config.toml` reaches the marks at the next pane change, connection change or
+  check, because the workspace store settles after the config topic; and an add-on that clears
+  the attribute (`autoDiscardable`) undoes the mark until the next of those. The attribute
+  changes reach add-ons with tab access as `tabs.onUpdated` with `autoDiscardable`
+  (`ext-tabs.js`), so such an add-on can tell when an agent connects; it already sees the agent
+  workspace's tabs and their loads. A page in the agent workspace that opens many tabs keeps
+  them all loaded while an agent is connected: memory pressure, not access.
+  [`agent_tabs_stay_loaded_while_an_agent_is_connected_and_sleep_after`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
+  [`an_agent_listing_a_sleeping_agent_tab_wakes_it_with_a_new_id`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
+  [`an_agent_connecting_during_a_check_keeps_its_tabs_loaded`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
+  [`agent workspace tabs stay awake only while an agent is connected`](../../packages/vimma-core/test/tabsleep.test.ts),
+  [`low_memory_unloads_other_tabs_but_never_a_shown_pane_or_an_agents_tab`](../../tests/browser/browser_vimma_low_memory.js),
+  [`the_mark_follows_the_split_the_agent_and_the_config`](../../tests/browser/browser_vimma_low_memory.js)

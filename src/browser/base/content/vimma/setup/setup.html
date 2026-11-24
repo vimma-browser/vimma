@@ -4,8 +4,9 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!-- about:vimma-setup (spec: docs/specs/first-run-setup.md): the welcome screen and the two
-   - setup steps. setup.mjs draws the lists and takes the keys; SetupHost applies the summary. -->
+<!-- about:vimma-setup (specs: docs/specs/first-run-setup.md, docs/specs/setup-v2.md): the
+   - welcome screen, one step at a time and a stop screen after each chapter. flow.mjs draws them
+   - and takes the keys; SetupHost saves each step on its enter. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -17,69 +18,78 @@
     <title>Vimma setup</title>
     <link rel="stylesheet" href="chrome://browser/skin/vimma/logo.css" />
     <link rel="stylesheet" href="chrome://browser/skin/vimma/setup.css" />
-    <script type="module" src="chrome://browser/content/vimma/setup/setup.mjs"></script>
+    <script type="module" src="chrome://browser/content/vimma/setup/flow.mjs"></script>
   </head>
   <body>
-    <main id="welcome" class="screen">
+    <main id="v2-welcome" class="screen" hidden>
       <div class="vimma-logo" role="img" aria-label="Vimma">
         <span class="vimma-logo-mark" aria-hidden="true"></span>
         <span class="vimma-logo-wordmark" aria-hidden="true"></span>
       </div>
-      <p class="tagline">A keyboard-first browser. Set up add-ons and search now?</p>
+      <h1>Set up Vimma</h1>
+      <p class="promise" id="v2-promise">
+        This setup is optional. Leave it at any time with <kbd>q</kbd> or <kbd>esc</kbd>: each step
+        you finish is saved to config.toml at once, and the rest is left as it is.
+        <code>:setup</code> brings it back.
+      </p>
+      <p id="v2-config-error" class="notice" hidden></p>
+      <ul id="v2-chapters" class="chapters"></ul>
       <div class="buttons">
-        <button id="setup-start" type="button"><kbd>enter</kbd> Set up</button>
-        <button id="setup-skip" type="button" class="quiet"><kbd>esc</kbd> Skip</button>
+        <button id="v2-start" type="button"><kbd>enter</kbd> Set up</button>
+        <button id="v2-skip" type="button" class="quiet"><kbd>q</kbd> Not now</button>
       </div>
     </main>
 
-    <main id="addons" class="screen step" hidden>
+    <main id="v2-step" class="screen step" hidden>
       <header>
-        <p class="progress">Step 1 of 2</p>
-        <h1>Add-ons</h1>
-        <p class="lede">
-          Mark the add-ons you use. Nothing is installed until you confirm the summary, and Firefox
-          asks for each add-on's permissions. Add-ons run in every workspace, including the agent
-          workspace.
+        <p class="progress" id="v2-progress"></p>
+        <h1 id="v2-question"></h1>
+        <p class="lede" id="v2-text"></p>
+        <p class="status" id="v2-status" hidden></p>
+      </header>
+      <div id="v2-blocker" class="blocker" hidden>
+        <label class="search">
+          <kbd>/</kbd>
+          <input id="v2-search" type="search" placeholder="Search addons.mozilla.org" />
+        </label>
+        <p class="note">A search sends its terms to addons.mozilla.org and nothing else.</p>
+        <p id="v2-offline" class="notice" hidden>
+          addons.mozilla.org is not answering; search is unavailable.
         </p>
-      </header>
-      <label class="search">
-        <kbd>/</kbd>
-        <input id="setup-search" type="search" placeholder="Search addons.mozilla.org" />
-      </label>
-      <p class="note">A search sends its terms to addons.mozilla.org and nothing else.</p>
-      <p id="setup-offline" class="notice" hidden>
-        addons.mozilla.org is not answering; search is unavailable.
-      </p>
-      <ul id="setup-addons" class="list" role="listbox" aria-multiselectable="true"></ul>
-      <footer class="keys">
-        <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>space</kbd> mark · <kbd>/</kbd> search ·
-        <kbd>enter</kbd> next · <kbd>esc</kbd> skip
-      </footer>
+        <ul id="v2-addons" class="list" role="listbox" aria-multiselectable="true"></ul>
+      </div>
+      <ul id="v2-choices" class="list" role="listbox"></ul>
+      <div id="v2-record" class="record" hidden aria-live="polite">
+        <p id="v2-record-ask" class="lede"></p>
+        <p id="v2-record-chord" class="record-chord" hidden>
+          <kbd id="v2-record-key"></kbd><span id="v2-record-lists" class="hint"></span>
+        </p>
+        <p id="v2-record-refused" class="notice" hidden></p>
+      </div>
+      <p id="v2-guess" class="note" hidden></p>
+      <p id="v2-writes-row" class="writes"><span id="v2-writes"></span></p>
+      <p id="v2-choice-note" class="choice-note" hidden></p>
+      <p id="v2-notice" class="notice" hidden aria-live="polite"></p>
+      <ul id="v2-results" class="results" aria-live="polite"></ul>
     </main>
 
-    <main id="engine" class="screen step" hidden>
+    <main id="v2-stop" class="screen step" hidden>
       <header>
-        <p class="progress">Step 2 of 2</p>
-        <h1>Search engine</h1>
-        <p class="lede">The engine the address bar searches with. Saved in config.toml.</p>
+        <h1 id="v2-stop-title"></h1>
       </header>
-      <ul id="setup-engines" class="list" role="listbox"></ul>
-      <footer class="keys">
-        <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>enter</kbd> choose · <kbd>esc</kbd> skip
-      </footer>
+      <ul id="v2-stop-saved" class="saved-lines"></ul>
+      <p id="v2-stop-next" class="lede"></p>
+      <div class="buttons">
+        <button id="v2-go-on" type="button"><kbd>enter</kbd> Go on</button>
+        <button id="v2-done" type="button" class="quiet"><kbd>q</kbd> Done</button>
+      </div>
     </main>
 
-    <main id="summary" class="screen step" hidden>
-      <header>
-        <p class="progress">Summary</p>
-        <h1>Ready to apply</h1>
-      </header>
-      <dl id="setup-plan" class="plan"></dl>
-      <p id="setup-config-error" class="notice" hidden></p>
-      <ul id="setup-results" class="results" aria-live="polite"></ul>
-      <footer class="keys" id="setup-summary-keys">
-        <kbd>enter</kbd> apply · <kbd>esc</kbd> back
-      </footer>
-    </main>
+    <footer id="v2-footer" class="flow-footer" hidden>
+      <p id="v2-place" class="place"></p>
+      <p id="v2-last" class="last" aria-live="polite"></p>
+      <p id="v2-saved" class="saved"></p>
+      <p id="v2-keys" class="keys"></p>
+    </footer>
   </body>
 </html>

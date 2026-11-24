@@ -45,11 +45,18 @@ support-files = [
   "file_vimma_hints_frame.html",
   "file_vimma_hints_many.html",
   "file_vimma_hints_menu.html",
+  "file_vimma_hints_overlink.html",
   "file_vimma_consent.html",
 ]
 
 ["browser_vimma_hints_wizard.js"]
 support-files = ["file_vimma_hints.html"]
+
+["browser_vimma_hints_activation.js"]
+support-files = ["file_vimma_agent_press.html", "file_vimma_hints_activation.html"]
+
+["browser_vimma_hints_scroll.js"]
+support-files = ["file_vimma_hints_many.html", "file_vimma_hints_scroll.html"]
 
 ["browser_vimma_element.js"]
 support-files = [
@@ -105,6 +112,8 @@ skip-if = ["artifact"]
 # The --version line is C++ (nsAppRunner-cpp.patch); artifact builds run Mozilla's libxul (ADR-010).
 skip-if = ["artifact"]
 
+["browser_vimma_tabline.js"]
+
 ["browser_vimma_tabstrip.js"]
 
 ["browser_vimma_toolbar.js"]
@@ -127,6 +136,8 @@ support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_tab_keys.js"]
 support-files = ["file_vimma_test.pdf"]
+
+["browser_vimma_tab_number.js"]
 
 ["browser_vimma_system_addons.js"]
 support-files = ["head_vimma_aus.js"]
@@ -165,6 +176,7 @@ support-files = [
 ["browser_vimma_pane_layouts.js"]
 
 ["browser_vimma_control.js"]
+support-files = ["file_vimma_leave_page.html"]
 
 ["browser_vimma_control_state_read.js"]
 support-files = ["head_vimma_control.js"]
@@ -176,6 +188,8 @@ support-files = ["file_vimma_title.html"]
 support-files = ["file_vimma_search_post.sjs"]
 
 ["browser_vimma_cmdline.js"]
+
+["browser_vimma_cmdline_arrows.js"]
 
 ["browser_vimma_find.js"]
 support-files = [
@@ -193,12 +207,18 @@ support-files = [
 ["browser_vimma_live_grep.js"]
 support-files = ["file_vimma_grep.html", "head_vimma_grep.js"]
 
+["browser_vimma_live_grep_layout.js"]
+support-files = ["file_vimma_grep.html", "head_vimma_grep.js"]
+
 ["browser_vimma_live_grep_windows.js"]
 support-files = ["file_vimma_grep.html", "head_vimma_grep.js"]
 
 ["browser_vimma_rename.js"]
 
 ["browser_vimma_start_page.js"]
+
+["browser_vimma_start_commands.js"]
+support-files = ["file_vimma_urlbar_suggest.sjs"]
 
 ["browser_vimma_logo_theme.js"]
 
@@ -210,8 +230,13 @@ support-files = ["file_vimma_grep.html", "head_vimma_grep.js"]
 
 ["browser_vimma_workspace_routes_windows.js"]
 
+["browser_vimma_routes_file.js"]
+
 ["browser_vimma_workspace_routing.js"]
 support-files = ["file_vimma_cookie.html"]
+
+["browser_vimma_workspace_extension_tabs.js"]
+support-files = ["file_vimma_extension_signin.sjs"]
 
 ["browser_vimma_workspace_switching.js"]
 
@@ -253,9 +278,11 @@ support-files = [
 ["browser_vimma_mcp_userinfo.js"]
 support-files = [
   "file_vimma_agent_page.html",
+  "file_vimma_agent_redirect_param.html",
   "file_vimma_agent_userinfo_redirect.sjs",
   "file_vimma_agent_untitled.html",
   "file_vimma_agent_userinfo.html",
+  "file_vimma_reader_article.html",
   "head_vimma_control.js",
 ]
 
@@ -272,6 +299,7 @@ support-files = [
 support-files = [
   "file_vimma_agent_click.html",
   "file_vimma_agent_page.html",
+  "file_vimma_agent_press.html",
   "head_vimma_control.js",
 ]
 
@@ -326,6 +354,9 @@ support-files = [
   "file_vimma_agent_page.html",
   "head_vimma_control.js",
 ]
+
+["browser_vimma_mcp_page_focus.js"]
+support-files = ["file_vimma_agent_dialog.html", "head_vimma_control.js"]
 
 ["browser_vimma_mcp_screenshot.js"]
 support-files = [
@@ -398,6 +429,9 @@ support-files = ["file_vimma_title.html"]
 
 ["browser_vimma_side_panel.js"]
 
+["browser_vimma_close_active_tab.js"]
+support-files = ["file_vimma_close_active_tab.html"]
+
 ["browser_vimma_side_panel_marks.js"]
 
 ["browser_vimma_side_panel_unsplit.js"]
@@ -405,6 +439,11 @@ support-files = ["file_vimma_title.html"]
 ["browser_vimma_multiple_splits.js"]
 
 ["browser_vimma_split_picker.js"]
+
+["browser_vimma_split_lone_tab.js"]
+
+["browser_vimma_split_unloaded_tab.js"]
+support-files = ["file_vimma_insert_scroll.html"]
 
 ["browser_vimma_firefox_keys.js"]
 support-files = ["file_vimma_plain.html"]
@@ -429,7 +468,26 @@ support-files = [
 
 ["browser_vimma_bookmarks_workspaces.js"]
 
+["browser_vimma_bookmarks_file.js"]
+support-files = ["file_vimma_insert_scroll.html"]
+
+["browser_vimma_bookmarks_file_outside.js"]
+
+["browser_vimma_bookmarks_export.js"]
+
+["browser_vimma_bookmarklets.js"]
+support-files = ["file_vimma_bookmarklet_page.html", "head_vimma_control.js"]
+
+["browser_vimma_bookmark_open.js"]
+support-files = ["file_vimma_bookmarklet_page.html"]
+
 ["browser_vimma_workspace_restore.js"]
+support-files = ["file_vimma_insert_scroll.html"]
+
+["browser_vimma_workspace_restore_splits.js"]
+support-files = ["file_vimma_insert_scroll.html"]
+
+["browser_vimma_restore_offscreen_splits.js"]
 support-files = ["file_vimma_insert_scroll.html"]
 
 ["browser_vimma_workspace_desync.js"]
@@ -438,8 +496,32 @@ support-files = ["file_vimma_insert_scroll.html"]
 
 ["browser_vimma_config_first_run.js"]
 
+["browser_vimma_config_file_changes.js"]
+run-if = ["os == 'linux'"] # python3 for links, chmod for an unreadable file
+
 ["browser_vimma_setup.js"]
-support-files = ["file_vimma_setup_amo.sjs", "head_vimma_control.js"]
+support-files = ["head_vimma_control.js"]
+
+["browser_vimma_setup_moving_in.js"]
+support-files = ["head_vimma_control.js"]
+
+["browser_vimma_setup_v2_essentials.js"]
+support-files = ["file_vimma_setup_amo.sjs", "head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_flow.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_keys.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_moving_in.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_privacy.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_window.js"]
+support-files = ["head_vimma_setup_chapters.js"]
 
 ["browser_vimma_theme.js"]
 run-if = ["os == 'linux'"] # ln -s for the omarchy-theme-set symlink swap
@@ -461,6 +543,9 @@ run-if = ["os == 'linux'"] # ln -s for the omarchy-theme-set symlink swap
 
 ["browser_vimma_normal_extras.js"]
 
+["browser_vimma_reader_url.js"]
+support-files = ["file_vimma_reader_article.html"]
+
 ["browser_vimma_addons.js"]
 support-files = ["file_vimma_addon_updates.json"]
 
@@ -468,6 +553,9 @@ support-files = ["file_vimma_addon_updates.json"]
 support-files = ["file_vimma_leave_page.html"]
 
 ["browser_vimma_popups.js"]
+support-files = ["file_vimma_popups.html"]
+
+["browser_vimma_notification_bars.js"]
 support-files = ["file_vimma_popups.html"]
 
 ["browser_vimma_security_invariants.js"]
@@ -578,3 +666,25 @@ support-files = ["file_vimma_urlbar_suggest.sjs"]
 
 ["browser_vimma_state_waits.js"]
 support-files = ["file_vimma_grep.html", "file_vimma_outline.pdf"]
+
+["browser_vimma_site_unbind.js"]
+support-files = ["file_vimma_site_unbind.html"]
+
+["browser_vimma_site_unbind_command.js"]
+support-files = ["file_vimma_site_unbind.html"]
+
+["browser_vimma_tab_sleep.js"]
+support-files = [
+  "file_vimma_insert_scroll.html",
+  "file_vimma_tab_sleep_unload.html",
+  "file_vimma_downloads.sjs",
+]
+
+["browser_vimma_tab_sleep_rows.js"]
+
+["browser_vimma_agent_tab_sleep.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
+
+["browser_vimma_low_memory.js"]
+run-if = ["os == 'linux'"]
+support-files = ["file_vimma_agent_page.html"]

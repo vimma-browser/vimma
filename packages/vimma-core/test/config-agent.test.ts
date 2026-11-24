@@ -5,7 +5,8 @@ import { AGENT_DEFAULTS, parseConfig, reloadConfig } from "../src/config/config.
 
 import type { ResolvedConfig } from "../src/config/config.mjs";
 
-const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+// A config.toml whose first line is a comment, so errors are on the lines they always were.
+const cfg = (...lines: string[]) => ["# config.toml", ...lines].join("\n") + "\n";
 
 function ok(text: string) {
   const r = parseConfig(text);
@@ -34,7 +35,7 @@ const HOSTED = [
 
 describe("[agent]", () => {
   test("the defaults: no provider, three running tasks, the bench's budgets", () => {
-    expect(ok(v2()).agent).toEqual({
+    expect(ok(cfg()).agent).toEqual({
       default: null,
       localOnly: false,
       maxRunning: 3,
@@ -50,7 +51,7 @@ describe("[agent]", () => {
 
   test("[agent] providers parse", () => {
     const agent = ok(
-      v2(
+      cfg(
         "[agent]",
         'default = "local"',
         "local_only = false",
@@ -96,7 +97,7 @@ describe("[agent]", () => {
   });
 
   test("vision defaults to true for anthropic and false for openai (B7)", () => {
-    const [local, hosted] = ok(v2(...LOCAL, ...HOSTED)).agent.providers;
+    const [local, hosted] = ok(cfg(...LOCAL, ...HOSTED)).agent.providers;
     expect(local?.vision).toBe(false);
     expect(hosted?.vision).toBe(true);
   });
@@ -104,41 +105,44 @@ describe("[agent]", () => {
   test("a key field in [agent] is an error, with its line", () => {
     const said =
       "an API key must not be in config.toml: Vimma keeps it in login storage, set in the agent's setup";
-    expect(errors(v2("[agent]", 'api_key = "sk-1"'))).toEqual([
+    expect(errors(cfg("[agent]", 'api_key = "sk-1"'))).toEqual([
       { line: 3, path: "agent.api_key", message: said },
     ]);
     for (const key of ["key", "token", "password"]) {
-      const e = errors(v2(...LOCAL, `${key} = "x"`));
+      const e = errors(cfg(...LOCAL, `${key} = "x"`));
       expect(e).toEqual([{ line: 7, path: `agent.providers[0].${key}`, message: said }]);
     }
   });
 
   test("the key's value never appears in the error", () => {
-    const e = errors(v2(...HOSTED, 'api_key = "sk-ant-secret-1234"'));
+    const e = errors(cfg(...HOSTED, 'api_key = "sk-ant-secret-1234"'));
     expect(JSON.stringify(e)).not.toContain("sk-ant-secret");
   });
 
-  test("task_grant_minutes is not a key of [agent]", () => {
-    expect(errors(v2("[agent]", "task_grant_minutes = 30"))[0]).toMatchObject({
-      path: "agent.task_grant_minutes",
-      message: 'unknown key "task_grant_minutes"',
-    });
+  test("task_grant_minutes is not a key of [agent]: skipped with a warning (#1474)", () => {
+    expect(parseConfig(cfg("[agent]", "task_grant_minutes = 30")).warnings).toEqual([
+      {
+        line: 3,
+        path: "agent.task_grant_minutes",
+        message: 'unknown key "task_grant_minutes"; skipped',
+      },
+    ]);
   });
 
   test("local_only refuses a remote endpoint", () => {
-    expect(errors(v2("[agent]", "local_only = true", ...HOSTED))).toEqual([
+    expect(errors(cfg("[agent]", "local_only = true", ...HOSTED))).toEqual([
       {
         line: 7,
         path: "agent.providers[0].endpoint",
         message: "local_only refuses api.anthropic.com",
       },
     ]);
-    expect(ok(v2("[agent]", "local_only = true", ...LOCAL)).agent.localOnly).toBe(true);
+    expect(ok(cfg("[agent]", "local_only = true", ...LOCAL)).agent.localOnly).toBe(true);
   });
 
   test("an endpoint off this machine must be https, and carry no user name", () => {
     const at = (url: string) =>
-      errors(v2(...LOCAL.slice(0, 3), `endpoint = "${url}"`, 'model = "m"'))[0]?.message;
+      errors(cfg(...LOCAL.slice(0, 3), `endpoint = "${url}"`, 'model = "m"'))[0]?.message;
     expect(at("http://llm.example/v1")).toBe(
       "an endpoint that is not on this machine must be https://",
     );
@@ -150,14 +154,14 @@ describe("[agent]", () => {
   });
 
   test("max_running and keep_days parse within their bounds", () => {
-    expect(ok(v2("[agent]", "max_running = 1")).agent.maxRunning).toBe(1);
-    expect(ok(v2("[agent]", "keep_days = 1")).agent.keepDays).toBe(1);
-    const at = (line: string) => errors(v2("[agent]", line))[0]?.message;
+    expect(ok(cfg("[agent]", "max_running = 1")).agent.maxRunning).toBe(1);
+    expect(ok(cfg("[agent]", "keep_days = 1")).agent.keepDays).toBe(1);
+    const at = (line: string) => errors(cfg("[agent]", line))[0]?.message;
     expect(at("max_running = 0")).toBe("must be an integer between 1 and 10");
     expect(at("max_running = 11")).toBe("must be an integer between 1 and 10");
     expect(at("keep_days = 0")).toBe("must be an integer between 1 and 3650 (days)");
     expect(at("max_steps = 0")).toBe("must be an integer between 1 and 1000");
-    expect(ok(v2("[agent]", "keep_results = 0")).agent.keepResults).toBe(0);
+    expect(ok(cfg("[agent]", "keep_results = 0")).agent.keepResults).toBe(0);
     expect(at("keep_results = -1")).toBe("must be an integer between 0 and 1000");
     expect(at("keep_results = 1001")).toBe("must be an integer between 0 and 1000");
     expect(at("max_tokens = 999")).toBe("must be an integer between 1000 and 100000000");
@@ -167,32 +171,42 @@ describe("[agent]", () => {
   });
 
   test("a provider needs a unique name, a kind, an endpoint and a model", () => {
-    expect(errors(v2("[[agent.providers]]", 'name = "x"')).map((e) => e.message)).toEqual([
+    expect(errors(cfg("[[agent.providers]]", 'name = "x"')).map((e) => e.message)).toEqual([
       'a provider needs "kind", "endpoint" and "model"',
     ]);
-    expect(errors(v2(...LOCAL, ...LOCAL))[0]).toMatchObject({
+    expect(errors(cfg(...LOCAL, ...LOCAL))[0]).toMatchObject({
       path: "agent.providers[1].name",
       message: 'a second provider named "local"',
     });
-    expect(errors(v2(...LOCAL.slice(0, 2), 'kind = "gemini"', ...LOCAL.slice(3)))[0]?.message).toBe(
-      'must be "openai", "anthropic" or "cli"',
-    );
-    expect(errors(v2(...HOSTED.slice(0, -1)))[0]?.message).toBe(
+    expect(
+      errors(cfg(...LOCAL.slice(0, 2), 'kind = "gemini"', ...LOCAL.slice(3)))[0]?.message,
+    ).toBe('must be "openai", "anthropic" or "cli"');
+    expect(errors(cfg(...HOSTED.slice(0, -1)))[0]?.message).toBe(
       "price_in and price_out go together",
     );
   });
 
+  test("a provider without a name is an error, of either kind", () => {
+    // A nameless provider resolved with no name, and made `[agent] default` undefined.
+    const noName = (lines: string[]) => lines.filter((l) => !l.startsWith("name ="));
+    expect(errors(cfg(...noName(LOCAL)))).toMatchObject([
+      { path: "agent.providers[0]", message: 'a provider needs "name"' },
+    ]);
+    const cli = ["[[agent.providers]]", 'kind = "cli"', 'cli = "codex"'];
+    expect(errors(cfg(...cli))).toMatchObject([
+      { path: "agent.providers[0]", message: 'a provider needs "name"' },
+    ]);
+  });
+
   test("default names a provider", () => {
-    expect(errors(v2("[agent]", 'default = "nope"', ...LOCAL))[0]).toMatchObject({
+    expect(errors(cfg("[agent]", 'default = "nope"', ...LOCAL))[0]).toMatchObject({
       path: "agent.default",
       message: 'no provider is named "nope"',
     });
   });
 
-  test("[agent] is new in schema 2", () => {
-    expect(errors(["schema = 1", "[agent]", "max_steps = 5"].join("\n"))[0]?.message).toBe(
-      "is new in schema 2: put schema = 2 at the top of the file",
-    );
+  test("[agent] is valid in a schema-1 file too", () => {
+    expect(parseConfig(["schema = 1", "[agent]", "max_steps = 5"].join("\n")).errors).toEqual([]);
   });
 });
 
@@ -202,7 +216,7 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
     "a CLI provider names no program, arguments or environment: setup confirms the program's path";
 
   test("a cli provider parses with cli and model", () => {
-    expect(ok(v2(...CLI, 'model = "sonnet"')).agent.providers).toEqual([
+    expect(ok(cfg(...CLI, 'model = "sonnet"')).agent.providers).toEqual([
       {
         name: "claude",
         kind: "cli",
@@ -214,12 +228,12 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
       },
     ]);
     // No model: the CLI's own default, which its run reports.
-    expect(ok(v2(...CLI)).agent.providers[0]?.model).toBe("");
+    expect(ok(cfg(...CLI)).agent.providers[0]?.model).toBe("");
   });
 
   test("a codex provider parses as claude-code's does", () => {
     const codex = ["[[agent.providers]]", 'name = "codex"', 'kind = "cli"', 'cli = "codex"'];
-    expect(ok(v2(...codex)).agent.providers[0]).toMatchObject({
+    expect(ok(cfg(...codex)).agent.providers[0]).toMatchObject({
       name: "codex",
       kind: "cli",
       cli: "codex",
@@ -234,19 +248,19 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
       ["args", '["--dangerously-skip-permissions"]'],
       ["env", '{ LD_PRELOAD = "/tmp/x.so" }'],
     ]) {
-      expect(errors(v2(...CLI, `${key} = ${value}`))).toEqual([
+      expect(errors(cfg(...CLI, `${key} = ${value}`))).toEqual([
         { line: 6, path: `agent.providers[0].${key}`, message: NO_PROGRAM },
       ]);
     }
   });
 
   test("a cli provider takes no endpoint, and needs its cli", () => {
-    expect(errors(v2(...CLI, 'endpoint = "https://x.example"'))[0]).toMatchObject({
+    expect(errors(cfg(...CLI, 'endpoint = "https://x.example"'))[0]).toMatchObject({
       path: "agent.providers[0].endpoint",
       message: "a CLI provider has no endpoint: the CLI decides where it sends requests",
     });
-    expect(errors(v2(...CLI.slice(0, 3)))[0]?.message).toBe('a CLI provider needs "cli"');
-    expect(errors(v2(...CLI.slice(0, 3), "cli = 3"))[0]).toMatchObject({
+    expect(errors(cfg(...CLI.slice(0, 3)))[0]?.message).toBe('a CLI provider needs "cli"');
+    expect(errors(cfg(...CLI.slice(0, 3), "cli = 3"))[0]).toMatchObject({
       path: "agent.providers[0].cli",
       message: "expected a string, got an integer",
     });
@@ -255,7 +269,7 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
   test("an unknown cli skips its provider with a warning; the rest of the file applies", () => {
     // A config written by a newer build, or shared in dotfiles, names a CLI this build lacks.
     const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "claude-cod"'];
-    const r = parseConfig(v2("[agent]", "max_steps = 7", ...other, ...CLI));
+    const r = parseConfig(cfg("[agent]", "max_steps = 7", ...other, ...CLI));
     expect(r.errors).toEqual([]);
     expect(r.warnings).toEqual([
       {
@@ -273,7 +287,7 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
 
   test("a default naming a skipped provider is no error, and no default is set", () => {
     const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "opencode"'];
-    const r = parseConfig(v2("[agent]", 'default = "new"', ...other, ...CLI));
+    const r = parseConfig(cfg("[agent]", 'default = "new"', ...other, ...CLI));
     expect(r.errors).toEqual([]);
     expect(r.warnings.map((w) => w.path)).toEqual(["agent.providers[0].cli"]);
     expect(r.config?.agent.default).toBe(null);
@@ -281,50 +295,53 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
 
   test("a skipped provider's other mistakes are still errors", () => {
     const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "opencode"'];
-    expect(errors(v2(...other, 'command = "/bin/sh"'))[0]).toMatchObject({
+    expect(errors(cfg(...other, 'command = "/bin/sh"'))[0]).toMatchObject({
       path: "agent.providers[0].command",
     });
     const again = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "codex"'];
-    expect(errors(v2(...other, ...again))[0]).toMatchObject({
+    expect(errors(cfg(...other, ...again))[0]).toMatchObject({
       path: "agent.providers[1].name",
       message: 'a second provider named "new"',
     });
   });
 
   test("a file without unknown CLIs has no warnings, and reloadConfig passes them on", () => {
-    expect(parseConfig(v2(...CLI)).warnings).toEqual([]);
+    expect(parseConfig(cfg(...CLI)).warnings).toEqual([]);
     const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "opencode"'];
-    const r = reloadConfig(null, v2(...other));
+    const r = reloadConfig(null, cfg(...other));
     expect(r.kept).toBe(false);
     expect(r.warnings.map((w) => w.path)).toEqual(["agent.providers[0].cli"]);
     expect(r.active.config.agent.providers).toEqual([]);
   });
 
   test("a cli provider's model is refused by the rule its run uses", () => {
-    expect(errors(v2(...CLI, 'model = "--bare"'))[0]).toMatchObject({
+    expect(errors(cfg(...CLI, 'model = "--bare"'))[0]).toMatchObject({
       path: "agent.providers[0].model",
       message: 'the model "--bare" is not a model name: it cannot start with "-"',
     });
   });
 
   test("local_only refuses a cli provider", () => {
-    expect(errors(v2("[agent]", "local_only = true", ...CLI))[0]).toMatchObject({
+    expect(errors(cfg("[agent]", "local_only = true", ...CLI))[0]).toMatchObject({
       path: "agent.providers[0].kind",
       message: "an agent CLI may send page text off this machine ([agent] local_only)",
     });
   });
 
   test("max_minutes parses within its bounds", () => {
-    expect(ok(v2(...CLI, "max_minutes = 5")).agent.providers[0]).toMatchObject({ maxMinutes: 5 });
-    expect(ok(v2(...CLI, "max_minutes = 1440")).agent.providers[0]).toMatchObject({
+    expect(ok(cfg(...CLI, "max_minutes = 5")).agent.providers[0]).toMatchObject({ maxMinutes: 5 });
+    expect(ok(cfg(...CLI, "max_minutes = 1440")).agent.providers[0]).toMatchObject({
       maxMinutes: 1440,
     });
     for (const bad of ["0", "1441", "2.5"]) {
-      expect(errors(v2(...CLI, `max_minutes = ${bad}`))[0]?.path).toBe(
+      expect(errors(cfg(...CLI, `max_minutes = ${bad}`))[0]?.path).toBe(
         "agent.providers[0].max_minutes",
       );
     }
-    // Only a CLI's: a model provider's task is bounded by its steps and tokens.
-    expect(errors(v2(...LOCAL, "max_minutes = 5"))[0]?.path).toBe("agent.providers[0].max_minutes");
+    // Only a CLI's: a model provider's task is bounded by its steps and tokens. Not a near
+    // miss of a key of its own, so it is skipped with a warning (#1474).
+    expect(parseConfig(cfg(...LOCAL, "max_minutes = 5")).warnings[0]?.path).toBe(
+      "agent.providers[0].max_minutes",
+    );
   });
 });

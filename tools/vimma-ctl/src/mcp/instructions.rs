@@ -32,7 +32,9 @@ each item's search in its own tab, then clicking each item's basket button; each
 asked and limited as if it came alone. To see what a page of the agent workspace shows, call vimma_screenshot (labels: \
 true draws the labels of your last vimma_elements on it). To see a page's script errors, console \
 errors and warnings, and failed requests, call vimma_console; pass the time of its last result as \
-since to see only what came after. Never ask the user to turn on full control (:control on) or to run vimma-ctl \
+since to see only what came after. To run one of the user's bookmarklets on a page, call \
+vimma_bookmarklet with the title they gave you; it works only if they allowed it, and asks them \
+every time. Never ask the user to turn on full control (:control on) or to run vimma-ctl \
 send-keys: they reach every workspace and tab, far beyond the agent workspace.";
 
 #[cfg(test)]

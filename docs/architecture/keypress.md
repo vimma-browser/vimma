@@ -167,10 +167,20 @@ phase (`_onKeyPress`) stops the event when it goes to a remote page and asks for
 (`requestReplyFromRemoteContent`). When the reply comes back, `_pageTookKey` checks whether the page
 called `preventDefault` (in insert mode a native handler in the content process counts too); if
 not, `_runAfterPage` runs the stored action. A chrome field or a
-parent-process page settles the key in `_onKeyPressAfter`, in the bubble phase. Tests:
+parent-process page settles the key in `_onKeyPressAfter`, in the bubble phase.
+
+On macOS a text field's native handler always takes `ctrl+n` and `ctrl+p`, which are Cocoa's
+`moveDown:` and `moveUp:` there. So `_onKeyPress` marks a suggestion key's keypress on its way to
+a remote page (`_suggestionKeySent`), and the page's `VimmaChild`, in a keypress listener of its
+own in the system group's capture phase, keeps a marked keypress from the focused field while
+that field's suggestion list is open: the reply then comes back not prevented and the arrow key
+is pressed. With no list open the field keeps its key
+([13-page-modes](../security/13-page-modes.md), K6). Tests:
 `ctrl_m_mutes_unless_the_page_takes_it`, `a_blocked_shortcuts_permission_makes_the_key_vimmas_first`
 and `a_page_first_key_runs_in_a_tab_whose_process_is_still_starting` in
 [browser_vimma_browser_keys.js](../../tests/browser/browser_vimma_browser_keys.js);
+`the_caret_stays_where_it_was_in_an_open_list` in
+[browser_vimma_page_suggestions.js](../../tests/browser/browser_vimma_page_suggestions.js);
 [page-first.test.ts](../../packages/vimma-core/test/page-first.test.ts).
 
 ## 5. The runner

@@ -15,7 +15,9 @@ import {
   statusAnnouncement,
   statusSegments,
 } from "../core/statusbar.mjs";
+import { readerOriginalUrl } from "../core/pageurl.mjs";
 import { HIDDEN_ATTR as TOOLBAR_HIDDEN_ATTR } from "./toolbar.mjs";
+import { TABLINE_ATTR, TabLineConfig } from "./tabline.mjs";
 
 /** @import { Mode } from "../core/modes.mjs" */
 /** @import { FindStatus } from "../core/find.mjs" */
@@ -108,6 +110,8 @@ export class StatusBar {
     this.drawnDownloads = null;
     /** @type {Announced} what the live region last said */
     this.announced = { mode: null, notFound: null };
+    /** @type {string | null} said with the next render's announcement (say) */
+    this.queued = null;
     /** @type {ResizeObserver | null} */
     this.resize = null;
     /** @type {MutationObserver | null} the address bar's "in use" icons (toolbar-toggle 12) */
@@ -169,6 +173,16 @@ export class StatusBar {
    */
   announce(text) {
     if (this.live) this.live.textContent = text;
+  }
+
+  /**
+   * Say `text` with the next render's announcement, after the mode it may change: a gb jump's
+   * new place (docs/specs/tab-line.md decision 18), which the mode's own words would replace.
+   * @param {string} text
+   */
+  say(text) {
+    this.queued = text;
+    this.schedule();
   }
 
   /** Mark dirty; one render per frame however many triggers fire. */
@@ -302,6 +316,8 @@ export class StatusBar {
     };
     // docs/specs/toolbar-toggle.md decision 12: the hidden toolbar's cues; shown, none.
     const root = this.win.document.documentElement;
+    // docs/specs/tab-line.md decision 16: the drawn tab line shows the tab's place and name.
+    if (!TabLineConfig.statusTab && root.hasAttribute(TABLINE_ATTR)) input.tabLineHasTab = true;
     if (root.hasAttribute(TOOLBAR_HIDDEN_ATTR)) {
       input.toolbarHidden = true;
       input.security = securityOf(browser);
@@ -354,7 +370,12 @@ export class StatusBar {
       hint: input.hint ?? null,
     });
     this.announced = last;
-    if (text !== null) /** @type {HTMLElement} */ (this.live).textContent = text;
+    const said = [text, this.queued].filter(Boolean).join(". ");
+    this.queued = null;
+    const live = /** @type {HTMLElement} */ (this.live);
+    // The same words twice (two gb jumps to the same place) change no text, which a screen
+    // reader does not say again: a no-break space at the end makes it a change.
+    if (said) live.textContent = said === live.textContent ? `${said}\u00a0` : said;
   }
 
   /**
@@ -423,7 +444,7 @@ function originOf(uri) {
  * (BrowserUIUtils.checkEmptyPageOrigin): an about:blank a page opened or wrote into reads
  * `about:blank from <the page that controls it>` (docs/security/06-chrome-ui-rendering.md C3).
  * @param {BrowserWindow} win
- * @param {any} browser
+ * @param {MozTabBrowser} browser
  * @returns {{ url: string | null, origin: UrlOrigin | null }}
  */
 function barUrl(win, browser) {
@@ -456,14 +477,34 @@ function barUrl(win, browser) {
     }
     return { url: uri.spec, origin: null };
   }
-  return { url: displaySpec(browser), origin: originOf(uri) ?? innerOrigin(browser, uri) };
+  const article = readerArticle(uri);
+  if (article) return { url: displaySpec(article), origin: originOf(article) };
+  return { url: displaySpec(uri), origin: originOf(uri) ?? innerOrigin(browser, uri) };
+}
+
+/**
+ * Reader View's article, which Firefox's address bar and identity block name in place of the
+ * about:reader address (ReaderMode.getOriginalUrlObjectForDisplay): the reader renders that
+ * page's content, fetched from it. Null for any other page, and for a malformed reader address,
+ * which the bar then shows as it is.
+ * @param {nsIURI} uri
+ * @returns {nsIURI | null}
+ */
+function readerArticle(uri) {
+  const article = readerOriginalUrl(uri.spec);
+  if (!article) return null;
+  try {
+    return Services.io.newURI(article);
+  } catch {
+    return null;
+  }
 }
 
 /**
  * The origin of a URL without a host of its own: a nested one's inner URL (view-source:), else
  * the page's principal (blob:, which carries its creator's origin), so the bar can still keep
  * that origin's domain whole (docs/security/06-chrome-ui-rendering.md C3).
- * @param {any} browser
+ * @param {MozTabBrowser} browser
  * @param {nsIURI} uri
  * @returns {UrlOrigin | null}
  */
@@ -488,7 +529,7 @@ function innerOrigin(browser, uri) {
  * The selected page's connection, from the browser's security state as Firefox's identity
  * block reads it (browser-siteIdentity.js), never from the address bar, so an unsent edit in
  * the hidden address bar changes nothing (docs/security/06-chrome-ui-rendering.md C3).
- * @param {any} browser
+ * @param {MozTabBrowser} browser
  */
 function securityOf(browser) {
   const W = Ci.nsIWebProgressListener;
@@ -514,12 +555,11 @@ function securityOf(browser) {
 /**
  * The URL as the user may see it: no credentials (createExposableURI), IDN decoded; none for
  * an empty tab.
- * @param {MozBrowser} browser
+ * @param {nsIURI} uri
  * @returns {string | null}
  */
-function displaySpec(browser) {
-  const uri = browser.currentURI;
-  if (!uri || uri.spec === "about:blank") return null;
+function displaySpec(uri) {
+  if (uri.spec === "about:blank") return null;
   try {
     return Services.io.createExposableURI(uri).displaySpec;
   } catch {

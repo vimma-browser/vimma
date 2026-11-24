@@ -285,6 +285,30 @@ declare const EventUtils: {
     win?: Window,
   ): boolean;
   synthesizeMouseAtCenter(target: Element, event: MouseEventOptions, win?: Window): boolean;
+  /** A clause attribute of synthesizeCompositionChange: text the IME has not converted yet. */
+  readonly COMPOSITION_ATTR_RAW_CLAUSE: number;
+  /** An IME's composition string changing in the focused editor (EventUtils.js). */
+  synthesizeCompositionChange(
+    event: {
+      composition: { string: string; clauses: { length: number; attr: number }[] };
+      caret?: { start: number; length: number };
+      key?: { key: string };
+    },
+    win?: Window,
+  ): void;
+  /** An IME's composition starting or ending, `compositioncommitasis` among its types. */
+  synthesizeComposition(
+    event: { type: string; data?: string; key?: { key: string } },
+    win?: Window,
+  ): boolean;
+  /** A wheel event at the offset in `target`, through the widget, so APZ scrolls with it. */
+  synthesizeWheel(
+    target: Element,
+    offsetX: number,
+    offsetY: number,
+    event: { deltaMode?: number; deltaX?: number; deltaY?: number; deltaZ?: number },
+    win?: Window,
+  ): void;
 };
 
 // --- Content-process globals, inside SpecialPowers.spawn tasks ---
@@ -369,6 +393,8 @@ declare function setToolbarVisibility(
 declare var gTabsPanel: BrowserWindow["gTabsPanel"];
 // engine/browser/base/content/browser.js (a lazy getter on the window: CustomizeMode.sys.mjs).
 declare var gCustomizeMode: BrowserWindow["gCustomizeMode"];
+// engine/browser/base/content/browser.js (`var XULBrowserWindow`).
+declare var XULBrowserWindow: BrowserWindow["XULBrowserWindow"];
 // engine/browser/base/content/browser-sync.js (`var gSync`): FXA_ENABLED is a lazy getter of the
 // pref identity.fxaccounts.enabled; updateCTAPanel shows or hides the account panel's promotions.
 declare var gSync: { readonly FXA_ENABLED: boolean; updateCTAPanel(anchor?: Element): void };
@@ -388,6 +414,10 @@ declare var FullZoom: { reset(browser?: MozBrowser): Promise<void> };
 // button or to reset state between tasks. Their APIs are large and Vimma's code does not call
 // them, so they are untyped here: a test's use of one is checked against the page, not by tsc.
 declare const PlacesUtils: any;
+// dom/chrome-webidl/PlacesObservers.webidl and PlacesEvent.webidl: a test that changes a guid as
+// Sync's dedupe does notifies the event itself.
+declare const PlacesObservers: { notifyListeners(events: unknown[]): void };
+declare const PlacesBookmarkGuid: new (init: Record<string, unknown>) => unknown;
 declare const SidebarController: any;
 declare const SitePermissions: any;
 declare const CustomizableUI: any;

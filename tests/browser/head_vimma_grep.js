@@ -140,7 +140,8 @@ function until(cond, msg) {
  * @param {string} [base]
  */
 async function openFixture(params, base = PAGE) {
-  const url = `${base}?${new URLSearchParams(/** @type {any} */ (params))}`;
+  // URLSearchParams turns the numbers into strings, as it does any value.
+  const url = `${base}?${new URLSearchParams(/** @type {Record<string, string>} */ (params))}`;
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
   if (params.frame) {
     await until(

@@ -8,6 +8,7 @@
 // document, as the help overlay. Keys reach it only through VimmaHost (`key`), which consumes
 // every one while it is open; the logic is core picker.mjs, this only renders it.
 
+import { focusOpener } from "./toolbar.mjs";
 import { addonRowText } from "../core/addons.mjs";
 import { AGENT_GLYPH } from "../core/agent.mjs";
 import { itemId, openPicker, pickerKey, sectionOf, setPickerItems } from "../core/picker.mjs";
@@ -20,6 +21,7 @@ import { accessibleName, countText, rowRange, sectionHeading } from "../core/tab
 /** @import { PopupItem } from "../core/popups.mjs" */
 /** @import { DownloadItem } from "../core/downloads.mjs" */
 /** @import { SplitItem } from "../core/splits.mjs" */
+/** @import { BookmarkItem } from "../core/bookmark-open.mjs" */
 
 export const PICKER_ID = "vimma-picker";
 export const WORKSPACE_PICKER_ID = "vimma-workspace-picker";
@@ -29,6 +31,7 @@ export const PERMISSION_PICKER_ID = "vimma-permission-picker";
 export const POPUP_PICKER_ID = "vimma-popup-picker";
 export const DOWNLOAD_PICKER_ID = "vimma-downloads-picker";
 export const SPLIT_PICKER_ID = "vimma-split-picker";
+export const BOOKMARK_PICKER_ID = "vimma-bookmark-picker";
 const STYLESHEET = "chrome://browser/skin/vimma/picker.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into */
@@ -49,22 +52,35 @@ const styled = new WeakSet();
  */
 
 /**
+ * A look's row callbacks. Each is given rows of its own picker's kind only (the host's items), so
+ * they are method signatures: a look may take the narrower item it gets (PickerItem, AddonItem…).
+ * @typedef {{
+ *   cells(item: AnyItem): [index: string, right: string],
+ *   heading(item: AnyItem, count: number): string,
+ *   rowClass(item: AnyItem): string,
+ *   swatch(item: AnyItem): string,
+ * }} LookRows
+ */
+
+/**
  * What one kind of picker shows: its dialog id, heading, hint, and a row's cells after the index.
  * @typedef {object} PickerLook
  * @property {string} id
  * @property {string} title
  * @property {string} listLabel
  * @property {string} hint
- * @property {(item: any) => [index: string, right: string]} cells
+ * @property {LookRows["cells"]} cells
  * @property {string} [empty]  the list's one row when there are no items
- * @property {(item: any, count: number) => string} [heading]  a section's heading, for a picker
+ * @property {LookRows["heading"]} [heading]  a section's heading, for a picker
  *   listed in sections (core sectionOf) other than tab search
- * @property {(item: any) => string} [rowClass]  a class for a row
- * @property {(item: any) => string} [swatch]  a colour shown before the row's index (a CSS
+ * @property {LookRows["rowClass"]} [rowClass]  a class for a row
+ * @property {LookRows["swatch"]} [swatch]  a colour shown before the row's index (a CSS
  *   value), as `--vimma-picker-swatch`
  * @property {boolean} [tabs]  tab search (docs/specs/tab-search.md): typing from the first
  *   key, section headings, a muted cell for workspace, window and markers, host highlights,
  *   accessible names and a live count
+ * @property {boolean} [typeFirst]  typing from the first key, Esc closes, and only the rows
+ *   around the selection in the DOM, as tab search, for a list that can be long (bookmarks)
  */
 
 /** @type {PickerLook} */
@@ -182,6 +198,20 @@ const POPUPS = {
 };
 
 /**
+ * docs/specs/bookmark-open.md decision 4: every bookmark, its folders and host on the right (a
+ * bookmarklet says so instead of showing its script).
+ * @type {PickerLook}
+ */
+const BOOKMARKS = {
+  id: BOOKMARK_PICKER_ID,
+  title: "Bookmarks",
+  listLabel: "Bookmarks",
+  hint: "type to search · ctrl+n/p move · Enter open · Esc close",
+  cells: (/** @type {BookmarkItem} */ item) => ["", item.detail],
+  typeFirst: true,
+};
+
+/**
  * docs/specs/multiple-splits.md decision 12: the workspace's splits, each with its colour, its
  * label, the panes' titles and its pane count; a digit shows that split.
  * @type {PickerLook}
@@ -250,7 +280,7 @@ export class GotoPicker {
     this.counted = null;
     this.state = openPicker(this.host.items(), {
       activeId: this.host.activeId(),
-      ...(this.look.tabs ? { typeFirst: true, query } : {}),
+      ...(this.look.tabs || this.look.typeFirst ? { typeFirst: true, query } : {}),
     });
     this.render();
     dialog.showModal();
@@ -314,6 +344,9 @@ export class GotoPicker {
       /** @type {{ gBrowser?: { selectedBrowser: HTMLElement } }} */ (
         /** @type {unknown} */ (this.win)
       ).gBrowser?.selectedBrowser.focus();
+    } else {
+      // close() gave focus back to the opener directly, which the hidden address bar refuses.
+      focusOpener(this.win, opener);
     }
   }
 
@@ -341,7 +374,8 @@ export class GotoPicker {
     query.textContent = searching ? `/${state.query}` : "";
     query.hidden = !searching;
     // Tab search is always typing: its hint stays (it names the keys that move).
-    /** @type {HTMLElement} */ (query.nextElementSibling).hidden = searching && !this.look.tabs;
+    const typing = !!(this.look.tabs || this.look.typeFirst);
+    /** @type {HTMLElement} */ (query.nextElementSibling).hidden = searching && !typing;
 
     /**
      * @param {string} tag
@@ -372,7 +406,7 @@ export class GotoPicker {
     };
     const list = /** @type {HTMLElement} */ (this.list);
     const tabs = !!this.look.tabs;
-    const { start, end } = tabs
+    const { start, end } = typing
       ? rowRange(state.matches.length, state.selected)
       : { start: 0, end: state.matches.length };
     // Section headings in the grouped view (blank query): not options, so j/k and screen readers
@@ -745,5 +779,54 @@ export class SplitPicker extends GotoPicker {
    */
   constructor(win, host) {
     super(win, host, SPLITS);
+  }
+}
+
+/**
+ * `:bookmarkopen` and `:bookmarktab` (docs/specs/bookmark-open.md): the host reads the bookmarks
+ * and opens it with them and the typed text as its query; `where` is where Enter opens the row.
+ */
+export class BookmarkPicker extends GotoPicker {
+  /**
+   * @param {BrowserWindow} win  a browser window
+   * @param {Omit<PickerHost, "items" | "activeId">} host
+   */
+  constructor(win, host) {
+    /** @type {AnyItem[]} */
+    let rows = [];
+    super(win, { ...host, items: () => rows, activeId: () => null }, BOOKMARKS);
+    /** @param {AnyItem[]} next */
+    this.setRows = (next) => {
+      rows = next;
+    };
+    /** @type {"current" | "tab"} */
+    this.where = "current";
+    /** @type {BookmarkItem[]} */
+    this.rows = [];
+    /** @type {{ browser: MozBrowser, uri: string } | null} the page the picker was opened on */
+    this.page = null;
+  }
+
+  /**
+   * The row listed under `id`, for the host's check that it did not change (decision 6).
+   * @param {string} id
+   */
+  row(id) {
+    return this.rows.find((r) => r.bookmarkId === id);
+  }
+
+  /**
+   * @param {BookmarkItem[]} items
+   * @param {string} query
+   * @param {"current" | "tab"} where
+   * @param {{ browser: MozBrowser, uri: string }} page  where a bookmarklet must still run
+   */
+  openWith(items, query, where, page) {
+    if (this.isOpen) return;
+    this.setRows(items);
+    this.rows = items;
+    this.where = where;
+    this.page = page;
+    this.open({ query });
   }
 }

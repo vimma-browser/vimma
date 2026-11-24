@@ -1,10 +1,13 @@
-// docs/specs/bookmarks-toolbar-hidden.md: the words, the notices and the one-time migration.
+// docs/specs/bookmarks-toolbar-hidden.md: the words, the notices, the one-time migration and the
+// one-time notice that the hidden toolbar hides it too.
 import { describe, expect, test } from "vitest";
 import {
   BOOKMARKS_TOOLBAR_SETTINGS,
   MIGRATION_NOTICE,
+  TOOLBAR_NOTICE,
   bookmarksToolbarNotice,
   needsMigration,
+  needsToolbarNotice,
   settingFor,
   visibilityFor,
 } from "../src/ui/bookmarks-toolbar.mjs";
@@ -40,6 +43,26 @@ describe("notices (Behaviour 6)", () => {
     );
   });
 
+  // toolbar-toggle decision 3 (changed 19 Nov 2026): the toolbar is hidden by default, and the
+  // bookmarks toolbar hides with it (decision 8), so showing it alone would show nothing.
+  test("shown while Firefox's toolbar is hidden, the notice says how to see it", () => {
+    const hidden = { toolbarHidden: true };
+    expect(bookmarksToolbarNotice("always", null, hidden)).toBe(
+      "bookmarks toolbar shown; the toolbar is hidden: :toolbar show",
+    );
+    expect(bookmarksToolbarNotice("newtab", null, hidden)).toBe(
+      "bookmarks toolbar shown on new tabs; the toolbar is hidden: :toolbar show",
+    );
+    expect(bookmarksToolbarNotice("always", "shown", hidden)).toBe(
+      'bookmarks toolbar shown (config.toml sets "shown"; until restart); ' +
+        "the toolbar is hidden: :toolbar show",
+    );
+    expect(bookmarksToolbarNotice("never", null, hidden)).toBe("bookmarks toolbar hidden");
+    expect(bookmarksToolbarNotice("always", null, { toolbarHidden: false })).toBe(
+      "bookmarks toolbar shown",
+    );
+  });
+
   test("the migration notice names the panel and the way back", () => {
     expect(MIGRATION_NOTICE).toBe(
       "bookmarks toolbar hidden: ctrl+b shift+b opens your bookmarks; " +
@@ -61,5 +84,35 @@ describe("needsMigration (decision 7)", () => {
     expect(needsMigration({ ...base, configured: "shown" })).toBe(false);
     expect(needsMigration({ ...base, userValue: "never" })).toBe(false);
     expect(needsMigration({ ...base, userValue: null })).toBe(false);
+  });
+});
+
+describe("needsToolbarNotice (decision 8, changed for issue #1399)", () => {
+  const base = {
+    noticed: false,
+    configured: "shown" as const,
+    toolbarSet: false,
+    toolbarHidden: true,
+  };
+
+  test("config.toml shows it, leaves [ui] toolbar out, and nothing said it yet: say it", () => {
+    expect(needsToolbarNotice(base)).toBe(true);
+    expect(needsToolbarNotice({ ...base, configured: "newtab" })).toBe(true);
+  });
+
+  test("not again, not with [ui] toolbar set, not when config.toml does not show it", () => {
+    expect(needsToolbarNotice({ ...base, noticed: true })).toBe(false);
+    expect(needsToolbarNotice({ ...base, toolbarSet: true })).toBe(false);
+    expect(needsToolbarNotice({ ...base, configured: "hidden" })).toBe(false);
+    expect(needsToolbarNotice({ ...base, configured: null })).toBe(false);
+    // `:toolbar show` earlier in the session: both show, so the notice would be wrong.
+    expect(needsToolbarNotice({ ...base, toolbarHidden: false })).toBe(false);
+  });
+
+  test("the notice names both ways to see it", () => {
+    expect(TOOLBAR_NOTICE).toBe(
+      "bookmarks toolbar hidden with the toolbar: :toolbar show shows both; " +
+        '[ui] toolbar = "shown" in config.toml keeps them',
+    );
   });
 });

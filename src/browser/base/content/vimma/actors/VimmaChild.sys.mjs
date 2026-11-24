@@ -17,11 +17,47 @@ import { describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { PdfView } from "./pdf-view.mjs";
-import { PageScroll } from "./page-scroll.mjs";
+import { PageScroll, scrollersUnder } from "./page-scroll.mjs";
 import { GrepPage } from "./grep-page.mjs";
 import { AgentPage } from "./agent-page.mjs";
+import { asUserGesture } from "./user-gesture.mjs";
+import { dispatchAsPage } from "./page-events.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
+
+/**
+ * A message the parent (host/VimmaParent.sys.mjs) sends this child, by name, with its data as
+ * the parent sends it. Each handler still checks what it reads, as before: the types say what
+ * is sent, not what has been checked.
+ * @typedef {{ name: "Vimma:Scroll", data: { kind: Parameters<PageScroll["scroll"]>[0],
+ *     count: number, instant?: boolean, step?: unknown } }
+ *   | { name: "Vimma:PdfTheme", data: { css?: unknown } | undefined }
+ *   | { name: "Vimma:PdfOp", data: unknown }
+ *   | { name: "Vimma:PdfLinkPage", data: { gen?: unknown, id?: unknown } | undefined }
+ *   | { name: "Vimma:Blur", data: { gen?: unknown, keys?: unknown } | undefined }
+ *   | { name: "Vimma:FocusInput", data: { count?: number } | undefined }
+ *   | { name: "Vimma:Edit", data: { command: string } }
+ *   | { name: "Vimma:Selection", data: { max?: unknown } | undefined }
+ *   | { name: "Vimma:ScrollTo", data: Parameters<PageScroll["scrollTo"]>[0] }
+ *   | { name: "Vimma:Grep", data: Parameters<GrepPage["search"]>[0] }
+ *   | { name: "Vimma:GrepPreview", data: Parameters<GrepPage["preview"]>[0] }
+ *   | { name: "Vimma:GrepJump", data: Parameters<GrepPage["jump"]>[0] }
+ *   | { name: "Vimma:CollectHints", data: { gen: number, linksOnly: boolean, blocks?: boolean,
+ *       texts?: boolean, elements?: boolean } }
+ *   | { name: "Vimma:HintsMoved", data: { gen?: unknown, x?: unknown, y?: unknown } | undefined }
+ *   | { name: "Vimma:ActivateHint", data: { gen: number, id: number } }
+ *   | { name: "Vimma:AgentElement", data: Parameters<AgentPage["element"]>[0] }
+ *   | { name: "Vimma:AgentQuiet", data: Parameters<AgentPage["quiet"]>[0] }
+ *   | { name: "Vimma:AgentConsole", data: Parameters<AgentPage["consoleEntries"]>[0] }
+ *   | { name: "Vimma:Caret", data: unknown }
+ *   | { name: "Vimma:Block", data: BlockMessage }
+ *   | { name: "Vimma:PdfZoom" | "Vimma:PdfWhere" | "Vimma:ScrollFraction" | "Vimma:FocusLast"
+ *       | "Vimma:SuggestionsOpen" | "Vimma:ScrollPosition" | "Vimma:FindAnchor"
+ *       | "Vimma:FindClosed" | "Vimma:FindStep" | "Vimma:GrepEnd" | "Vimma:AgentCards"
+ *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown", data?: unknown }} ChildMessage
+ */
+/** @import { BlockMessage } from "./block.mjs" */
+/** @import { PdfOutlineMessage, PdfStateMessage } from "./pdf-view.mjs" */
 
 const lazy = /** @type {Lazy<"setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -150,10 +186,55 @@ const JS_REASON = 256;
 const KEYS_KEPT = 16;
 
 /**
+ * The beforeinput types of text the user puts into an editor themselves: typed, composed,
+ * pasted or dropped. Not insertReplacementText, setUserInput's (TextControlState.cpp), which is
+ * how an agent's fill sets a value.
+ */
+const TYPED_INPUT = new Set([
+  "insertText",
+  "insertCompositionText",
+  "insertFromComposition",
+  "insertFromPaste",
+  "insertFromDrop",
+]);
+
+/**
  * @param {unknown} n
  * @returns {n is number}
  */
 const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
+
+/**
+ * Whether `el` is a link or inside one, through shadow roots to their hosts: a press on it
+ * passes through the link, whose handling sets the window's link preview.
+ * @param {Element} el
+ */
+function inLink(el) {
+  /** @type {Element | null} */
+  let n = el;
+  while (n) {
+    if (n.matches(":any-link")) return true;
+    n = n.parentElement ?? /** @type {ShadowRoot | null} */ (n.parentNode)?.host ?? null;
+  }
+  return false;
+}
+
+/**
+ * Where an element's border box starts in the viewport.
+ * @param {Element} el
+ */
+function corner(el) {
+  const r = el.getBoundingClientRect();
+  return { x: r.x, y: r.y };
+}
+
+/**
+ * No hint collection: what `#hints` holds before the first one and after a label was followed.
+ * @type {{ gen: number, els: WeakRef<Element>[], at: { x: number, y: number }[],
+ *   frames: { el: WeakRef<Element>, at: { x: number, y: number } }[],
+ *   page: { x: number, y: number } }}
+ */
+const HINTS_NONE = { gen: -1, els: [], at: [], frames: [], page: { x: 0, y: 0 } };
 
 export class VimmaChild extends JSWindowActorChild {
   /**
@@ -181,12 +262,18 @@ export class VimmaChild extends JSWindowActorChild {
 
   /** Scrolling in this frame (docs/specs/m1-actor-insert-scroll.md). */
   #scroll = new PageScroll(this, () => deepActiveElement(this.document));
-  /** The last hint collection (m1-hints): its generation and its elements, by target id. */
-  #hints = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
+  /**
+   * The last hint collection (m1-hints): its generation, its elements by target id, and, to
+   * tell whether a wheel moved them, where each was in the viewport (`at`, by target id), where
+   * each subframe was (`frames`: their targets move with them) and where the page was scrolled
+   * to (`page`).
+   */
+  #hints = HINTS_NONE;
   /** The agent's page work in this frame (docs/specs/mcp-forms.md, mcp-checkpoints.md). */
   #agent = new AgentPage(this, {
     onPage: (el) => this.#onPage(el),
-    press: (el, still) => this.#press(el, still),
+    press: (el, still) => this.#press(el, still, { agent: true }),
+    asAgent: (fn) => this.#asAgent(fn),
     beforeSubmitCheck: () => this.#beforeSubmitCheck(),
   });
   /** Copy mode in this document (m1-copy-mode). */
@@ -216,6 +303,14 @@ export class VimmaChild extends JSWindowActorChild {
   #lastField = null;
   /** This actor is focusing an element (`i`, a hint): the focus is the user's, not the find's. */
   #focusing = false;
+  /**
+   * An agent's press is running (#press): the page's listeners for its trusted click() run as
+   * "handling user input" (EventListenerManager::HandleEventInternal pushes it for every trusted
+   * click), so a field they focus would read as the user's. It is the page's (issue #1325).
+   */
+  #agentPress = false;
+  /** When this frame last sent Vimma:UserInput, in ChromeUtils.now() ms (#noteTyping). */
+  #typedAt = -Infinity;
   /**
    * The generation of the last Vimma:Blur (Esc) this document had, echoed in its focus reports
    * so that the parent can tell a report sent before that blur (docs/specs/insert-focus.md).
@@ -278,7 +373,7 @@ export class VimmaChild extends JSWindowActorChild {
 
   /**
    * The adapter's state or outline message; its timer can fire while the document goes away.
-   * @param {object} data
+   * @param {PdfStateMessage | PdfOutlineMessage} data
    * @param {string} [name]
    */
   #sendPdf(data, name = "Vimma:PdfState") {
@@ -380,6 +475,23 @@ export class VimmaChild extends JSWindowActorChild {
         if (keys.focus.length > KEYS_KEPT) keys.focus.shift();
         return;
       }
+      case "keypress": {
+        // macOS only (VimmaActors registers it there alone). The parent marked this keypress:
+        // it is a suggestion key's, sent here for the page to have first (VimmaHost,
+        // _suggestionKeySent). The page has had the keydown by now; the focused field has not
+        // had this keypress. While the field's suggestion list is open, the field does not get
+        // it, so Cocoa's moveDown: or moveUp: moves no caret and the parent, whose reply then
+        // comes back not prevented, presses the arrow key. With no list open the field keeps
+        // its key; so it does when Firefox's own popup has only just opened, since this frame
+        // hears of that in a message a key may overtake (AutoComplete:PopupOpened).
+        // Stopped, not prevented: a prevented keypress reads as one the page took. And stopped
+        // for this target's later listeners too: a contenteditable's editor listens on this
+        // same target, the window's parent (HTMLEditor::GetDOMEventTarget), after this actor.
+        const e = /** @type {KeyboardEvent & { multipleActionsPrevented: boolean }} */ (event);
+        if (!e.isTrusted || !e.multipleActionsPrevented || e.defaultPrevented) return;
+        if (this.#suggestionsOpen()) e.stopImmediatePropagation();
+        return;
+      }
       case "focusout":
         // Focus moving to another element of this document reports its own focusin; checking
         // in between would flicker insert → normal → insert.
@@ -402,9 +514,27 @@ export class VimmaChild extends JSWindowActorChild {
         // already has focus (the page put it back after Esc), fires no focus event.
         const el = this.#editableRoot() ?? this.#focusedFieldUnder(event.originalTarget);
         if (el) this.#report(el, "focusin");
-        // Any other click is the user's too, though it may move no focus (a toolbar item that
-        // prevents its mousedown): what the page focuses after it is not the page's own doing.
-        else if (event.isTrusted) this.sendAsyncMessage("Vimma:Click");
+        // A trusted mousedown is the user's (an agent's is untrusted, #press), though it may
+        // move no focus (a toolbar item that prevents its mousedown): what the page focuses after
+        // it is not the page's own doing, and a field the page focused is the user's now. The
+        // parent takes it only from the frame that has focus (VimmaParent); a click into another
+        // frame focuses it, and that focus report is the user's.
+        if (event.isTrusted) this.sendAsyncMessage("Vimma:Click");
+        return;
+      }
+      case "compositionstart":
+      case "drop":
+        // Text the user puts in without a key Vimma sees as one: an IME's composition (its
+        // keydowns are "Process"), an on-screen keyboard, dictation or an emoji picker that
+        // commits through one, and a drop from another application (issue #1325). Trusted
+        // only: an agent's fill sets values with setUserInput, which fires neither.
+        if (event.isTrusted) this.#noteTyping(true);
+        return;
+      case "beforeinput": {
+        // Text typed, composed, pasted or dropped into an editor. An agent's fill sets values
+        // with setUserInput, whose beforeinput is insertReplacementText, never one of these.
+        const type = /** @type {InputEvent} */ (event).inputType;
+        if (event.isTrusted && TYPED_INPUT.has(type)) this.#noteTyping(false);
         return;
       }
       case "dragstart":
@@ -560,6 +690,36 @@ export class VimmaChild extends JSWindowActorChild {
     return !!first && (first.el?.deref() ?? null) !== el;
   }
 
+  /**
+   * Tells the parent the user put text in this frame (Vimma:UserInput), so that a field the page
+   * focused by itself is theirs (docs/specs/mcp-drive.md D13). A beforeinput is sent at most once
+   * a second: one a second apart keeps the tab theirs, as any input within 5 s does.
+   * @param {boolean} always  a composition or a drop, always sent
+   */
+  #noteTyping(always) {
+    const now = ChromeUtils.now();
+    if (!always && now - this.#typedAt < 1000) return;
+    this.#typedAt = now;
+    this.sendAsyncMessage("Vimma:UserInput");
+  }
+
+  /**
+   * Runs an agent's step that may run page listeners as "handling user input" (a click(), a
+   * checkbox's click() in a fill): a focus they make is the page's, not the user's (#report).
+   * @template T
+   * @param {() => T} fn
+   * @returns {T}
+   */
+  #asAgent(fn) {
+    const before = this.#agentPress;
+    this.#agentPress = true;
+    try {
+      return fn();
+    } finally {
+      this.#agentPress = before;
+    }
+  }
+
   #recheck() {
     // A document that lost focus does not speak for the tab: the one that gained it does.
     if (!this.document.hasFocus()) return;
@@ -575,7 +735,9 @@ export class VimmaChild extends JSWindowActorChild {
     // `user`: the focus came from the user's input in this page (a click, Tab, a key the page
     // answered) or from this actor for a Vimma key (`i`, a hint), not from the page's script on
     // its own; after Esc only such a focus enters insert (docs/specs/insert-focus.md).
-    const user = this.#focusing || !!this.contentWindow?.windowUtils.isHandlingUserInput;
+    const user =
+      this.#focusing ||
+      (!this.#agentPress && !!this.contentWindow?.windowUtils.isHandlingUserInput);
     this.sendAsyncMessage("Vimma:Focus", {
       descriptor: describe(el),
       trigger,
@@ -584,7 +746,7 @@ export class VimmaChild extends JSWindowActorChild {
     });
   }
 
-  /** @param {{ name: string, data: any }} msg */
+  /** @param {ChildMessage} msg */
   receiveMessage(msg) {
     switch (msg.name) {
       case "Vimma:Scroll":
@@ -683,6 +845,8 @@ export class VimmaChild extends JSWindowActorChild {
         return undefined;
       case "Vimma:CollectHints":
         return this.#collectHints(msg.data);
+      case "Vimma:HintsMoved":
+        return this.#hintsMoved(msg.data);
       case "Vimma:ActivateHint":
         return this.#activateHint(msg.data);
       case "Vimma:AgentElement":
@@ -714,7 +878,7 @@ export class VimmaChild extends JSWindowActorChild {
           take: (gen, id) => {
             if (gen !== this.#hints.gen) return null;
             const el = this.#hints.els[id]?.deref() ?? null;
-            this.#hints = { gen: -1, els: [] };
+            this.#hints = HINTS_NONE;
             return el;
           },
           // `v` on a block: copy mode starts with the block selected, as with a mouse selection.
@@ -787,6 +951,8 @@ export class VimmaChild extends JSWindowActorChild {
    * `vimma_elements` (`elements`, docs/specs/mcp-forms.md F2-F6) gets every kind, disabled
    * controls included, each described, with the frame's forms, and keeps its elements apart from
    * the user's (F4). A top frame without a size yet is given time to get one first (#sized).
+   * A smooth scroll this frame started is finished first; one taken over since is waited for
+   * (m1-hints, issues #1308 and #1337).
    * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
    *   elements?: boolean }} data
    */
@@ -796,13 +962,23 @@ export class VimmaChild extends JSWindowActorChild {
     if (!isIndex(gen) || !win) return null;
     const elements = data.elements === true;
     const texts = data.texts === true && !elements;
-    if (!this.browsingContext?.parent && !hasSize(win)) {
-      if (!(await this.#sized(win))) return null;
-      // Collections that wait can end out of order. Generations only grow, so a stored newer
-      // generation means a newer collection of the same kind answered meanwhile; the elements it
-      // stored are the ones the parent acts on, and they stay.
+    // Collections that wait can end out of order. Generations only grow, so a stored newer
+    // generation means a newer collection of the same kind answered meanwhile; the elements it
+    // stored are the ones the parent acts on, and they stay.
+    const overtaken = () => {
       const stored = elements ? this.#agent.listed : texts ? null : this.#hints;
-      if (stored && stored.gen > gen) return null;
+      return !!stored && stored.gen > gen;
+    };
+    if (!this.browsingContext?.parent && !hasSize(win)) {
+      if (!(await this.#sized(win)) || overtaken()) return null;
+    }
+    // Labels go where the targets are once a scroll ends, not where it is passing (#1308): a
+    // smooth scroll this frame started is finished at once; one that something else took over,
+    // or a snapped one, is waited for, a snapped one also before it has moved (#1400).
+    const running = this.#scroll.finish();
+    if (running) {
+      await this.#scroll.settled(new Set([running.target]), running.starting);
+      if (overtaken() || !this.contentWindow) return null;
     }
     const t0 = ChromeUtils.now();
     const { targets, frames } = collectTargets(win, {
@@ -813,7 +989,17 @@ export class VimmaChild extends JSWindowActorChild {
     // An agent's collection is never followed through the user's targets: the user's targets of
     // this frame stay as they were, and an agent's elements are kept apart.
     if (elements) this.#agent.listed = { gen, els: targets.map((t) => new WeakRef(t.el)) };
-    else if (!texts) this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    else if (!texts) {
+      this.#hints = {
+        gen,
+        els: targets.map((t) => new WeakRef(t.el)),
+        // The border box, read again: a target's rect above is clipped to the viewport and, for
+        // a block, its first line, so it would not show every move. Layout is flushed already.
+        at: targets.map((t) => corner(t.el)),
+        frames: frames.map((f) => ({ el: new WeakRef(f.el), at: corner(f.el) })),
+        page: { x: win.scrollX, y: win.scrollY },
+      };
+    }
     const described = elements ? describeAgentElements(targets.map((t) => t.el)) : null;
     return {
       targets: targets.map((t, id) => ({
@@ -830,6 +1016,46 @@ export class VimmaChild extends JSWindowActorChild {
       ms: ChromeUtils.now() - t0,
       ...(described ? { forms: described.forms } : {}),
     };
+  }
+
+  /**
+   * A wheel over the page while the labels of collection `gen` show (m1-hints, issue #1337):
+   * resolves, once the scroll it started under the point `x`, `y` (viewport CSS pixels) has
+   * ended (PageScroll.settled), whether the labels may no longer sit on their targets. False
+   * only when every target of this frame is where it was collected: the wheel was at the
+   * page's end, or the page took it for itself (a map, a canvas app). True when the wheel was
+   * over a subframe, whose scroll this frame does not see, or when `gen` is not this frame's
+   * last collection.
+   * @param {{ gen?: unknown, x?: unknown, y?: unknown } | undefined} data
+   * @returns {Promise<boolean>}
+   */
+  async #hintsMoved(data) {
+    const win = this.contentWindow;
+    const gen = data?.gen;
+    if (!win || !isIndex(gen) || gen !== this.#hints.gen) return true;
+    const x = Number(data?.x);
+    const y = Number(data?.y);
+    const point = Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    const under = scrollersUnder(win, point);
+    await this.#scroll.settled(under.targets);
+    if (under.frame || gen !== this.#hints.gen) return true;
+    const { els, at, frames, page } = this.#hints;
+    const moved = (
+      /** @type {{ x: number, y: number }} */ a,
+      /** @type {{ x: number, y: number } | undefined} */ b,
+    ) => !b || Math.abs(a.x - b.x) > 0.5 || Math.abs(a.y - b.y) > 0.5;
+    if (moved({ x: win.scrollX, y: win.scrollY }, page)) return true;
+    const gone = (/** @type {Element | undefined} */ el) => !el?.isConnected;
+    return (
+      els.some((ref, i) => {
+        const el = ref.deref();
+        return gone(el) || moved(corner(/** @type {Element} */ (el)), at[i]);
+      }) ||
+      frames.some((f) => {
+        const el = f.el.deref();
+        return gone(el) || moved(corner(/** @type {Element} */ (el)), f.at);
+      })
+    );
   }
 
   /**
@@ -897,42 +1123,58 @@ export class VimmaChild extends JSWindowActorChild {
 
   /**
    * Follows a target of the last collection: a text field gets focus (its focusin report enters
-   * insert), anything else a click.
+   * insert), a select opens its list, anything else a click. Only the parent sends this, for a
+   * label the user typed in chrome, so the press is the user's gesture in the page: their
+   * transient user activation, as a click would give (user-gesture.mjs; issue #1303). An
+   * agent's click reaches #press through AgentPage, never through here (mcp-forms F8).
    * @param {{ gen: number, id: number }} data
    */
   #activateHint(data) {
     if (!isIndex(data?.gen) || !isIndex(data?.id) || data.gen !== this.#hints.gen) return false;
     const el = this.#hints.els[data.id]?.deref();
-    this.#hints = { gen: -1, els: [] };
+    this.#hints = HINTS_NONE;
     // Not on a page this process has replaced since the labels were drawn (issue #1028).
-    if (!this.#onPage(el)) return false;
+    const win = this.contentWindow;
+    if (!win || !this.#onPage(el)) return false;
     const html = /** @type {HTMLElement} */ (el);
+    // Before the text fields: a select is one for insert mode (core isEditable), and its focus
+    // alone left the list closed.
+    if (el.localName === "select") {
+      const select = /** @type {HTMLSelectElement} */ (el);
+      this.#focus(html);
+      // A disabled select opens nothing: no activation is given for it.
+      if (select.disabled || select.matches(":disabled")) return true;
+      try {
+        asUserGesture(win, () => select.showPicker());
+      } catch {
+        // A hidden select, or one the page removed on focus: it keeps focus, and Alt+Down
+        // opens it.
+      }
+      return true;
+    }
     if (el.localName !== "a" && isEditable(describe(el)).editable) {
       this.#focus(html);
       return true;
     }
-    if (el.localName === "select") {
-      html.focus();
-      try {
-        /** @type {HTMLSelectElement} */ (el).showPicker();
-      } catch {
-        // Without user activation it throws; the select keeps focus and Alt+Down opens it.
-      }
-      return true;
-    }
-    return this.#press(el);
+    return asUserGesture(win, () => this.#press(el));
   }
 
   /**
    * A click as the user's hints and an agent's `vimma_activate` make it: mouseover, mousedown
-   * and mouseup built with the page's constructor (untrusted), for pages that act on them (menus,
-   * Google's jsaction), then click(), which the page sees as trusted and whose activation
-   * behaviour follows links. No transient user activation (docs/specs/mcp-forms.md F8).
+   * and mouseup, for pages that act on them (menus, Google's jsaction), then click(), whose
+   * activation behaviour follows links. The user's hint dispatches the mouse events from this
+   * actor, so the page sees them trusted (EventDispatcher::DispatchDOMEvent stamps an event
+   * that system code dispatches), as it would a real press. An agent's are dispatched as the
+   * page's own script would (page-events.mjs; issue #1321), so they are untrusted: Gecko then
+   * neither focuses a link on the mousedown nor shows its URL in the user's window, and the
+   * page runs their listeners without "handling user input". click() is called by this actor
+   * in both cases, so the page sees a trusted click (mcp-forms F8). Neither gives transient
+   * user activation itself: the user's hint wraps the press in asUserGesture, an agent's never.
    * `still`: checked after the mouse events; when false, no click.
-   * @param {Element} el @param {() => boolean} [still]
+   * @param {Element} el @param {() => boolean} [still] @param {{ agent?: boolean }} [opts]
    * @returns {boolean} whether it clicked
    */
-  #press(el, still = () => true) {
+  #press(el, still = () => true, { agent = false } = {}) {
     // A page this process has replaced since (#onPage): nothing to press.
     const win = this.contentWindow;
     if (!win || !this.#onPage(el)) return false;
@@ -947,15 +1189,47 @@ export class VimmaChild extends JSWindowActorChild {
       clientY: r.top + r.height / 2,
       button: 0,
     };
-    for (const type of ["mouseover", "mousedown", "mouseup"]) {
-      const buttons = type === "mousedown" ? 1 : 0;
-      el.dispatchEvent(new win.MouseEvent(type, { ...init, buttons }));
+    const events = ["mouseover", "mousedown", "mouseup"].map(
+      (type) => new win.MouseEvent(type, { ...init, buttons: type === "mousedown" ? 1 : 0 }),
+    );
+    if (agent) {
+      // Untrusted: they set no link preview, so there is no hover to end, and the user's own
+      // hover in their window is left alone.
+      dispatchAsPage(el, events);
+    } else {
+      for (const event of events) el.dispatchEvent(event);
+      if (inLink(el)) this.#leaveLink();
     }
     if (!this.#onPage(el) || !still()) return false;
     // SVG elements have no click(): dispatch the click event for them.
-    if (typeof html.click === "function") html.click();
-    else el.dispatchEvent(new win.MouseEvent("click", init));
+    const click = () =>
+      typeof html.click === "function"
+        ? html.click()
+        : el.dispatchEvent(new win.MouseEvent("click", init));
+    if (agent) this.#asAgent(click);
+    else click();
     return true;
+  }
+
+  /**
+   * Ends the link hover #press began on a link: its trusted mouseover, and the focus its trusted
+   * mousedown gives the link (Element::PostHandleEventForLinks), each put the link's URL in the
+   * window's link preview (Element::GetEventTargetParentForLinks), where it stayed until another
+   * document loaded, since no pointer leaves the link (#1309). This is what a mouseout does there
+   * (nsDocShell::OnLeaveLink), without one: the page sees the pointer stay on the element, so a
+   * menu that opened on the hover stays open. Only after a press in a link: the call clears
+   * whatever the window shows, the user's own hover included. The user's hints only: an agent's
+   * press sends untrusted events, which never set the preview (page-events.mjs, #1321).
+   */
+  #leaveLink() {
+    try {
+      this.docShell?.treeOwner
+        ?.QueryInterface(Ci.nsIInterfaceRequestor)
+        .getInterface(Ci.nsIWebBrowserChrome)
+        .setLinkStatus("");
+    } catch {
+      // A frame being torn down has no tree owner left; nothing shows its link then.
+    }
   }
 
   /**

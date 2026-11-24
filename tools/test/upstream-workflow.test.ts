@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { KEEP, RENAME, generate } from "../branding/brandings.ts";
 import { tempDir } from "./temp-dir.ts";
 
 // Spec m7-upstream-autopilot, docs/security/10-firefox-updates.md §10: the upstream autopilot's
@@ -429,6 +438,83 @@ describe("e2e.yml Beta mode", () => {
     expect(run(0, "false")).toBe(0);
     // a usage error (2) is a broken step, never a finding
     for (const flag of ["", "true", "false"]) expect(run(2, flag), flag).toBe(2);
+  });
+
+  // B4 (since changed, #858): the committed brandings.ftl is generated from the release's file
+  // and cannot match a Beta's too. A beta run regenerates it from the Beta's file, so the suites
+  // run with the Beta's names, and still fails on a term the mapping does not decide or a renamed
+  // term the Beta dropped; a release run checks the committed file as before. The step runs here
+  // with the real generator in a scratch checkout and a fake npx that records the vitest call.
+  const FTL = "toolkit/locales/en-US/toolkit/branding/brandings.ftl";
+  const beta = [
+    "# License header.",
+    "",
+    ...Object.keys(RENAME).map((term) => `${term} = Firefox Thing`),
+    ...KEEP.map((term) => `${term} = Mozilla Thing`),
+    "-pocket-brand-name = Pocket",
+    "",
+  ].join("\n");
+  const brandings = (mode: string, upstream: string) => {
+    const dir = tempDir("e2e-brandings-");
+    const generator = join(dir, "tools/branding/brandings.ts");
+    mkdirSync(dirname(generator), { recursive: true });
+    copyFileSync(fileURLToPath(new URL("../branding/brandings.ts", import.meta.url)), generator);
+    writeFileSync(join(dir, "package.json"), '{ "type": "module" }\n');
+    for (const [tree, text] of [
+      ["engine", upstream],
+      ["src", "# the release's file\n"],
+    ] as const) {
+      mkdirSync(dirname(join(dir, tree, FTL)), { recursive: true });
+      writeFileSync(join(dir, tree, FTL), text);
+    }
+    const bin = join(dir, "bin");
+    const record = join(dir, "npx-argv");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "npx"), `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\n`, {
+      mode: 0o755,
+    });
+    const r = spawnSync("bash", ["-e", "-c", script(step(e2e, "brandings"))], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { PATH: `${bin}:${process.env.PATH}`, BETA: mode, BRANDINGS_REQUIRE_UPSTREAM: "1" },
+    });
+    return {
+      status: r.status,
+      stderr: r.stderr,
+      vitest: existsSync(record) ? readFileSync(record, "utf8").trim().split("\n").join(" ") : null,
+      committed: readFileSync(join(dir, "src", FTL), "utf8"),
+    };
+  };
+  const VITEST = "--no -- vitest run tools/branding/test/brandings.test.ts";
+
+  it("a beta run regenerates brandings.ftl from the Beta's file, then runs the check", () => {
+    expect(step(e2e, "brandings")).toContain("BETA: ${{ steps.mode.outputs.beta }}");
+    const r = brandings("true", beta);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.committed).toBe(generate(beta));
+    expect(r.vitest).toBe(VITEST);
+  });
+
+  it("a beta run still fails on an undecided Firefox term or a renamed term the Beta dropped", () => {
+    const undecided = brandings("true", `${beta}-firefox-new-brand-name = Firefox New\n`);
+    expect(undecided.status).not.toBe(0);
+    expect(undecided.stderr).toContain("-firefox-new-brand-name");
+    const renamed = Object.keys(RENAME)[0] as string;
+    const dropped = brandings("true", beta.replace(`${renamed} = Firefox Thing\n`, ""));
+    expect(dropped.status).not.toBe(0);
+    expect(dropped.stderr).toContain(renamed);
+    for (const r of [undecided, dropped]) {
+      expect(r.stderr).not.toMatch(/^\s+at /m);
+      expect(r.committed).toBe("# the release's file\n");
+      expect(r.vitest).toBeNull();
+    }
+  });
+
+  it("a release run checks the committed brandings.ftl as it is", () => {
+    const r = brandings("false", beta);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.committed).toBe("# the release's file\n");
+    expect(r.vitest).toBe(VITEST);
   });
 
   it("a release run uploads failed screenshots as before; a beta run when the e2e step failed", () => {

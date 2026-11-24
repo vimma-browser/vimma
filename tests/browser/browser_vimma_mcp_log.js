@@ -40,11 +40,11 @@ registerCleanupFunction(async () => {
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
-const logPicker = () => /** @type {any} */ (document.getElementById(LOG_ID));
+const logPicker = () => /** @type {HTMLDialogElement | null} */ (document.getElementById(LOG_ID));
 /** Each row's cells, joined as `:mcp log`'s one-line form: time, what was called, outcome. */
 const rows = () =>
   [...(logPicker()?.querySelectorAll("[role=option]") ?? [])].map((r) =>
@@ -94,6 +94,7 @@ add_task(async function test_mcp_log_lists_asked_and_granted_calls() {
   await c.handshake({ protocol: 2, role: "agent" });
   await c.call("agent-hello", { client: { name: "claude-code" } });
 
+  /** @type {ControlRequestId<"agent-read" | "agent-keys">} */
   let id = c.request("agent-read", { tab: idOf(tab) });
   await answer("once");
   await c.response(id);
@@ -132,7 +133,7 @@ add_task(async function test_mcp_log_lists_asked_and_granted_calls() {
   Assert.ok(shown[3].includes("vimma_read_page") && shown[3].endsWith("allowed"), "and the read");
   Assert.ok(/^\d\d:\d\d:\d\d /.test(shown[0]), "each row starts with the time");
   EventUtils.synthesizeKey("KEY_Escape");
-  await until(() => !logPicker().open, "Esc closes it");
+  await until(() => logPicker()?.open === false, "Esc closes it");
 
   c.close();
   await mcp(false);
@@ -142,7 +143,7 @@ add_task(async function test_mcp_log_lists_asked_and_granted_calls() {
   Assert.deepEqual(rows(), [], ":mcp off cleared the log");
   Assert.ok(emptyRow()?.includes("No agent calls"), "the empty log says so");
   EventUtils.synthesizeKey("KEY_Escape");
-  await until(() => !logPicker().open, "closed");
+  await until(() => logPicker()?.open === false, "closed");
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });

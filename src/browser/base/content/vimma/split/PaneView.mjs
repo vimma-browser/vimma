@@ -45,9 +45,10 @@ import {
 import { planSplit } from "../core/splitplan.mjs";
 import {
   MAX_SPLITS_DEFAULT,
-  hiddenSplitRefusal,
+  addSplit,
   newSplit,
   removeSplitTab,
+  splitLimitRefusal,
   splitsFromPanes,
   updateSplit,
 } from "../core/splits.mjs";
@@ -61,7 +62,7 @@ import {
 } from "./layout.mjs";
 
 /**
- * @import { Direction, Panes, ResizeDirection, SplitDirection, SplitRefusal }
+ * @import { Direction, PaneNode, Panes, ResizeDirection, SplitDirection, SplitRefusal }
  *   from "../core/panes.mjs"
  */
 /** @import { SplitPlan } from "../core/splitplan.mjs" */
@@ -70,14 +71,16 @@ import {
 
 /**
  * @typedef {MozTabbrowserTab & { linkedPanel: string, splitview: Wrapper | null }} Tab  a tab
- *   the panes hold: loaded, so it has a panel
+ *   the panes hold: loaded, so it has a panel (a split that is not on screen may also name a lazy
+ *   tab by its uuid, see #anyTab)
  * @typedef {Element & { tabs: Tab[], addTabs: (tabs: Tab[]) => void,
  *   unsplitTabs: () => void }} Wrapper
  * @typedef {Pick<Tabbrowser, "tabpanels" | "_switcher"> & { tabs: Tab[], selectedTab: Tab,
  *   tabContainer: Element, splitViews: Wrapper[],
  *   addTabSplitView: (tabs: Tab[], options?: object) => Wrapper,
  *   addTrustedTab: (url: string, options?: object) => Tab, unpinTab: (tab: Tab) => void,
- *   moveTabAfter: (tab: Tab, target: Tab) => void }} TabBrowser
+ *   moveTabAfter: (tab: Tab, target: Tab) => void,
+ *   insertBrowser: (tab: MozTabbrowserTab) => void }} TabBrowser
  * @typedef {{ ok: true } | { ok: false, reason: string }} PaneResult
  * @typedef {object} Adoption  how splits made outside Vimma map onto workspaces (WindowWorkspaces)
  * @property {(tab: Tab) => string | undefined} workspaceOf  the tab's workspace id; undefined:
@@ -85,7 +88,24 @@ import {
  * @property {() => string} active  the shown workspace's id
  * @property {() => boolean} busy  a switch or restore is under way: adopt nothing until after it
  * @property {(text: string) => void} notify  the status-bar notice
+ * @property {(tab: MozTabbrowserTab) => string} [idOf]  the tab's uuid, a split's id for a tab
+ *   with no panel
+ * @property {(id: string) => MozTabbrowserTab | null} [tabOf]  the tab of a uuid
  */
+
+/**
+ * `panes` with each leaf's tab id renamed by `fn`.
+ * @param {Panes} panes
+ * @param {(id: string) => string} fn
+ * @returns {Panes}
+ */
+function renameTabs(panes, fn) {
+  if (leaves(panes).every((l) => fn(l.tab) === l.tab)) return panes;
+  /** @type {(n: PaneNode) => PaneNode} */
+  const walk = (n) =>
+    n.type === "leaf" ? { ...n, tab: fn(n.tab) } : { ...n, children: n.children.map(walk) };
+  return { ...panes, root: walk(panes.root) };
+}
 /**
  * A split of the shown workspace other than the current one (docs/specs/multiple-splits.md
  * decision 16): its tree, its own Firefox wrapper, which Firefox suspends while another tab is
@@ -97,8 +117,8 @@ import {
 export const SPANS_WORKSPACES = "split undone: its tabs are in different workspaces";
 /**
  * A second split made by Firefox's own commands in a workspace that has one: Vimma makes further
- * splits from the side panel's marks only (docs/specs/multiple-splits.md decision 5), so the
- * notice names that way.
+ * splits from its own keys and the side panel's marks only (docs/specs/multiple-splits.md
+ * decision 5, docs/specs/split-from-lone-tab.md), so the notice names a way.
  */
 export const SECOND_SPLIT = "split undone: mark tabs in ctrl+b b for another split";
 
@@ -112,15 +132,18 @@ export const PANE_VIEW_EVENTS = Object.freeze([
   "TabSelect",
   ...SPLIT_EVENTS,
   "visibilitychange",
+  "TabBrowserInserted",
+  "TabBrowserDiscarded",
 ]);
 
 /**
- * Whether `text` is the hidden-split refusal (core's `hiddenSplitRefusal`), which the host keeps
- * on screen until the next key (docs/specs/multiple-splits.md decision 4).
+ * Whether `text` is the refusal of a new split at `[panes] max_splits` (core's
+ * `splitLimitRefusal`), which the host keeps on screen until the next key
+ * (docs/specs/split-from-lone-tab.md decision 4).
  * @param {string} text
  */
-export function isHiddenRefusal(text) {
-  return /^split S\d is hidden: /.test(text);
+export function isSplitLimitRefusal(text) {
+  return /^new split: at most \d+ splits? in a workspace$/.test(text);
 }
 
 /**
@@ -210,6 +233,14 @@ export class PaneView {
    */
   #parked = new Map();
   /**
+   * Each tab's panel as last seen, for when Firefox unloads the tab and the panel is gone
+   * (#onBrowserDiscarded).
+   * @type {WeakMap<MozTabbrowserTab, string>}
+   */
+  #panels = new WeakMap();
+  /** Whether #panels has the panels of the tabs loaded before the view listened (#seedPanels). */
+  #seeded = false;
+  /**
    * The tab whose TabOpen came in this task: its TabSelect is a new foreground tab, not a pick
    * (docs/specs/side-panel-unsplit.md decision 22); cleared in a microtask.
    * @type {Tab | null}
@@ -264,6 +295,13 @@ export class PaneView {
     // shown again. Putting those panes back to sleep in the same dispatch means no paint sees
     // them awake, and their next visibility update finds no change, so no new event follows.
     win.addEventListener("visibilitychange", this);
+    // A split that is not the current one names a tab with no panel (a lazy one: every restored
+    // background tab) by its uuid, so a restore need not give it a browser (issue #1318); once
+    // the tab gets one, its panel replaces the uuid in every tree.
+    win.addEventListener("TabBrowserInserted", this);
+    // An unloaded tab (Unload Tab, Firefox's tab unloader) loses its panel: its uuid takes the
+    // panel's place, so its split keeps it.
+    win.addEventListener("TabBrowserDiscarded", this);
   }
 
   destroy() {
@@ -274,10 +312,17 @@ export class PaneView {
 
   /** @param {Event} e */
   handleEvent(e) {
+    // Before the event: a TabBrowserDiscarded that is the very first event the view sees comes
+    // after Firefox removed the panel, so that one tab is missed; #use seeds earlier in practice.
+    this.#seedPanels();
     if (e.type === "TabOpen") this.#onTabOpen(/** @type {Tab} */ (e.target));
     else if (e.type === "TabClose") this.#onTabClose(/** @type {Tab} */ (e.target));
     else if (e.type === "TabSelect") this.#onTabSelect(/** @type {CustomEvent} */ (e));
-    else if (e.type === "visibilitychange") this.#keepAsleep();
+    else if (e.type === "visibilitychange") this.#keepInactive();
+    else if (e.type === "TabBrowserInserted")
+      this.#onBrowserInserted(/** @type {Tab} */ (e.target));
+    else if (e.type === "TabBrowserDiscarded")
+      this.#onBrowserDiscarded(/** @type {MozTabbrowserTab} */ (e.target));
     // TabSplitViewDeactivate is not listened to: the old wrapper's arrives late after a rebuild
     // and lists the kept members too (sub-spec 1), so it carries nothing to act on.
     else if (e.type === "TabSplitViewActivate" && !this.#reconciling) this.#schedule();
@@ -297,6 +342,20 @@ export class PaneView {
    */
   get hidden() {
     return !!this.#panes && isHiddenView(this.#panes);
+  }
+
+  /**
+   * The tabs of the split on screen, zoomed-away panes included; none with a single pane or a
+   * hidden view. Firefox gives such a tab its browser back as soon as it is discarded
+   * (#onBrowserDiscarded), so tab sleep leaves them alone (docs/specs/tab-sleep.md decision 5).
+   * @returns {MozTabbrowserTab[]}
+   */
+  get shownTabs() {
+    const panes = this.#panes;
+    if (!panes || isHiddenView(panes)) return [];
+    return leaves(panes)
+      .map((l) => this.#tab(l.tab))
+      .filter((t) => !!t);
   }
 
   /**
@@ -386,7 +445,11 @@ export class PaneView {
       this.#resize?.disconnect();
       this.#resize = null;
     }
-    this.#panes = current && (next.shown === null ? hideView(current.panes) : current.panes);
+    this.#seedPanels();
+    // A split on screen names panels only: its lazy tabs, named by uuid in a restored or parked
+    // split, get their browsers now. One kept hidden keeps them lazy until it shows (#reconcile).
+    this.#panes =
+      current && this.#asCurrent(next.shown === null ? hideView(current.panes) : current.panes);
     this.#wrapper = current?.wrapper ?? null;
     this.#laidOut = current?.laidOut ?? new Set();
     this.#number = want ?? 1;
@@ -412,7 +475,7 @@ export class PaneView {
   #wrapperOf(slot) {
     if (slot.wrapper?.isConnected && slot.wrapper.tabs.length) return slot.wrapper;
     const ids = leaves(slot.panes).map((l) => l.tab);
-    return ids.map((id) => this.#tab(id)?.splitview).find(Boolean) ?? null;
+    return ids.map((id) => this.#anyTab(id)?.splitview).find(Boolean) ?? null;
   }
 
   /**
@@ -434,6 +497,9 @@ export class PaneView {
   #bring(number, tabId) {
     const slot = /** @type {Slot} */ (this.#others.get(number));
     this.#others.delete(number);
+    slot.panes = this.#wake(slot.panes);
+    // Named by its uuid before #wake gave it a panel.
+    tabId = this.#anyTab(tabId)?.linkedPanel || tabId;
     const away = this.#panes;
     if (away) {
       this.#others.set(this.#number, {
@@ -450,11 +516,6 @@ export class PaneView {
     this.#resize?.disconnect();
     this.#resize = null;
     return away;
-  }
-
-  /** The refusal of a new pane on a lone tab, naming the split shown last. */
-  #hiddenReason() {
-    return hiddenSplitRefusal(this.#number);
   }
 
   /** @param {number} max  config `[panes] max` */
@@ -490,7 +551,7 @@ export class PaneView {
     }
     const back = this.#parked.get(to);
     this.#parked.delete(to);
-    this.#panes = back?.panes ?? null;
+    this.#panes = back ? this.#asCurrent(back.panes) : null;
     this.#wrapper = back?.wrapper ?? null;
     this.#laidOut = back?.laidOut ?? new Set();
     this.#number = back?.number ?? 1;
@@ -524,8 +585,34 @@ export class PaneView {
     this.#panes = null;
     this.#number = 1;
     this.#others = new Map();
-    for (const [id, value] of trees) {
-      if (id === active) continue;
+    for (const [id, value] of trees) if (id !== active) this.park(id, value);
+    const shown = trees.get(active);
+    this.#use(shown ? ("splits" in shown ? shown : splitsFromPanes(shown)) : splitsFromPanes(null));
+  }
+
+  /**
+   * Parks `value` under workspace `id`, which is not shown, as `swap` would have: a restored
+   * workspace's splits, handed over when it is first shown (WindowWorkspaces keeps them in uuids
+   * until then, so that their tabs stay lazy: issue #1305). Touches nothing in Firefox and leaves
+   * the shown workspace's splits as they are.
+   * @param {string} id
+   * @param {Panes | Splits} value
+   */
+  park(id, value) {
+    const shown = {
+      panes: this.#panes,
+      wrapper: this.#wrapper,
+      laidOut: this.#laidOut,
+      number: this.#number,
+      others: this.#others,
+      resize: this.#resize,
+    };
+    this.#panes = null;
+    this.#wrapper = null;
+    this.#laidOut = new Set();
+    this.#others = new Map();
+    this.#resize = null;
+    try {
       this.#use("splits" in value ? value : splitsFromPanes(value));
       if (this.#panes) {
         this.#parked.set(id, {
@@ -535,12 +622,17 @@ export class PaneView {
           number: this.#number,
           others: this.#others,
         });
+      } else {
+        this.#parked.delete(id);
       }
-      this.#panes = null;
-      this.#others = new Map();
+    } finally {
+      this.#panes = shown.panes;
+      this.#wrapper = shown.wrapper;
+      this.#laidOut = shown.laidOut;
+      this.#number = shown.number;
+      this.#others = shown.others;
+      this.#resize = shown.resize;
     }
-    const shown = trees.get(active);
-    this.#use(shown ? ("splits" in shown ? shown : splitsFromPanes(shown)) : splitsFromPanes(null));
   }
 
   /**
@@ -550,7 +642,7 @@ export class PaneView {
    * @param {MozTabbrowserTab} tab
    */
   release(tab) {
-    const panel = tab.linkedPanel;
+    const panel = this.#idOf(tab);
     if (!panel) return;
     const other = this.#otherOf(panel);
     if (other !== undefined) {
@@ -596,18 +688,22 @@ export class PaneView {
       if (live.length >= 2) this.#panes = null;
       return;
     }
-    const inWrapper = new Set(wrapper.tabs.filter((t) => !t.closing).map((t) => t.linkedPanel));
-    for (const leaf of live) {
+    // A hidden view's lazy tab (named by uuid) that left the wrapper leaves the split too, as a
+    // loaded one does; #keepLazy would otherwise put it back.
+    const inWrapper = new Set(wrapper.tabs.filter((t) => !t.closing).map((t) => this.#idOf(t)));
+    for (const leaf of leaves(panes).filter((l) => this.#anyTab(l.tab))) {
       if (panes && !inWrapper.has(leaf.tab)) {
         panes = leaves(panes).length > 2 ? closePane(panes, leaf.pane) : null;
       }
     }
     const active = this.adoption?.active();
     for (const t of this.#members()) {
-      if (!panes || paneOfTab(panes, t.linkedPanel)) continue;
+      // A hidden view's wrapper may hold its lazy tabs, named by uuid in the tree.
+      const id = this.#idOf(t);
+      if (!panes || !id || paneOfTab(panes, id)) continue;
       if (this.adoption && this.adoption.workspaceOf(t) !== active) continue;
       const last = leaves(panes).at(-1);
-      if (last) panes = split(panes, last.pane, "vertical", t.linkedPanel, { max: this.#max });
+      if (last) panes = split(panes, last.pane, "vertical", id, { max: this.#max });
     }
     this.#panes = panes;
   }
@@ -624,8 +720,10 @@ export class PaneView {
     const notify = (/** @type {string} */ text) => this.adoption?.notify(text);
     for (const wrapper of [...(gBrowser.splitViews ?? [])]) {
       const tabs = wrapper.tabs.filter((t) => !t.closing);
-      if (!wrapper.isConnected || !tabs.length) continue;
-      if (tabs.some((t) => t.linkedPanel && ours.has(t.linkedPanel))) continue;
+      // One tab is no split: the wrapper of a split whose other pane's tab just closed, which
+      // the reconcile dissolves (a tree has two panes or more).
+      if (!wrapper.isConnected || tabs.length < 2) continue;
+      if (tabs.some((t) => ours.has(this.#idOf(t)))) continue;
       const ids = tabs.map((t) => this.adoption?.workspaceOf(t) ?? (this.adoption ? "" : "-"));
       if (ids.includes("")) continue;
       if (new Set(ids).size > 1) {
@@ -669,26 +767,50 @@ export class PaneView {
   /**
    * Splits the focused pane: `vertical` puts the new pane right of it, `horizontal` below. The
    * new pane shows `tab` (default: a new tab on the new-tab page) and gets focus. Refused, with
-   * core's reason, past `[panes] max` or with no space; a refused split opens no tab.
+   * core's reason, past `[panes] max` or with no space; a refused split opens no tab. On a tab
+   * shown alone while the workspace keeps splits, the tab and the new pane make a new split with
+   * the next free number, and the split shown last stays hidden; refused at `[panes] max_splits`
+   * (docs/specs/split-from-lone-tab.md).
    * @param {SplitDirection} direction
    * @param {{ tab?: Tab }} [options]
    * @returns {PaneResult}
    */
   split(direction, { tab } = {}) {
-    if (this.hidden) return { ok: false, reason: this.#hiddenReason() };
-    const gBrowser = gBrowserOf(this.#win);
-    const current = this.#panes ?? createPanes(gBrowser.selectedTab.linkedPanel);
+    const lone = this.hidden;
+    if (lone) {
+      const limit = splitLimitRefusal(this.splits, { max: this.maxSplits });
+      if (limit) return { ok: false, reason: limit };
+    }
+    const current = this.#current();
     const refusal = /** @type {SplitRefusal | null} */ (
       splitRefusal(current, current.focus, direction, { max: this.#max })
     );
     if (refusal) return { ok: false, reason: refusal.message };
     const fresh =
       tab ??
-      gBrowser.addTrustedTab(this.#win.BROWSER_NEW_TAB_URL, {
+      gBrowserOf(this.#win).addTrustedTab(this.#win.BROWSER_NEW_TAB_URL, {
         inBackground: true,
       });
-    this.#set(split(current, current.focus, direction, fresh.linkedPanel, { max: this.#max }));
+    const next = split(current, current.focus, direction, fresh.linkedPanel, { max: this.#max });
+    if (!lone) {
+      this.#set(next);
+      return { ok: true };
+    }
+    const made = addSplit(this.splits, next, { max: this.maxSplits });
+    if (made.refusal) return { ok: false, reason: made.refusal };
+    this.#use(made.splits);
+    this.#set(this.#panes);
     return { ok: true };
+  }
+
+  /**
+   * The tree a new pane splits: the shown one, else the selected tab as one pane (no split, or a
+   * tab shown alone while the splits are hidden).
+   * @returns {Panes}
+   */
+  #current() {
+    if (this.#panes && !this.hidden) return this.#panes;
+    return createPanes(gBrowserOf(this.#win).selectedTab.linkedPanel);
   }
 
   /**
@@ -700,8 +822,7 @@ export class PaneView {
    * @returns {PaneResult}
    */
   newPane(options = {}) {
-    if (this.hidden) return { ok: false, reason: this.#hiddenReason() };
-    const current = this.#panes ?? createPanes(gBrowserOf(this.#win).selectedTab.linkedPanel);
+    const current = this.#current();
     const direction =
       this.mode === "manual" ? "vertical" : dwindleDirection(current, this.#area() ?? WIDE);
     return this.split(direction, options);
@@ -818,6 +939,24 @@ export class PaneView {
   }
 
   /**
+   * The tab to select when `tab`, the selected tab of a pane of the shown split, closes: the
+   * tab of the pane core's `closePane` focuses next (the absorbing sibling). Firefox picks the
+   * next tab in the strip instead (`_findTabToBlurTo`), which may be a lone tab beside the split
+   * and would hide it (issue #1426). Null for any other tab.
+   * @param {MozTabbrowserTab} tab
+   * @returns {Tab | null}
+   */
+  successorOf(tab) {
+    const panes = this.#panes;
+    const id = this.#idOf(tab);
+    const pane = panes && !isHiddenView(panes) && tab.selected && id && paneOfTab(panes, id);
+    if (!panes || !pane) return null;
+    const next = closePane(focusPane(panes, pane), pane);
+    const leaf = leaves(next).find((l) => l.pane === next.focus);
+    return (leaf && this.#tab(leaf.tab)) ?? null;
+  }
+
+  /**
    * Moves focus to the focused pane's geometric neighbour (core: the most recently used one when
    * several touch), which unzooms; with no neighbour nothing changes, the zoom included.
    * @param {Direction} direction
@@ -892,11 +1031,12 @@ export class PaneView {
   #onTabClose(tab) {
     // A tab of a hidden split (multiple-splits): its pane closes there, as `ctrl+b x` closes it,
     // and a split left with one pane ends once the tab is gone.
-    const other = this.#otherOf(tab.linkedPanel);
+    const id = this.#idOf(tab);
+    const other = this.#otherOf(id);
     if (other !== undefined) {
       const slot = /** @type {Slot} */ (this.#others.get(other));
       if (leaves(slot.panes).length > 2) {
-        const pane = /** @type {string} */ (paneOfTab(slot.panes, tab.linkedPanel));
+        const pane = /** @type {string} */ (paneOfTab(slot.panes, id));
         slot.panes = closePane(slot.panes, pane);
       } else {
         this.#others.delete(other);
@@ -906,7 +1046,7 @@ export class PaneView {
       return;
     }
     const panes = this.#panes;
-    const pane = panes && paneOfTab(panes, tab.linkedPanel);
+    const pane = panes && id && paneOfTab(panes, id);
     if (!panes || !pane) return;
     this.#panes = leaves(panes).length > 2 ? closePane(panes, pane) : null;
     // The current split ended with others kept: one takes its place now, so the model, a save
@@ -929,6 +1069,8 @@ export class PaneView {
     if (first === undefined) return;
     const slot = /** @type {Slot} */ (this.#others.get(first));
     this.#others.delete(first);
+    // Hidden, so its lazy tabs stay lazy until it shows (#reconcile), as in any other split that
+    // is not on screen (issue #1332).
     this.#panes = hideView(slot.panes);
     this.#wrapper = slot.wrapper;
     this.#laidOut = slot.laidOut;
@@ -959,11 +1101,13 @@ export class PaneView {
     const panes = this.#panes;
     if (!panes || this.#reconciling) return;
     if (/** @type {Tab | undefined} */ (e.detail?.previousTab)?.closing) return;
-    const inTree = !!tab.linkedPanel && paneOfTab(panes, tab.linkedPanel) !== undefined;
+    const id = this.#idOf(tab);
+    if (tab.linkedPanel) this.#panels.set(tab, tab.linkedPanel);
+    const inTree = !!id && paneOfTab(panes, id) !== undefined;
     if (!inTree && !tab.pinned && this.accepts && !this.accepts(tab)) return;
     // A tab of a hidden split shows that split whole (multiple-splits behaviour 2): reconcile
     // brings it forward.
-    if (tab.linkedPanel && this.#otherOf(tab.linkedPanel) !== undefined) {
+    if (id && this.#otherOf(id) !== undefined) {
       this.reconcile();
       return;
     }
@@ -1026,6 +1170,151 @@ export class PaneView {
     return gBrowserOf(this.#win).tabs.find((t) => t.linkedPanel === id && !t.closing);
   }
 
+  /**
+   * The open tab of a tree's id (`splits`, `panes`): its panel, or for a lazy tab of a split that
+   * is not the current one, its uuid.
+   * @param {string} id
+   */
+  tabOf(id) {
+    return this.#anyTab(id);
+  }
+
+  /**
+   * The tab of a tree's id: its panel, or for a lazy tab of a split that is not the current one,
+   * its uuid.
+   * @param {string} id
+   */
+  #anyTab(id) {
+    const tab = /** @type {Tab | null | undefined} */ (this.#tab(id) ?? this.adoption?.tabOf?.(id));
+    return tab && !tab.closing ? tab : undefined;
+  }
+
+  /**
+   * A tab's id in the trees: its panel, else (a lazy tab) its uuid; "" when it has neither.
+   * @param {MozTabbrowserTab} tab
+   */
+  #idOf(tab) {
+    return tab.linkedPanel || this.adoption?.idOf?.(tab) || "";
+  }
+
+  /**
+   * `panes`, about to be the current tree, with every lazy tab given its browser (not loaded),
+   * as Firefox's split view gives it on activation, so that the tree names panels only.
+   * @param {Panes} panes
+   * @returns {Panes}
+   */
+  #wake(panes) {
+    const gBrowser = gBrowserOf(this.#win);
+    return renameTabs(panes, (id) => {
+      if (this.#tab(id)) return id;
+      const tab = this.adoption?.tabOf?.(id);
+      if (!tab || tab.closing) return id;
+      if (!tab.linkedPanel) gBrowser.insertBrowser(tab);
+      if (tab.linkedPanel) this.#panels.set(tab, tab.linkedPanel);
+      return tab.linkedPanel || id;
+    });
+  }
+
+  /**
+   * Renames tab id `from` to `to` in every tree: the current one, the other splits and every
+   * parked workspace's.
+   * @param {string} from
+   * @param {string} to
+   */
+  #renameEverywhere(from, to) {
+    const rename = (/** @type {Panes} */ p) => renameTabs(p, (id) => (id === from ? to : id));
+    const slots = [...this.#others.values()];
+    for (const parked of this.#parked.values()) {
+      parked.panes = rename(parked.panes);
+      slots.push(...parked.others.values());
+    }
+    for (const slot of slots) slot.panes = rename(slot.panes);
+    if (this.#panes) this.#panes = rename(this.#panes);
+  }
+
+  /**
+   * A tab was unloaded: Firefox took its panel away, so its uuid names it in the trees again. In
+   * the current tree on screen it gets a browser back at once (not loaded), as the split shows
+   * it; a hidden view keeps it unloaded until it shows (Unload Tab on a pane first selects a tab
+   * outside the split, so the split is hidden by then; issue #1332).
+   * @param {MozTabbrowserTab} tab
+   */
+  #onBrowserDiscarded(tab) {
+    const uuid = this.adoption?.idOf?.(tab);
+    const panel = this.#panels.get(tab);
+    this.#panels.delete(tab);
+    if (!uuid || !panel) return;
+    this.#renameEverywhere(panel, uuid);
+    if (this.#panes) this.#panes = this.#asCurrent(this.#panes);
+  }
+
+  /**
+   * `panes` as the current tree: on screen it names panels only (#reconcile lays it out from
+   * them), so its lazy tabs get their browsers (#wake); a hidden view keeps them lazy, named by
+   * uuid, until it shows, so SessionStore does not restore them in the background and its next
+   * save keeps their scroll position and form data (issues #1318, #1332).
+   * @param {Panes} panes
+   * @returns {Panes}
+   */
+  #asCurrent(panes) {
+    return isHiddenView(panes) ? panes : this.#wake(panes);
+  }
+
+  /**
+   * A hidden view that names lazy tabs (#asCurrent): its pages that have a browser sleep, and
+   * its wrapper holds its tabs, rebuilt when they changed (a pane closed, a tab moved out). No
+   * split plan: core's plan names panels, and a wrapper with no selected tab gives none of its
+   * tabs a browser (tabsplitview.mjs activates only one that has the selected tab).
+   * @param {Panes} panes
+   */
+  #keepLazy(panes) {
+    // Only tabs a wrapper takes (tabsplitview.mjs addTabs stops at a pinned one): a tab it
+    // refused would differ from the wrapper again on every reconcile, each rebuild scheduling the
+    // next (SplitViewTabChange).
+    const tabs = /** @type {Tab[]} */ (
+      leaves(panes)
+        .map((l) => this.#anyTab(l.tab))
+        .filter((t) => t && !t.pinned)
+    );
+    const wrapper = this.#currentWrapper();
+    const now = wrapper ? wrapper.tabs.filter((t) => !t.closing) : [];
+    if (now.length !== tabs.length || tabs.some((t) => !now.includes(t))) {
+      wrapper?.unsplitTabs();
+      this.#wrapper =
+        tabs.length >= 2
+          ? gBrowserOf(this.#win).addTabSplitView(tabs, { insertBefore: tabs[0] })
+          : null;
+    }
+    this.#sleep(panes);
+  }
+
+  /**
+   * Records the panel of each tab that had its browser before the view listened for
+   * TabBrowserInserted (the window's first tab; every tab of a restore with
+   * `browser.sessionstore.restore_on_demand` off), so #onBrowserDiscarded knows it. Once, as
+   * soon as gBrowser exists (the view is made before it).
+   */
+  #seedPanels() {
+    if (this.#seeded) return;
+    const tabs = /** @type {{ gBrowser?: TabBrowser }} */ (/** @type {unknown} */ (this.#win))
+      .gBrowser?.tabs;
+    if (!tabs) return;
+    this.#seeded = true;
+    for (const t of tabs) if (t.linkedPanel) this.#panels.set(t, t.linkedPanel);
+  }
+
+  /**
+   * A lazy tab got its browser: its panel replaces its uuid in the splits that named it so.
+   * @param {Tab} tab
+   */
+  #onBrowserInserted(tab) {
+    const uuid = this.adoption?.idOf?.(tab);
+    const panel = tab.linkedPanel;
+    if (!panel) return;
+    this.#panels.set(tab, panel);
+    if (uuid) this.#renameEverywhere(uuid, panel);
+  }
+
   /** The wrapper's tabs in panel (DOM) order; [] without one. */
   #members() {
     const wrapper = this.#currentWrapper();
@@ -1041,7 +1330,7 @@ export class PaneView {
   #currentWrapper() {
     if (this.#wrapper?.isConnected && this.#wrapper.tabs.length) return this.#wrapper;
     const ids = this.#panes ? leaves(this.#panes).map((l) => l.tab) : [];
-    const found = ids.map((id) => this.#tab(id)?.splitview).find(Boolean) ?? null;
+    const found = ids.map((id) => this.#anyTab(id)?.splitview).find(Boolean) ?? null;
     this.#wrapper = found;
     return found;
   }
@@ -1059,9 +1348,12 @@ export class PaneView {
       let away = null;
       // The selected tab is in a hidden split (picked, or Firefox's successor for a closed tab):
       // that split shows (docs/specs/multiple-splits.md behaviour 2).
-      const selected = gBrowserOf(this.#win).selectedTab?.linkedPanel;
+      const picked = gBrowserOf(this.#win).selectedTab;
+      const selected = picked ? this.#idOf(picked) : "";
       const other = selected ? this.#otherOf(selected) : undefined;
-      if (other !== undefined) away = this.#bring(other, /** @type {string} */ (selected));
+      if (other !== undefined) {
+        away = this.#bring(other, selected);
+      }
       this.#reconcile();
       // The current split ended while others are kept: the lowest becomes the one shown last,
       // hidden, so a workspace with splits always has a current tree (and `]s` a way back).
@@ -1088,27 +1380,40 @@ export class PaneView {
   #reconcile() {
     const win = this.#win;
     const gBrowser = gBrowserOf(win);
-    // A tree whose tabs are gone (closed outside a TabClose we saw) shrinks first.
+    // A tree whose tabs are gone (closed outside a TabClose we saw) shrinks first. A hidden view
+    // may name a lazy tab by its uuid (#asCurrent); one that got pinned has left the split, as a
+    // loaded one does (#adoptOwn): Firefox's wrapper cannot hold a pinned tab.
     let panes = this.#panes;
     for (const leaf of panes ? leaves(panes) : []) {
-      if (!panes || this.#tab(leaf.tab)) continue;
+      const tab = this.#anyTab(leaf.tab);
+      if (!panes || (tab && (tab.linkedPanel || !tab.pinned))) continue;
       panes = leaves(panes).length > 2 ? closePane(panes, leaf.pane) : null;
     }
-    // A hidden view whose tab got selected some other way (Firefox's successor for a closed tab)
-    // shows again, focused there (side-panel-unsplit decision 23).
+    // A hidden view whose tab got selected (a pick, or Firefox's successor for a closed tab)
+    // shows again, focused there (side-panel-unsplit decision 23), and its lazy tabs get their
+    // browsers.
     const selected = gBrowser.selectedTab;
     const selectedPane = panes && selected && paneOfTab(panes, selected.linkedPanel);
     if (panes && isHiddenView(panes) && selectedPane) {
       panes = focusPane(showView(panes), selectedPane);
     }
+    if (panes) panes = this.#asCurrent(panes);
     this.#panes = panes;
     const hidden = !!panes && isHiddenView(panes);
+    if (panes && hidden && leaves(panes).some((l) => !this.#tab(l.tab))) {
+      this.#keepLazy(panes);
+      this.#label();
+      return;
+    }
 
     const members = this.#members();
     const managed = new Set([...members, ...this.#laidOut]);
     for (const leaf of panes ? leaves(panes) : []) {
       const t = this.#tab(leaf.tab);
-      if (t) managed.add(t);
+      if (!t) continue;
+      managed.add(t);
+      // A tab loaded since it opened never sent TabBrowserInserted after we were listening.
+      this.#panels.set(t, leaf.tab);
     }
     const ids = (/** @type {Tab[]} */ tabs) => tabs.map((t) => t.linkedPanel);
     const plan = planSplit(
@@ -1152,7 +1457,7 @@ export class PaneView {
     // was already selected (the side panel's Enter) missed that TabSelect, so suspend it here
     // the same way (tabbox.js suspendSplitViewPanels: the panels keep their split-view class).
     gBrowserOf(this.#win).tabpanels?.suspendSplitViewPanels?.(tabs);
-    this.#asleep(tabs);
+    this.#deactivate(tabs);
   }
 
   /**
@@ -1165,7 +1470,7 @@ export class PaneView {
    * blank (#605).
    * @param {Tab[]} tabs
    */
-  #asleep(tabs) {
+  #deactivate(tabs) {
     for (const t of tabs) {
       if (!t.linkedBrowser || t.selected) continue;
       if (!this.#unloadLoading(t)) t.linkedBrowser.docShellIsActive = false;
@@ -1192,17 +1497,17 @@ export class PaneView {
   }
 
   /**
-   * Puts back to sleep the panes the current tree keeps inactive, a zoom's zoomed-away panes or
+   * Deactivates again the panes the current tree keeps inactive, a zoom's zoomed-away panes or
    * a hidden view's, after Firefox woke them; never wakes anything (reconcile does that).
    */
-  #keepAsleep() {
+  #keepInactive() {
     const panes = this.#panes;
     if (!panes || this.#reconciling) return;
     const hidden = isHiddenView(panes);
     for (const leaf of leaves(panes)) {
       if (!hidden && (!panes.zoom || leaf.pane === panes.zoom)) continue;
       const t = this.#tab(leaf.tab);
-      if (t?.linkedBrowser?.docShellIsActive) this.#asleep([t]);
+      if (t?.linkedBrowser?.docShellIsActive) this.#deactivate([t]);
     }
   }
 
@@ -1281,7 +1586,9 @@ export class PaneView {
       if (t?.linkedBrowser) t.linkedBrowser.docShellIsActive = true;
     }
     // Firefox leaves a tab that left a split, or a zoomed-away one, active (sub-spec 1).
-    this.#asleep(/** @type {Tab[]} */ (plan.deactivate.map((id) => this.#tab(id)).filter(Boolean)));
+    this.#deactivate(
+      /** @type {Tab[]} */ (plan.deactivate.map((id) => this.#tab(id)).filter(Boolean)),
+    );
   }
 
   /** Writes each pane's rectangle; also the ResizeObserver's callback. */

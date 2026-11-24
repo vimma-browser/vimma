@@ -11,6 +11,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { createDispatcher } from "../core/dispatcher.mjs";
+import { SETUP_SCREENS } from "../core/control.mjs";
 import { resolveEscape } from "../core/escape.mjs";
 import {
   insertEditCommand,
@@ -18,21 +19,31 @@ import {
   isEditable,
   matchSiteRule,
 } from "../core/editable.mjs";
-import { HintError, hintKey, hintStatus, startHints } from "../core/hints.mjs";
-import { chordFromEvent, formatKey } from "../core/keys.mjs";
-import { SUGGESTION_ACTIONS } from "../core/suggestions.mjs";
-import { pressingKey } from "../actors/enter-key.mjs";
-import { compileKeymap } from "../core/keymap.mjs";
+import {
+  DEFAULT_HINT_CHARS,
+  HintError,
+  hintKey,
+  hintLabelCase,
+  hintStatus,
+  startHints,
+} from "../core/hints.mjs";
+import { chordFromEvent, formatKey, parseKey } from "../core/keys.mjs";
+import { SUGGESTION_ACTIONS, suggestionStep } from "../core/suggestions.mjs";
+import { pressKeyLater, pressingKey } from "../actors/enter-key.mjs";
+import { compileKeymap, withSiteUnbinds } from "../core/keymap.mjs";
 import { KEY_KEEPING_MODES } from "../core/modes.mjs";
 import { notImplementedText } from "../core/actions.mjs";
 import { PENDING_ACTIONS } from "../core/cmdline.mjs";
 import { StatusBar } from "../ui/statusbar.mjs";
+import { TabLine } from "../ui/tabline.mjs";
+import { startTabLabels, tabCountRefusal, tabLabelKey } from "../core/tabline.mjs";
 import { TabStrip } from "../ui/tabstrip.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
-import { bookmarksRoot, setBookmarksRoot } from "./bookmark-ops.mjs";
+import { bookmarksRoot, setBookmarkletsSetting, setBookmarksRoot } from "./bookmark-ops.mjs";
 import { getTabLabel } from "../workspaces/tab-labels.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
-import { openOrSay } from "./tab-ops.mjs";
+import { openOrSay, selectTab, selectableTabs } from "./tab-ops.mjs";
+import { tabById } from "./goto.mjs";
 import { DEFAULT_FIREFOX_KEYS, FirefoxKeys } from "./firefox-keys.mjs";
 import { boundChords, firefoxShortcuts, pageFirst } from "../core/firefox-keys.mjs";
 import { focusedChromeField, runChromeEdit } from "./edit-keys.mjs";
@@ -48,6 +59,7 @@ import { AgentGate } from "./AgentGate.sys.mjs";
 import { logCells } from "../core/agent-prompt.mjs";
 import { PromptKeys } from "./prompt-keys.mjs";
 import { GotoPicker, MCP_LOG } from "../ui/picker.mjs";
+import { UrlbarCommands } from "./urlbar-commands.mjs";
 import { UrlbarQueries } from "./urlbar-queries.mjs";
 import { newWindowState } from "./window-state.mjs";
 import { ANNOUNCE_MS, UpdateUi } from "./update-ui.mjs";
@@ -56,6 +68,7 @@ import { addonNames } from "./addon-ops.mjs";
 import { forgetSitePermissions } from "./permission-ops.mjs";
 import { popupStatus } from "./popup-ops.mjs";
 import { PdfOps, pdfFindStatus } from "./pdf-ops.mjs";
+import { TemporarySiteUnbinds } from "./site-keys-ops.mjs";
 import { stripInvisible } from "../core/pdf.mjs";
 import { contentRunners, hostRunners } from "./runners.mjs";
 import { HostServices } from "./host-services.mjs";
@@ -74,7 +87,7 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
 /** @import { ElementFocus } from "./element-focus.mjs" */
 /** @import { Notice } from "../ui/notice.mjs" */
 /** @import { AddonPicker, DownloadPicker, PermissionPicker, PopupPicker } from "../ui/picker.mjs" */
-/** @import { SplitPicker, WorkspacePicker } from "../ui/picker.mjs" */
+/** @import { BookmarkPicker, SplitPicker, WorkspacePicker } from "../ui/picker.mjs" */
 /** @import { RenamePrompt } from "../ui/rename-prompt.mjs" */
 /** @import { SidePanel } from "../ui/side-panel.mjs" */
 /** @import { BookmarksPanel } from "../ui/bookmarks-panel.mjs" */
@@ -95,7 +108,7 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
 /** @import { AddonOp } from "../core/picker.mjs" */
 /** @import { FirefoxKeySetting } from "../core/config.mjs" */
-/** @import { BookmarksRoot } from "../core/bookmarks.mjs" */
+/** @import { BookmarkletsSetting, BookmarksRoot } from "../core/bookmarks.mjs" */
 /** @import { OutlineHost } from "./outline-ops.mjs" */
 /** @import { HostState } from "./runners.mjs" */
 /** @import { SuggestionAction } from "../core/suggestions.mjs" */
@@ -107,7 +120,11 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
  * @property {MozBrowser} browser  the <browser> the hints are on
  * @property {HintAction} action
  * @property {HintState<HintTarget> | null} hs  null while collecting
- * @property {Chord[]} buffered  keys typed while collecting
+ * @property {Chord[]} buffered  keys typed while collecting, or while `wheel`
+ * @property {boolean} [wheel]  a wheel over the page: its labels are hidden until it is known
+ *   whether the wheel moved their targets (#1337)
+ * @property {{ x: number, y: number }} [wheelAt]  a wheel came while collecting, here (the
+ *   page's CSS pixels): the labels are looked at for it before they are shown
  */
 
 /** Element focus with no text block on screen, and in the PDF viewer (element-focus 14). */
@@ -131,7 +148,7 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * `defaultPreventedByContent` and `defaultPreventedByChrome` are Event.webidl's (ChromeOnly).
  * @typedef {KeyboardEvent & { isReplyEventFromRemoteContent: boolean,
  *   requestReplyFromRemoteContent: () => void, defaultPreventedByContent: boolean,
- *   defaultPreventedByChrome: boolean }} ChromeKeyEvent
+ *   defaultPreventedByChrome: boolean, preventMultipleActions: () => void }} ChromeKeyEvent
  */
 
 /**
@@ -168,6 +185,13 @@ const isRemoteBrowserTarget = (target) =>
  *   their key alone (core page-first.mjs)
  * @property {FirefoxKeys | null} firefoxKeys  Firefox's own shortcuts off (key-handling-batch)
  * @property {() => void} onTabSelect
+ * @property {Element | null} focusNow  the element focus last went to in this window
+ * @property {Element | null} focusBefore  the one before it
+ * @property {(e: FocusEvent) => void} onFocusIn  keeps focusNow and focusBefore
+ * @property {Element | null} dialogOpener  what had focus when the last dialog opened
+ * @property {() => void} onDialogOpen  records dialogOpener
+ * @property {() => void} onDialogClose  focus left on nothing by a closed dialog goes back to the
+ *   hidden address bar it was opened from, else to the page
  * @property {ReturnType<typeof createDispatcher>} dispatcher
  * @property {HelpOverlay} help
  * @property {Notice} notice  "<action>: not implemented yet" (m2-tab-keys)
@@ -175,15 +199,20 @@ const isRemoteBrowserTarget = (target) =>
  * @property {TabStrip | null} tabStrip  hides Firefox's tab strip (m0-tabstrip-hidden)
  * @property {Toolbar | null} toolbar  hides Firefox's toolbar (docs/specs/toolbar-toggle.md)
  * @property {UrlbarQueries | null} urlbarQueries  the address bar's queries, for `state.urlbar`
+ * @property {UrlbarCommands | null} urlbarCommands  a `:` line in the start page's address bar
  * @property {PromptKeys | null} promptKeys  y and n for Firefox's permission prompts
  * @property {number | null} timer   pending-sequence timeout (dispatcher.flush)
  * @property {() => void} onCancelHints  resize, a mouse click in chrome
  * @property {() => void} onMouseDown  a mouse click: hint mode and element focus end
+ * @property {(e: WheelEvent) => void} onWheel  a wheel over the page: the labels follow it
  * @property {HintSession | null} hint
  * @property {ElementFocus} element  the focused text block (docs/specs/element-focus.md)
  * @property {HintOverlay} hintOverlay
  * @property {Set<() => void>} listeners  told after mode or pending keys may have changed
  * @property {StatusBar | null} statusBar  m2-statusbar-whichkey (the bar; no which-key strip)
+ * @property {TabLine | null} tabLine  the tab line (docs/specs/tab-line.md)
+ * @property {import("../core/tabline.mjs").TabLineLabels | null} tabLabels  gb's labels while they
+ *   show: every key is theirs (docs/specs/tab-line.md decision 12)
  * @property {GotoPicker} picker  the prefix+g overlay (m2-picker-rename)
  * @property {WorkspacePicker} wsPicker  the prefix+w overlay (m3-workspaces 5)
  * @property {GotoPicker} mcpLog  `:mcp log`, the agents' last calls (docs/specs/mcp-drive.md D14)
@@ -191,6 +220,7 @@ const isRemoteBrowserTarget = (target) =>
  * @property {PermissionPicker} permissionPicker  `:site` (docs/specs/site-permissions.md)
  * @property {PopupPicker} popups  the `:popups` overlay (docs/specs/popup-blocked.md)
  * @property {SplitPicker} splitPicker  the workspace's splits (docs/specs/multiple-splits.md)
+ * @property {BookmarkPicker} bookmarkPicker  `:bookmarkopen`'s (docs/specs/bookmark-open.md)
  * @property {DownloadWatch} downloads  the status bar's `↓` segment (docs/specs/downloads.md)
  * @property {DownloadPicker} downloadPicker  the prefix+d overlay (docs/specs/downloads.md)
  * @property {DownloadRows} downloadRows  the picker's rows while it is open
@@ -236,10 +266,11 @@ function vimmaSurfaceOpen(s) {
     s.permissionPicker.isOpen ||
     s.popups.isOpen ||
     s.splitPicker.isOpen ||
+    s.bookmarkPicker.isOpen ||
     s.downloadPicker.isOpen ||
     s.mcpLog.isOpen ||
     s.grep.isOpen ||
-    s.cmdline.isOpen ||
+    s.cmdline.focused ||
     s.rename.isOpen ||
     s.panel.isOpen ||
     s.bookmarks.isOpen ||
@@ -259,7 +290,7 @@ function vimmaSurfaceOpen(s) {
  * @param {WindowState} s
  */
 function keysHeld(s) {
-  if (vimmaSurfaceOpen(s) || s.hint || s.element.browser) return true;
+  if (vimmaSurfaceOpen(s) || s.hint || s.tabLabels || s.element.browser) return true;
   return KEY_KEEPING_MODES.has(VimmaHost._mode(s));
 }
 
@@ -298,7 +329,7 @@ const MULTI_PANE = new Set([
 /**
  * The page mode of each tab's <browser>, from the actor's focus reports; absent = normal.
  * Written only through setBrowserMode.
- * @type {WeakMap<object, PageMode>}
+ * @type {WeakMap<MozBrowser, PageMode>}
  */
 const browserModes = new WeakMap();
 
@@ -311,6 +342,7 @@ const browserModes = new WeakMap();
 function setBrowserMode(browser, mode) {
   if (mode !== "insert") explicitInsert.delete(browser);
   else escapeHold.delete(browser);
+  pageInsert.delete(browser);
   if ((browserModes.get(browser) ?? "normal") === mode) return;
   browserModes.set(browser, mode);
   VimmaHost.onModeChange(browser, mode);
@@ -320,7 +352,7 @@ function setBrowserMode(browser, mode) {
  * Tabs in explicit insert (`i`, `gi`; docs/specs/insert-focus.md): the inner window ID of the
  * top document it was entered on. Focus reports from that document do not end it; Esc does, as
  * does any other change to normal mode (setBrowserMode). A new top document starts over.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<MozBrowser, number>}
  */
 const explicitInsert = new WeakMap();
 
@@ -329,15 +361,83 @@ const explicitInsert = new WeakMap();
  * the top document it was pressed on. While it is shown, a focus the page's script makes on its
  * own does not enter insert. Entering insert, a focus report the user's input caused, a key the
  * page gets and a new top document end the hold.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<MozBrowser, number>}
  */
 const escapeHold = new WeakMap();
+
+/**
+ * Tabs in insert mode that the page's script entered on its own (docs/specs/mcp-drive.md D13,
+ * issue #1325): a field it focused with no input of the user's behind it, such as a dialog with
+ * autofocus that an agent's click opened. Such a tab is not in use by the user, so an agent may
+ * still fill it. Any other change of mode ends the mark (setBrowserMode), and so does the user's
+ * own key or click in the tab (noteUserInput), or a focus report their input caused.
+ * @type {WeakSet<MozBrowser>}
+ */
+const pageInsert = new WeakSet();
+
+/**
+ * The top document (inner window ID) in which each tab's insert mode was last the user's. Once
+ * the user has made a field of a document theirs, a field that document's script focuses later
+ * is theirs too, also after a pause and a blur and focus of the page's own (a messaging page that
+ * re-renders its field): the page does not hand the tab back to an agent. Leaving insert by the
+ * user's own doing ends it (Esc, a click outside a field, a Vimma key that leaves the mode), and
+ * a new top document does not match. A page that blurs the field on its own does not end it.
+ * @type {WeakMap<MozBrowser, number>}
+ */
+const userInsertDoc = new WeakMap();
+
+/**
+ * When the user last gave each tab's page a key or a click, in `ChromeUtils.now()` milliseconds.
+ * Keys are the window's own trusted keydown events that Vimma left to the page, which no page
+ * and no agent can make; clicks are the page's trusted mousedown events (VimmaParent's
+ * `Vimma:Click`), which an agent's untrusted one is not (#1327).
+ * @type {WeakMap<MozBrowser, number>}
+ */
+const lastUserInput = new WeakMap();
+
+/**
+ * How long after the user's key or click a focus the page makes counts as theirs: a page that
+ * opens its dialog once its server answers the click focuses the field outside any input
+ * handler. The same 5 s as Firefox's transient user activation
+ * (dom.user_activation.transient.timeout), the time a page may act on a gesture.
+ */
+const USER_INPUT_RECENT_MS = 5000;
+
+/** Keys with no name Vimma binds that are still the user typing: an IME's, a dead key's. */
+const TEXT_KEYS = new Set(["Process", "Dead", "Unidentified"]);
+
+/**
+ * The user pressed a key or clicked in `browser`'s tab: a page-made insert there is theirs now.
+ * @param {MozBrowser} browser
+ */
+function noteUserInput(browser) {
+  lastUserInput.set(browser, ChromeUtils.now());
+  pageInsert.delete(browser);
+  if (browserModes.get(browser) === "insert") userInsertDoc.set(browser, topWindowId(browser));
+}
+
+/**
+ * Leaves `browser`'s page mode at `mode` by the user's own doing (a runner, Esc): an insert the
+ * user owned in its document is over.
+ * @param {MozBrowser} browser
+ * @param {PageMode} mode
+ */
+function setBrowserModeByUser(browser, mode) {
+  if (mode !== "insert") userInsertDoc.delete(browser);
+  setBrowserMode(browser, mode);
+}
+
+/** @param {MozBrowser} browser */
+function recentUserInput(browser) {
+  const at = lastUserInput.get(browser);
+  return at !== undefined && ChromeUtils.now() - at < USER_INPUT_RECENT_MS;
+}
 
 /**
  * The document of each tab that Esc's blur last went to, and that blur's generation
  * (behaviour 7): a report from that document with an older generation was sent before the
  * blur and is dropped.
- * @type {WeakMap<object, { windowId: number, gen: number }>}
+ * @type {WeakMap<MozBrowser, { windowId: number, gen: number }>}
  */
 const lastBlur = new WeakMap();
 
@@ -353,12 +453,13 @@ function topWindowId(browser) {
 function enterExplicitInsert(browser) {
   setBrowserMode(browser, "insert");
   explicitInsert.set(browser, topWindowId(browser));
+  userInsertDoc.set(browser, topWindowId(browser));
 }
 
 /**
  * The frame of each tab whose text field last took focus, and its document's inner window ID,
  * so `i` can go back to that field.
- * @type {WeakMap<object, { frame: CanonicalBrowsingContext, windowId: number }>}  browser → BrowsingContext and ID
+ * @type {WeakMap<MozBrowser, { frame: CanonicalBrowsingContext, windowId: number }>}  browser → BrowsingContext and ID
  */
 const lastFieldFrame = new WeakMap();
 
@@ -387,6 +488,7 @@ function elementOf(browser) {
  * @param {MozBrowser} browser
  */
 function blurPage(browser) {
+  userInsertDoc.delete(browser);
   escapeHold.set(browser, topWindowId(browser));
   const blur = VimmaActors.blur(browser);
   if (blur) lastBlur.set(browser, blur);
@@ -409,7 +511,8 @@ function findOf(browser) {
 const HOST_STATE = {
   stateOf: (win) => states.get(win),
   browserMode: (browser) => browserModes.get(browser),
-  setBrowserMode,
+  // The runners run the user's keys: a mode they leave is left by the user.
+  setBrowserMode: setBrowserModeByUser,
   blurPage,
   enterExplicitInsert,
   lastFieldFrame: (browser) => lastFieldFrame.get(browser),
@@ -459,12 +562,15 @@ function stateOfBrowser(browser) {
  * `configFile` names the file `configErrors` are about (config.toml, or `:source <path>`'s).
  * `firefox`: Firefox's own shortcuts that are off; `insertEditing`: ctrl+w, ctrl+u, ctrl+h in
  * text fields (docs/specs/key-handling-batch.md).
- * @type {{ keymap: Keymap | null, hintChars: string | undefined,
+ * `baseKeymap` is config.toml's, and `keymap` it with `:siteunbind`'s keys until restart
+ * (docs/specs/site-unbind-command.md decision 4).
+ * @type {{ keymap: Keymap | null, baseKeymap: Keymap | null, hintChars: string | undefined,
  *   sites: readonly InsertSiteRule[], configErrors: readonly ConfigError[], configFile: string,
  *   firefox: FirefoxKeySetting, insertEditing: boolean }}
  */
 const settings = {
   keymap: null,
+  baseKeymap: null,
   hintChars: undefined,
   sites: [],
   configErrors: [],
@@ -491,6 +597,26 @@ function siteInsert(browser) {
     return "auto"; // about:, data:, file: have no host
   }
   return (host && matchSiteRule(host, settings.sites)?.insert) || "auto";
+}
+
+/**
+ * The `[sites."<host>"]` table whose `unbind` applies to a key pressed in `browser`, the focused
+ * page, or null (docs/specs/site-unbind.md): the keymap's own match on the top document's host,
+ * so a page cannot choose it other than by its address. No browser (focus in chrome) is null.
+ * @param {Keymap} keymap
+ * @param {MozBrowser | null} browser
+ * @returns {string | null}
+ */
+function pageSite(keymap, browser) {
+  if (!browser || !keymap.hasSiteUnbinds()) return null;
+  /** @type {string} */
+  let host;
+  try {
+    host = browser.currentURI?.host ?? "";
+  } catch {
+    return null; // about:, data:, file: have no host
+  }
+  return keymap.site(host);
 }
 
 /**
@@ -548,6 +674,9 @@ export const VimmaHost = {
    */
   _hintRuns: 0,
 
+  /** Test-only: how many wheels over labels have been looked at (moved or not). */
+  _hintWheels: 0,
+
   /**
    * Test-only: the window's live grep session (docs/specs/live-grep.md).
    * @param {BrowserWindow} win
@@ -598,7 +727,7 @@ export const VimmaHost = {
     );
     const state = newWindowState(this, win, keymap, {
       runnable: RUNNABLE,
-      setBrowserMode,
+      setBrowserMode: setBrowserModeByUser,
       stateOfBrowser,
       outline: OUTLINE_HOST,
       mcpLog,
@@ -656,6 +785,10 @@ export const VimmaHost = {
     win.addEventListener("keypress", state.onKeyPress, SYSTEM_GROUP_CAPTURE);
     win.addEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
     win.addEventListener("TabSelect", state.onTabSelect, true);
+    // Bubbles from the dialog's overlay (SubDialog.sys.mjs, close).
+    win.addEventListener("focusin", state.onFocusIn, true);
+    win.addEventListener("dialogopen", state.onDialogOpen, true);
+    win.addEventListener("dialogclose", state.onDialogClose, true);
     // After the keys too: Firefox's shortcuts that overlap ours, off (key-handling-batch § 1).
     try {
       const firefoxKeys = new FirefoxKeys(win, settings.firefox, boundChords(keymap));
@@ -668,6 +801,8 @@ export const VimmaHost = {
     // block's outline follows a resize; a click ends the focus.
     win.addEventListener("resize", state.onCancelHints);
     win.addEventListener("mousedown", state.onMouseDown, true);
+    // Passive: it only reads, so it never holds up the scroll (APZ need not wait for it).
+    win.addEventListener("wheel", state.onWheel, { capture: true, passive: true });
     // After the keys: an upstream change in tab code must not cost us ctrl+b.
     try {
       const tabStrip = new TabStrip(win);
@@ -691,6 +826,16 @@ export const VimmaHost = {
       state.urlbarQueries = new UrlbarQueries(win);
     } catch (e) {
       console.error("vimma: the address bar's queries are not reported", e);
+    }
+    // A `:` line in the start page's address bar (start-page spec; #1271): as if typed after
+    // `:` on the page, so the line opens over the page and gives focus back to it.
+    try {
+      state.urlbarCommands = new UrlbarCommands(win, (line, run) => {
+        win.gBrowser.selectedBrowser.focus();
+        state.cmdline.enter(line, { run });
+      });
+    } catch (e) {
+      console.error("vimma: a : line in the start page's address bar would search", e);
     }
     // Firefox's permission prompts from the keyboard (toolbar-toggle decision 11a).
     try {
@@ -718,6 +863,19 @@ export const VimmaHost = {
       state.statusBar = statusBar;
     } catch (e) {
       console.error("vimma: no status bar", e);
+    }
+    // docs/specs/tab-line.md: the side panel's rows, drawn at the top of the window.
+    try {
+      const tabLine = new TabLine(win, {
+        rows: () => state.panel.snapshot(),
+        labels: () => state.tabLabels,
+        subscribe: (fn) => this.onStateChange(win, fn),
+        changed: () => this._emit(state),
+      });
+      tabLine.init();
+      state.tabLine = tabLine;
+    } catch (e) {
+      console.error("vimma: no tab line", e);
     }
     // `:addon` completes from a list kept by an AddonManager listener: start it now, so the
     // names are in before the first Tab (docs/specs/addon-manager.md).
@@ -757,9 +915,13 @@ export const VimmaHost = {
     win.removeEventListener("keypress", state.onKeyPress, SYSTEM_GROUP_CAPTURE);
     win.removeEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
     win.removeEventListener("TabSelect", state.onTabSelect, true);
+    win.removeEventListener("focusin", state.onFocusIn, true);
+    win.removeEventListener("dialogopen", state.onDialogOpen, true);
+    win.removeEventListener("dialogclose", state.onDialogClose, true);
     state.firefoxKeys?.destroy();
     win.removeEventListener("resize", state.onCancelHints);
     win.removeEventListener("mousedown", state.onMouseDown, true);
+    win.removeEventListener("wheel", state.onWheel, { capture: true });
     this._cancelHints(state);
     state.element.leave();
     state.help.destroy();
@@ -772,6 +934,7 @@ export const VimmaHost = {
     forgetSitePermissions(win);
     state.popups.destroy();
     state.splitPicker.destroy();
+    state.bookmarkPicker.destroy();
     state.downloads.destroy();
     state.downloadPicker.destroy();
     state.downloadRows.close();
@@ -786,9 +949,11 @@ export const VimmaHost = {
     state.tabStrip?.uninit();
     state.toolbar?.uninit();
     state.urlbarQueries?.destroy();
+    state.urlbarCommands?.destroy();
     state.promptKeys?.uninit();
     WindowWorkspaces.uninit(win);
     state.statusBar?.uninit();
+    state.tabLine?.uninit();
     state.find.destroy();
     state.stopPdf();
     state.stopOutline();
@@ -897,7 +1062,7 @@ export const VimmaHost = {
    *   agent: { waiting: number, ran: boolean, armed: boolean } | null,
    *   downloads: import("../core/downloads.mjs").DownloadSegment["kind"] | null,
    *   grep: { busy: boolean } | null, urlbar: { settled: boolean } | null,
-   *   pdf: { drawn: boolean } | null }}
+   *   pdf: { drawn: boolean } | null, setup: { screen: string } | null }}
    */
   screen(win) {
     const state = states.get(win);
@@ -911,6 +1076,7 @@ export const VimmaHost = {
         grep: null,
         urlbar: null,
         pdf: null,
+        setup: null,
       };
     }
     // As the bar last drew it, not as AgentUi.status() says it will next: the ran dot is
@@ -938,7 +1104,19 @@ export const VimmaHost = {
     const urlbar = state.urlbarQueries?.drawn() ?? null;
     const browser = win.gBrowser?.selectedBrowser;
     const pdf = browser ? PdfOps.drawn(browser) : null;
-    return { notice, prompt, chat, agent, downloads, grep, urlbar, pdf };
+    // The setup page runs in this process: its screen as draw() last set it (welcome, a step's
+    // id, stop), a fixed word, so an e2e scenario waits for the screen it photographs (#1298).
+    const page =
+      browser?.currentURI?.spec === "about:vimma-setup"
+        ? browser.contentDocument?.documentElement?.dataset
+        : undefined;
+    // A step is named once its view has loaded and its choices are drawn; `loading` before.
+    const word = page?.step;
+    const ready = word === "welcome" || word === "stop" || page?.viewReady === "true";
+    const screen = word && !ready ? "loading" : word;
+    // Checked here too: the server sends only a word from the closed list (security.md S9).
+    const setup = screen && SETUP_SCREENS.includes(screen) ? { screen } : null;
+    return { notice, prompt, chat, agent, downloads, grep, urlbar, pdf, setup };
   },
 
   /**
@@ -956,9 +1134,10 @@ export const VimmaHost = {
     const tab = state.win.gBrowser?.getTabForBrowser(browser);
     const findbar = tab && state.win.gBrowser.getCachedFindBar(tab);
     // A page without our actor takes every key itself: in use while shown.
+    const mode = this._browserMode(browser);
     return (
       (!!findbar && !findbar.hidden) ||
-      this._browserMode(browser) !== "normal" ||
+      (mode !== "normal" && !(mode === "insert" && pageInsert.has(browser))) ||
       state.hint?.browser === browser ||
       state.find.session?.browser === browser ||
       state.dispatcher.pending().length > 0
@@ -989,9 +1168,57 @@ export const VimmaHost = {
    * Shows `text` as the window's notice (ConfigHost's `:config` when it cannot create the file).
    * @param {BrowserWindow} win
    * @param {string} text
+   * @param {{ untilKey?: boolean }} [options]  as Notice.show's
+   * @returns {boolean} whether it is shown
    */
-  say(win, text) {
-    states.get(win)?.notice.show(text);
+  say(win, text, options) {
+    return states.get(win)?.notice.show(text, options) ?? false;
+  },
+
+  /**
+   * A y/N question in the window's prompt line, for a module with no key context
+   * (docs/specs/bookmarks-file.md Behaviour 7). Returns a function that closes it while it is
+   * still this question, which then counts as no; null when it could not open.
+   * @param {BrowserWindow} win
+   * @param {string} question  ends with "y/N"
+   * @param {() => void} yes
+   * @param {() => void} no
+   * @param {{ settleMs?: number }} [options]  keys within `settleMs` of it showing are not an
+   *   answer (a `y` typed on the page as a background question appears)
+   * @returns {(() => void) | null}
+   */
+  ask(win, question, yes, no, { settleMs = 0 } = {}) {
+    const prompt = states.get(win)?.rename;
+    if (!prompt) return null;
+    const ours = () => yes();
+    if (!prompt.ask(question, ours, no, { settleMs })) return null;
+    return () => {
+      if (prompt.yes === ours) prompt.close();
+    };
+  },
+
+  /**
+   * Whether the window's prompt line or command line is open, or a page field has the keys
+   * (insert mode): a question asked from outside a key waits until none is
+   * (docs/specs/bookmarks-file.md Behaviour 7).
+   * @param {BrowserWindow} win
+   */
+  promptBusy(win) {
+    const state = states.get(win);
+    return (
+      !!state && (state.rename.isOpen || state.cmdline.isOpen || this._mode(state) === "insert")
+    );
+  },
+
+  /** config.toml's keymap, without `:siteunbind`'s keys until restart; the built-in one before. */
+  baseKeymap() {
+    settings.baseKeymap ??= settings.keymap ?? compileKeymap({}, { mac: MAC });
+    return settings.baseKeymap;
+  },
+
+  /** `:siteunbind` or `:sitebind` changed the keys until restart: every window's keymap follows. */
+  siteUnbindsChanged() {
+    this.configure({ siteUnbinds: true });
   },
 
   /**
@@ -1001,9 +1228,12 @@ export const VimmaHost = {
    * @param {{ keymap?: Keymap, hintChars?: string, sites?: readonly InsertSiteRule[],
    *   configErrors?: readonly ConfigError[], configFile?: string,
    *   firefox?: FirefoxKeySetting, insertEditing?: boolean,
-   *   bookmarksRoot?: BookmarksRoot }} next
+   *   bookmarksRoot?: BookmarksRoot, bookmarklets?: BookmarkletsSetting,
+   *   siteUnbinds?: boolean }} next  `siteUnbinds`: `:siteunbind`'s keys changed
    */
   configure(next) {
+    // docs/specs/bookmarklets.md B3: config.toml is the only source of this level.
+    if (next.bookmarklets) setBookmarkletsSetting(next.bookmarklets);
     // `[bookmarks] root` (docs/specs/bookmarks.md): an open panel re-reads at the new root.
     const rootChanged = !!next.bookmarksRoot && next.bookmarksRoot !== bookmarksRoot();
     if (next.bookmarksRoot) setBookmarksRoot(next.bookmarksRoot);
@@ -1013,7 +1243,22 @@ export const VimmaHost = {
     if (next.sites) settings.sites = next.sites;
     if (next.configErrors) settings.configErrors = next.configErrors;
     if (next.configFile) settings.configFile = next.configFile;
-    const keymap = next.keymap && next.keymap !== settings.keymap ? next.keymap : null;
+    const base = next.keymap && next.keymap !== settings.baseKeymap ? next.keymap : null;
+    if (base) settings.baseKeymap = base;
+    // The keys `:siteunbind` gave until restart stay through a reload of config.toml, but for
+    // a key the new file made the prefix (withSiteUnbinds leaves it out) or now saves for the
+    // same table: those end, so a key is never listed as both.
+    if (base) {
+      for (const [table, keys] of TemporarySiteUnbinds.entries()) {
+        const saved = base.siteKeys(table);
+        const gone = keys.filter((k) => !base.siteKey(k).ok || saved.includes(k));
+        if (gone.length) TemporarySiteUnbinds.remove(table, gone);
+      }
+    }
+    const keymap =
+      base || next.siteUnbinds
+        ? withSiteUnbinds(this.baseKeymap(), TemporarySiteUnbinds.entries())
+        : null;
     if (keymap) settings.keymap = keymap;
     for (const win of windows) {
       const state = states.get(win);
@@ -1096,7 +1341,22 @@ export const VimmaHost = {
     const copy = mode === "visual";
     const next = insertModeAfterFocus({ mode: copy ? "normal" : mode, trigger, descriptor, site });
     if (copy && next !== "insert") return;
+    // Whose insert this is (D13): the user's when their input caused the focus or came shortly
+    // before it, or when they already made a field of this document theirs; once theirs it
+    // stays theirs while the page moves focus about. Else it is the page's own, which does not
+    // make the tab in use.
+    const doc = topWindowId(browser);
+    const byPage =
+      next === "insert" &&
+      !user &&
+      !recentUserInput(browser) &&
+      userInsertDoc.get(browser) !== doc &&
+      (mode !== "insert" || pageInsert.has(browser));
+    // The user's click out of a field ends their insert; the page's own blur does not.
+    if (user && next !== "insert") userInsertDoc.delete(browser);
     setBrowserMode(browser, next === "insert" ? "insert" : "normal");
+    if (byPage) pageInsert.add(browser);
+    else if (next === "insert") userInsertDoc.set(browser, doc);
   },
 
   /**
@@ -1106,6 +1366,30 @@ export const VimmaHost = {
    */
   onUserClick(browser) {
     escapeHold.delete(browser);
+    noteUserInput(browser);
+  },
+
+  /**
+   * The user put text into the focused frame of `browser` without a key the window saw as one
+   * (VimmaParent's Vimma:UserInput: an IME's composition, a drop, typed or pasted text): a field
+   * the page focused is theirs (mcp-drive D13).
+   * @param {MozBrowser} browser
+   */
+  onUserInput(browser) {
+    noteUserInput(browser);
+  },
+
+  /**
+   * Tests only: forgets when the user last gave `browser`'s page input, as a pause of more than
+   * USER_INPUT_RECENT_MS would.
+   * @param {MozBrowser} browser
+   */
+  _forgetUserInputTimeForTests(browser) {
+    // Automation only (Cu.isInAutomation, read as restart.mjs does): a release never forgets
+    // the user's input early.
+    const inAutomation =
+      /** @type {{ Cu?: { isInAutomation?: unknown } }} */ (globalThis).Cu?.isInAutomation === true;
+    if (inAutomation) lastUserInput.delete(browser);
   },
 
   /**
@@ -1172,8 +1456,10 @@ export const VimmaHost = {
     if (state.addonPicker.isOpen || state.mcpLog.isOpen || state.grep.isOpen) return "help";
     if (state.permissionPicker.isOpen) return "help";
     if (state.popups.isOpen || state.downloadPicker.isOpen) return "help";
-    if (state.splitPicker.isOpen) return "help";
-    if (state.cmdline.isOpen) return "command";
+    if (state.splitPicker.isOpen || state.bookmarkPicker.isOpen) return "help";
+    // Only while its input has focus: a dialog that opens over the line keeps it open behind,
+    // and the dialog's keys (Esc) are its own, not the line's `command.cancel` (#1304).
+    if (state.cmdline.focused) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
     if (state.outline.isActive) return "index";
@@ -1181,6 +1467,8 @@ export const VimmaHost = {
     // Only while the window shows two panes: the flag itself is cleared where the panes go
     // (window-state.mjs stopPanes), never here, so reading the mode changes nothing (S9).
     if (state.resize && hasPanes(state.win)) return "resize";
+    // gb's labels (docs/specs/tab-line.md decision 12): the badge, and the questions stand back.
+    if (state.tabLabels) return "hint";
     const browser = this._focusedBrowser(state.win);
     if (state.hint && state.hint.browser === browser) return "hint";
     if (browser && state.element.browser === browser) return "element";
@@ -1263,7 +1551,14 @@ export const VimmaHost = {
       return;
     }
     const chord = chordFromEvent(e);
-    if (!chord) return; // a bare modifier
+    if (!chord) {
+      // A bare modifier, or a key with no name Vimma binds: an IME's ("Process", keyCode 229),
+      // a dead key's, or one the layout leaves unidentified. Those are the user typing into the
+      // page (mcp-drive D13); a bare modifier is not, so ctrl+b shift+a stays watching.
+      const browser = this._focusedBrowser(win);
+      if (browser && (TEXT_KEYS.has(e.key) || e.isComposing)) noteUserInput(browser);
+      return;
+    }
     // Another key after Tab: an outline still on its way opens nothing.
     dropOutlineAsk(state);
     const key = formatKey(chord);
@@ -1274,14 +1569,14 @@ export const VimmaHost = {
       state.element.leave();
     }
     // The setup page draws its own j/k/space/enter/esc (first-run-setup behaviour 3): the scroll,
-    // hint and mode bindings would take them first. Chords with a modifier stay ours.
-    if (
-      !chord.ctrl &&
-      !chord.alt &&
-      !chord.meta &&
-      this._focusedBrowser(win)?.currentURI?.spec === "about:vimma-setup"
-    ) {
-      return;
+    // hint and mode bindings would take them first. Chords with a modifier stay ours, except
+    // while its prefix step waits for a key (setup-v2 decision 21): then every chord, the prefix
+    // included, is the key being chosen, and none is kept in the recent keys below. The page
+    // runs in this process, and only its own script sets `recording`.
+    const setupPage = this._focusedBrowser(win);
+    if (setupPage?.currentURI?.spec === "about:vimma-setup") {
+      if (!chord.ctrl && !chord.alt && !chord.meta) return;
+      if (setupPage.contentDocument?.documentElement?.dataset.recording === "true") return;
     }
     const mode = this._mode(state);
     // Keys typed in a private window are never kept (private-workspace decision 8b), nor those
@@ -1295,6 +1590,14 @@ export const VimmaHost = {
       const mods = MODIFIERS.filter((m) => chord[m]);
       console.debug("vimma key", { key, mods, mode });
     }
+    // gb's labels take every key: a label's next character, else the key only cancels
+    // (docs/specs/tab-line.md decision 12).
+    if (state.tabLabels) {
+      consume(e);
+      this._tabLabelKey(state, chord);
+      this._emit(state);
+      return;
+    }
     // A picker takes every key, bare ones too, before any binding: nothing reaches the page or
     // Firefox underneath (ctrl+w would close a tab), and its j / q are not keymap keys.
     const picker = [
@@ -1304,6 +1607,7 @@ export const VimmaHost = {
       state.permissionPicker,
       state.popups,
       state.splitPicker,
+      state.bookmarkPicker,
       state.downloadPicker,
       state.mcpLog,
       state.grep,
@@ -1328,9 +1632,14 @@ export const VimmaHost = {
     // A key the page gets after Esc is the user acting on the page again: what the page
     // focuses in answer (Tab into a frame, a shortcut that opens its search box) is the user's
     // focus, though it may reach a frame whose process handles no input (insert-focus 6).
+    // It is also the user using the page (mcp-drive D13): typing in a field the page focused
+    // makes that insert theirs, and a field the page focuses soon after is theirs to type in, not
+    // an agent's to fill. Vimma's own keys are not (a scroll, the keys that open and answer the
+    // agent's question), so the user can watch the agent and answer it.
     if (!e.defaultPrevented) {
       const browser = this._focusedBrowser(win);
       if (browser) escapeHold.delete(browser);
+      if (browser) noteUserInput(browser);
     }
     this._emit(state);
   },
@@ -1347,7 +1656,8 @@ export const VimmaHost = {
     this._clearTimer(win, state);
     // The PDF viewer's bindings while its tab is selected (ADR-024): the parent's own view.
     const context = PdfOps.context(win.gBrowser?.selectedBrowser);
-    const result = state.dispatcher.dispatch(mode, chord, context);
+    const site = pageSite(state.keymap, this._focusedBrowser(win));
+    const result = state.dispatcher.dispatch(mode, chord, context, site);
     // about:vimma's last keys; never a private window's (private-workspace decision 8b).
     if (!("replay" in result) && !state.private) KeyLog.record(mode, chord, result);
     // The overlay is modal: in help mode every key is ours, handled or not, so nothing reaches
@@ -1361,7 +1671,10 @@ export const VimmaHost = {
       mode === "index";
     switch (result.kind) {
       case "pass":
-        if (this._editKey(state, e, mode, chord)) return;
+        // A key the site keeps is not Vimma's text-field key either (site-unbind decision 9).
+        if (!state.keymap.unbinds(site, formatKey(chord)) && this._editKey(state, e, mode, chord)) {
+          return;
+        }
         if (modal) consume(e);
         // Firefox runs these outside its keysets (tabbox.js, browser-ctrlTab.js, Tabbrowser's
         // on_keydown, Firefox 158), where a disabled <key> cannot stop them; each skips a keydown
@@ -1392,7 +1705,8 @@ export const VimmaHost = {
         // The first key of a sequence that leads to nothing runnable yet passes, so ctrl+w (the
         // M4 <C-w> pane keys) reaches the page with one pane. A count is not in the trie, so it
         // is ours.
-        const node = first && !modal && state.keymap.trie(mode).children.get(formatKey(chord));
+        const node =
+          first && !modal && state.keymap.trie(mode, context, site).children.get(formatKey(chord));
         if (node && !this._leadsToRunnable(state, node)) {
           state.dispatcher.reset();
           return;
@@ -1417,10 +1731,29 @@ export const VimmaHost = {
           return;
         }
         if (first && !modal && !this._runnable(state, result.action.id)) return;
+        // A suggestion key with no page focused (docs/specs/page-suggestions.md, issue #1261):
+        // the address bar's results while they show; otherwise the chord is as if unbound
+        // there, so the field keeps its own keys: its [keys] binding, Vim's text-field key
+        // (ctrl+j is Enter) or the field's own (Cocoa's ctrl+k on macOS).
+        let run = result;
+        if (isSuggestionAction(result.action.id) && !this._contentBrowser(state)) {
+          if (this._urlbarStep(state, result.action.id)) {
+            consume(e);
+            return;
+          }
+          const fallback = first ? state.keymap.fallback(mode, formatKey(chord)) : null;
+          if (!fallback) {
+            if (!first) consume(e);
+            else this._editKey(state, e, mode, chord);
+            return;
+          }
+          run = { kind: "action", action: { ...fallback, count: result.action.count } };
+          if (!this._runnable(state, run.action.id)) return;
+        }
         // Firefox let the page have this chord first: so does Vimma (firefox-keys decision 6).
         // The keydown goes on; the keypress after the page runs the action (_onKeyPress).
-        if (first && !modal && this._pageFirstAction(state, chord, mode, result.action.id)) {
-          state.pageFirst.defer(formatKey(chord), result, mode);
+        if (first && !modal && this._pageFirstAction(state, chord, mode, run.action.id)) {
+          state.pageFirst.defer(formatKey(chord), run, mode);
           return;
         }
         consume(e);
@@ -1432,13 +1765,16 @@ export const VimmaHost = {
           state.element.leave();
           if (result.action.id === "mode.normal") return;
         }
-        // A suggestion key that does not wait for a page (a chrome field has focus) runs its
-        // chord's [keys] binding: the address bar keeps ctrl+n and ctrl+p.
-        if (isSuggestionAction(result.action.id)) {
-          this._suggest(state, result.action, first ? formatKey(chord) : null, mode);
+        // A suggestion key that does not wait for the page: the second key of a sequence.
+        if (isSuggestionAction(run.action.id)) {
+          // A key that picks or moves in the page's suggestions is the user using the page,
+          // though Vimma keeps it (mcp-drive D13).
+          const focused = this._focusedBrowser(win);
+          if (focused) noteUserInput(focused);
+          this._suggest(state, run.action, first ? formatKey(chord) : null, mode);
           return;
         }
-        this._run(state, result);
+        this._run(state, run);
       }
     }
   },
@@ -1501,13 +1837,48 @@ export const VimmaHost = {
     // A late reply (a busy page) must not press a key in, or run the fallback for, the tab or
     // pane focused since (docs/security/13-page-modes.md K6).
     if (browser && target && target !== browser) return;
+    // The frame asked: the Enter fallback goes only there, never to a frame the page focused
+    // while it answered (docs/security/13-page-modes.md K5).
+    const asked = Services.focus.focusedContentBrowsingContext;
     if (browser && (await VimmaActors.suggestion(browser, action.id, sameMode))) return;
     if (browser && this._contentBrowser(state) !== browser) return;
-    if (!sameMode()) return;
-    const fallback = key ? state.keymap.fallback(mode, key) : null;
-    if (!fallback || state.win.closed) return;
-    this._run(state, { kind: "action", action: { ...fallback, count: action.count } });
-    this._emit(state);
+    if (!sameMode() || !key || state.win.closed) return;
+    const fallback = state.keymap.fallback(mode, key);
+    if (fallback) {
+      this._run(state, { kind: "action", action: { ...fallback, count: action.count } });
+      this._emit(state);
+      return;
+    }
+    // No binding of its own outside a list: Vim's text-field key on the chord, as when no
+    // suggestion key is bound to it (ctrl+j is Enter, issue #1261). The page has had the key.
+    const chord = parseKey(key);
+    const command = browser && mode === "insert" ? this._editCommand(state, chord) : null;
+    if (!command || state.keymap.unbinds(pageSite(state.keymap, browser), key)) return;
+    VimmaActors.edit(
+      /** @type {MozTabBrowser} */ (browser),
+      command,
+      () => sameMode() && Services.focus.focusedContentBrowsingContext === asked,
+    );
+  },
+
+  /**
+   * A suggestion key in the address bar while its results show (issue #1261): ArrowDown or
+   * ArrowUp pressed in it, which moves the selected row as the arrow keys do, including the
+   * one-off search buttons. Firefox's own ctrl+n and ctrl+p there are macOS-only
+   * (UrlbarChildController, handleKeyNavigation, Firefox 160); this gives every platform all
+   * four keys. Returns whether it pressed one.
+   * @param {WindowState} state
+   * @param {string} id  page.suggestion_next or page.suggestion_prev
+   */
+  _urlbarStep(state, id) {
+    const win = state.win;
+    const bar = /** @type {UrlbarInput | null} */ (win.document.getElementById("urlbar"));
+    const field = focusedChromeField(win);
+    if (!bar?.focused || !field || !bar.contains(field) || !bar.view?.isOpen) return false;
+    const step = suggestionStep(id, true);
+    if (step.kind !== "press") return false;
+    pressKeyLater(win, step.key, () => focusedChromeField(win) === field && bar.view.isOpen);
+    return true;
   },
 
   /**
@@ -1559,7 +1930,36 @@ export const VimmaHost = {
     if (state.pageFirst.press(key, e.timeStamp, isRemoteBrowserTarget(e.target))) {
       e.stopPropagation();
       ev.requestReplyFromRemoteContent();
+      if (MAC && this._suggestionKeySent(state, key, e.timeStamp)) ev.preventMultipleActions();
     }
+  },
+
+  /**
+   * Whether the keypress on its way to a remote page is a suggestion key's. On macOS such a
+   * keypress is marked for the page's process (Event.webidl's preventMultipleActions: the default
+   * is not prevented, but only one handler acts on the event; the flags go to the page's process
+   * with the event, widget/nsGUIEventIPC.h, ParamTraits<BaseEventFlags>), because Cocoa binds
+   * ctrl+n and ctrl+p to moveDown: and moveUp: in a text field
+   * (widget/cocoa/NativeKeyBindings.mm, Firefox 160): the field runs them on the keypress and
+   * prevents its default, so the reply would say the page took the key, with or without a
+   * list. VimmaChild keeps a marked keypress from the field while its suggestion list is open;
+   * with none open the field keeps its key (docs/specs/page-suggestions.md, Behaviour 3).
+   *
+   * The flag is free for this on a keypress: in Firefox 160 its only reader that sees one is a
+   * link's activation on Enter (Element::CheckHandleEventForLinksPrecondition, dom/base/
+   * Element.cpp), its other readers are mouse, touch and menu code, and no Firefox script sets it
+   * on a key. To check again at a Firefox bump.
+   *
+   * Not marked, so the field's as before: a page in the parent process, whose keypress is not
+   * sent anywhere (stopping it before the field would stop `_onKeyPressAfter` too), and a chord
+   * whose keypress Firefox's root key listener holds back before `_onKeyPress` sees it.
+   * @param {WindowState} state
+   * @param {string} key
+   * @param {number} stamp  the keypress's timeStamp
+   */
+  _suggestionKeySent(state, key, stamp) {
+    const result = state.pageFirst.sent(key, stamp)?.result;
+    return result?.kind === "action" && isSuggestionAction(result.action.id);
   },
 
   /**
@@ -1693,6 +2093,13 @@ export const VimmaHost = {
     const command = chord && this._editCommand(state, chord);
     const browser = this._contentBrowser(state);
     if (!command || !browser || this._mode(state) !== "insert") return;
+    // The reply Firefox asks for its own (disabled) key on the chord comes here too: a key the
+    // site keeps is the page's whatever brought it back (site-unbind decision 9).
+    const site = pageSite(state.keymap, browser);
+    if (state.keymap.unbinds(site, formatKey(chord))) return;
+    // A chord bound in insert mode runs its binding, not the text-field key: ctrl+j's Enter
+    // outside a suggestion list comes from `_suggest` (issue #1261), never a second time here.
+    if (state.keymap.trie("insert", "page", site).children.get(formatKey(chord))?.action) return;
     // A late reply (a busy page) must not edit, or press Enter in, the tab or pane focused since:
     // Firefox dispatches it on the <browser> the key went to (BrowserParent::RecvReplyKeyEvent).
     const remote = /** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent;
@@ -1797,12 +2204,15 @@ export const VimmaHost = {
    * `f` / `gF` / `F`: collects the targets, then enters hint mode with a label on each. With none,
    * the tab stays in normal (the status bar will say so, M2).
    * @param {MozBrowser} browser
-   * @param {Action} action
+   * @param {Pick<Action, "id">} action
+   * @param {{ restart?: boolean, buffered?: Chord[] }} [options]  `restart`: a wheel moved the
+   *   targets under the labels, which are collected again; `buffered`: keys for the new labels
    */
-  _startHints(browser, action) {
+  _startHints(browser, action, { restart = false, buffered = [] } = {}) {
     const state = stateOfBrowser(browser);
     if (!state) return;
-    this._cancelHints(state);
+    // A restart after a wheel stays in hint mode: the status bar never shows normal between.
+    this._cancelHints(state, { emit: !restart });
     state.element.leave();
     const id = /** @type {HintAction} */ (action.id);
     // pdf.js draws lines, not paragraphs: copy mode is the way to copy there (decision 14).
@@ -1811,7 +2221,7 @@ export const VimmaHost = {
       return;
     }
     /** @type {HintSession} */
-    const session = { browser, action: id, hs: null, buffered: [] };
+    const session = { browser, action: id, hs: null, buffered };
     state.hint = session;
     this._emit(state);
     VimmaActors.collectHints(browser, id)
@@ -1827,8 +2237,13 @@ export const VimmaHost = {
           console.info("vimma: no hint targets");
           return;
         }
-        state.hintOverlay.show(browser, session.hs.hints);
         this._emit(state); // the status bar's hint segment names a label now
+        // A wheel while collecting may have moved the targets: the labels wait for its check.
+        if (session.wheelAt) {
+          this._wheelCheck(state, session, session.wheelAt);
+          return;
+        }
+        state.hintOverlay.show(browser, session.hs.hints, hintLabelCase(id));
         for (const chord of session.buffered.splice(0)) {
           if (state.hint !== session) break;
           this._hintKey(state, chord);
@@ -1842,6 +2257,73 @@ export const VimmaHost = {
   },
 
   /**
+   * A wheel over the page while hints are up (issues #1308, #1337): the labels were drawn for
+   * the layout before it. They are hidden, and the page says, once the scroll the wheel
+   * started has ended, whether their targets moved (_wheelCheck). A wheel while the labels are
+   * still being collected is kept for when they arrive. Further wheels meanwhile change
+   * nothing: the page waits for the last scroll's end. The wheel's target in chrome is the
+   * <browser> only for a remote page; over a page in the parent process (about: pages without
+   * hints) it is an element inside it, and nothing happens.
+   * @param {WindowState} state
+   * @param {WheelEvent} e
+   */
+  _hintsScrolled(state, e) {
+    const session = state.hint;
+    if (!session || session.wheel || session.wheelAt || e.target !== session.browser) return;
+    const { browser } = session;
+    // The wheel's point in the page's CSS pixels, as the labels' rects are.
+    const box = browser.getBoundingClientRect();
+    const zoom = Number(browser.fullZoom) || 1;
+    const point = { x: (e.clientX - box.left) / zoom, y: (e.clientY - box.top) / zoom };
+    if (session.hs) this._wheelCheck(state, session, point);
+    else session.wheelAt = point;
+  },
+
+  /**
+   * Hides the session's labels and asks the page whether a wheel at `point` moved their
+   * targets. If they moved, the labels are collected and drawn again where the scroll ended,
+   * and the keys typed toward the old ones are dropped with them, also those typed while the
+   * labels were hidden: they were aimed from memory at labels that now name other targets
+   * (only `Esc` is kept). If nothing moved (the page's end, or a page that takes the wheel
+   * itself, such as a map), the same labels come back with the keys typed so far, then those
+   * typed meanwhile.
+   * @param {WindowState} state
+   * @param {HintSession} session  with its labels collected
+   * @param {{ x: number, y: number }} point
+   */
+  _wheelCheck(state, session, point) {
+    const hs = session.hs;
+    const gen = hs?.hints[0]?.target.gen;
+    delete session.wheelAt;
+    if (!hs || gen === undefined) return;
+    const { browser } = session;
+    session.wheel = true;
+    state.hintOverlay.hide();
+    VimmaActors.hintsMoved(browser, gen, point)
+      .then((moved) => {
+        if (state.hint !== session) return;
+        this._hintWheels++;
+        if (moved) {
+          const buffered = session.buffered.filter((c) => c.key === "esc");
+          this._startHints(browser, { id: session.action }, { restart: true, buffered });
+          return;
+        }
+        // Keys are buffered while `wheel`, so `hs` is still the session's.
+        session.wheel = false;
+        state.hintOverlay.show(browser, hs.hints, hintLabelCase(session.action));
+        state.hintOverlay.filter(hs.typed);
+        for (const chord of session.buffered.splice(0)) {
+          if (state.hint !== session) break;
+          this._hintKey(state, chord);
+        }
+      })
+      .catch((err) => {
+        console.error("vimma: hints after a wheel failed", err);
+        if (state.hint === session) this._cancelHints(state);
+      });
+  },
+
+  /**
    * One key in hint mode (core hintKey): narrow, follow, or nothing.
    * @param {WindowState} state
    * @param {Chord} chord
@@ -1849,7 +2331,7 @@ export const VimmaHost = {
   _hintKey(state, chord) {
     const session = state.hint;
     if (!session) return;
-    if (!session.hs) {
+    if (!session.hs || session.wheel) {
       session.buffered.push(chord);
       return;
     }
@@ -1916,14 +2398,83 @@ export const VimmaHost = {
   },
 
   /**
-   * Leaves hint mode, if on: removes the labels and drops a collection in flight.
+   * `gb` (docs/specs/tab-line.md decisions 12 to 15): with a count, that tab at once; else a
+   * label on every tab in the tab line, which shows meanwhile even when it is off.
+   * @param {WindowState} state
+   * @param {Action} action
+   */
+  _tabLineHint(state, action) {
+    if (action.count !== undefined) {
+      const n = action.count;
+      const refused = tabCountRefusal(n, selectableTabs(state.win).length);
+      if (refused) state.notice.show(refused);
+      else this._goToTab(state, () => selectTab(state.win, { id: "tab.goto", arg: n }));
+      return;
+    }
+    const ids = state.tabLine?.tabIds() ?? [];
+    if (!ids.length) return;
+    state.tabLabels = startTabLabels(ids, settings.hintChars ?? DEFAULT_HINT_CHARS);
+    state.tabLine?.schedule();
+    this._emit(state);
+  },
+
+  /**
+   * One key while gb's labels show (core tabLabelKey).
+   * @param {WindowState} state
+   * @param {Chord} chord
+   */
+  _tabLabelKey(state, chord) {
+    if (!state.tabLabels) return;
+    const { state: next, result } = tabLabelKey(state.tabLabels, chord);
+    if (result.kind === "narrow") {
+      state.tabLabels = next;
+      state.tabLine?.schedule();
+      return;
+    }
+    this._cancelTabLabels(state);
+    if (result.kind === "select") {
+      const tab = tabById(state.win, result.tabId);
+      if (tab) this._goToTab(state, () => (state.win.gBrowser.selectedTab = tab));
+    }
+  },
+
+  /**
+   * Selects a tab and has the status bar say its place, the one thing a screen reader hears of
+   * a gb jump (docs/specs/tab-line.md decision 18).
+   * @param {WindowState} state
+   * @param {() => void} select
+   */
+  _goToTab(state, select) {
+    const gBrowser = state.win.gBrowser;
+    const before = gBrowser.selectedTab;
+    select();
+    if (gBrowser.selectedTab === before) return;
+    const tabs = selectableTabs(state.win);
+    state.statusBar?.say(`tab ${tabs.indexOf(gBrowser.selectedTab) + 1} of ${tabs.length}`);
+  },
+
+  /**
+   * Removes gb's labels, if any.
    * @param {WindowState} state
    */
-  _cancelHints(state) {
+  _cancelTabLabels(state) {
+    if (!state.tabLabels) return;
+    state.tabLabels = null;
+    state.tabLine?.schedule();
+    this._emit(state);
+  },
+
+  /**
+   * Leaves hint mode, if on: removes the labels and drops a collection in flight.
+   * @param {WindowState} state
+   * @param {{ emit?: boolean }} [options]  `emit: false` when hint mode starts again at once
+   */
+  _cancelHints(state, { emit = true } = {}) {
+    this._cancelTabLabels(state);
     if (!state.hint) return;
     state.hint = null;
     state.hintOverlay.hide();
-    this._emit(state); // the status bar leaves HINT, also when no key ended hint mode
+    if (emit) this._emit(state); // the status bar leaves HINT, also when no key ended hint mode
     VimmaActors.cancelHints(state.win);
   },
 

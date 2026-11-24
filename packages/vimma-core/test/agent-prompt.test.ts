@@ -31,9 +31,12 @@ import {
 } from "../src/agent/agent-prompt.mjs";
 import { textWidth } from "../src/text/textwidth.mjs";
 import type { LogEntry } from "../src/agent/agent.mjs";
+import type { SentWhat } from "../src/agent/agent-prompt.mjs";
 
 const MIN = 60_000;
 const label = { client: "example-agent", via: "example" };
+/** A question detail that is not an object, which the gate never sends: read as one without keys. */
+const NOT_AN_OBJECT = true as never;
 const read = {
   tool: "vimma_read_page",
   label,
@@ -866,11 +869,11 @@ describe(":control (decision 29 D)", () => {
     // The name is set apart as its own bidi run (security.md M4), as in the question line.
     expect(controlOnQuestion(15, "agent")).toBe(
       'Turn on full control for 15 min? It reaches every workspace and tab, not only "\u2068agent\u2069", ' +
-        "and any local AI agent with a shell can use it. y/N",
+        "and any AI agent with a shell on this machine can use it. y/N",
     );
     expect(controlOnQuestion(1, "bots\n\u202e")).toBe(
       'Turn on full control for 1 min? It reaches every workspace and tab, not only "\u2068bots\u2069", ' +
-        "and any local AI agent with a shell can use it. y/N",
+        "and any AI agent with a shell on this machine can use it. y/N",
     );
   });
   test("the question and the status", () => {
@@ -1247,7 +1250,7 @@ describe("the question line's edges (mutation-tested)", () => {
   });
 
   test("a form checkpoint: fields past the cap, hidden ones, nothing to say", () => {
-    const form = (sent: unknown) => ({
+    const form = (sent?: SentWhat) => ({
       tool: "vimma_activate",
       label,
       what: {
@@ -1256,7 +1259,7 @@ describe("the question line's edges (mutation-tested)", () => {
         sent,
       },
     });
-    const ask = (sent: unknown) => questionLine(form(sent), { grantMinutes: 10 });
+    const ask = (sent?: SentWhat) => questionLine(form(sent), { grantMinutes: 10 });
     const head = '▲ example-agent wants to send a form: "Shop" → POST shop.example/cart';
     expect(text(ask({ fields: [], hidden: 0, more: 3 }))).toBe(`${head}  … (3 more)`);
     expect(text(ask({ hidden: 2 }))).toBe(`${head}  + 2 hidden`);
@@ -1360,7 +1363,7 @@ describe("the question line's edges (mutation-tested)", () => {
   });
 
   test("a step whose payment detail is not an object asks as a form", () => {
-    const q = { tool: "vimma_activate", label, what: { title: "Shop", pay: true } };
+    const q = { tool: "vimma_activate", label, what: { title: "Shop", pay: NOT_AN_OBJECT } };
     expect(text(questionLine(q, { grantMinutes: 10 }))).toBe(
       '▲ example-agent wants to send a form: "Shop"',
     );
@@ -1436,7 +1439,7 @@ describe("notices, the transcript and :mcp log, at their edges (mutation-tested)
     expect(
       stepText({
         tool: "vimma_activate",
-        what: { kind: "button", text: "Go", title: "T", submit: true },
+        what: { kind: "button", text: "Go", title: "T", submit: NOT_AN_OBJECT },
       }),
     ).toBe('clicked button "Go" in "T"');
   });
@@ -1449,7 +1452,7 @@ describe("notices, the transcript and :mcp log, at their edges (mutation-tested)
     expect(checkpointText({ what: { pay: { site: "shop.example", total: long } } })).toBe(
       `▲ asked to pay on shop.example · the page says "${long.slice(0, 39)}…"`,
     );
-    expect(checkpointText({ what: { pay: true, submit: { host: "shop.example" } } })).toBe(
+    expect(checkpointText({ what: { pay: NOT_AN_OBJECT, submit: { host: "shop.example" } } })).toBe(
       "▲ asked to send a form to shop.example",
     );
     expect(checkpointText({ what: { submit: { action: "https://shop.example/cart?x=1" } } })).toBe(
@@ -1591,12 +1594,24 @@ describe("every chosen text is its own bidi run (mutation-tested)", () => {
       what: {
         title: "Shop",
         submit: { method: "post", action: "https://a.example/", host: "a.example", fields: 2 },
-        sent: true,
+        sent: NOT_AN_OBJECT,
       },
     };
     expect(text(questionLine(form, { grantMinutes: 10 }))).toBe(
       '▲ example-agent wants to send a form: "Shop" → POST a.example (2 fields)',
     );
+  });
+
+  test("a bookmarklet's folder path is its own bidi run in the question (security.md M4)", () => {
+    const run = {
+      tool: "vimma_bookmarklet",
+      label,
+      what: { title: "T", url: "https://a.example/", bookmarklet: "Tools/Dark" },
+    };
+    expect(questionLine(run, { grantMinutes: 10 }).parts).toContainEqual({
+      text: "Tools/Dark",
+      isolate: "auto",
+    });
   });
 
   test("a step that followed no link is named as itself; :control on needs on first", () => {

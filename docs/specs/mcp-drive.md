@@ -78,7 +78,7 @@ The user is asked once, for minutes, and after that nothing confines what the ke
    the whitelist is refused before anything is asked, with a tool error that names the key and
    says why. Nothing is ever typed into a page.
 8. While MCP is on, `:control on 15` asks
-   `Turn on full control for 15 min? It reaches every workspace and tab, not only "agent", and any local AI agent with a shell can use it. y/N`,
+   `Turn on full control for 15 min? It reaches every workspace and tab, not only "agent", and any AI agent with a shell on this machine can use it. y/N`,
    and each new full-control connection's question says
    `◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "agent") — y/N`.
 9. Under a grant, each `vimma_keys` call shows a notice such as
@@ -262,6 +262,11 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
    | `hint.follow`                        | `f`, `f<label>`            | links only, listed or followed as a load (D12)                       |
    | `page.url_up`, `page.url_root`       | `gu`, `gU`                 | a load of the derived URL in the same tab; same site by construction |
 
+   (Since changed: the user's `gu` / `gU` walk Reader View's article URL, `pageUrl` in
+   `core/pageurl.mjs`, issue #1310. The agent's stay on `currentURI.spec`: in Reader View the
+   derived `about:reader` is not http or https, so the step answers `already at the top of the
+site` and loads nothing; same site by construction still holds.)
+
    Everything else is refused before anything is asked, with `invalid-args` naming the first
    refused key and its reason. That includes, by group: the prefix (`ctrl+b`) and every
    prefix binding; `:` (`command.open`); every `workspace.*`, `window.*`, `tab.*`, `pane.*`,
@@ -349,7 +354,19 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     new reason `in-use` before it runs, so an agent never scrolls or navigates a page under the
     user's cursor while they type in it. A call already running stops with `stopped: "in-use"`
     when the user starts using the tab. Watching is fine: in normal mode the user sees the agent
-    scroll and navigate.
+    scroll and navigate. (Since changed: insert mode counts only when the user's own input put
+    the tab there, a focus made while the page handled their key or click or within 5 s after
+    one; Vimma's own keys, such as a scroll or the keys that answer the agent, do not count. A
+    field the page focuses by itself, such as a dialog with autofocus that the agent's click
+    opened, is not the user's, so the agent can fill it; the user's next key or click in the tab
+    makes it theirs, and so does a later focus in a document where they already made a field
+    theirs, until they leave insert themselves. The 5 s window errs towards the user: a key the
+    page gets or a click in the page shortly before the agent's own click makes the dialog it
+    opens the user's, so the agent is refused then. So does a document where the user typed
+    and did not leave with Esc or a click elsewhere: an agent's later dialog there is refused
+    until they do, by design. Insert mode from the page alone had blocked
+    every later step of the agent in a shown tab until the user left it; issue
+    [#1325](https://github.com/vimma-browser/vimma/issues/1325), security.md M17.)
 14. **The audit.** The question shows the keys exactly as they will run, after parsing, with
     `⏎` for `<CR>` and find queries in quotes:
     `◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys: 3j /"pricing"⏎ f`.
@@ -455,7 +472,7 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
 22. **`:control on` says what it gives away.** While MCP is on (`[mcp] enabled`, else the pref
     `vimma.mcp.enabled`), its
     question becomes
-    `Turn on full control for <N> min? It reaches every workspace and tab, not only "agent", and any local AI agent with a shell can use it. y/N`.
+    `Turn on full control for <N> min? It reaches every workspace and tab, not only "agent", and any AI agent with a shell on this machine can use it. y/N`.
     With MCP off it stays as it is. A yes given after MCP went on or off while the question was
     open turns nothing on, because it answered a question that no longer says what full control
     reaches. The arming of an ordinary y/N applies; the question line's

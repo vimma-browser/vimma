@@ -137,6 +137,9 @@ vision; its key stays in login storage.
   [`test_max_running`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`test_ctrl_b_shift_a_stops_every_task`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`a task stops at max_steps`](../../packages/vimma-core/test/agent-budget.test.ts),
+  [`an input count of %s is estimated instead`](../../packages/vimma-core/test/agent-providers.test.ts),
+  [`an output count of %s is estimated instead`](../../packages/vimma-core/test/agent-providers.test.ts),
+  [`a usage count of %s adds nothing`](../../packages/vimma-core/test/agent-budget.test.ts),
   [`a task ends after the same call is refused three times in a row`](../../packages/vimma-core/test/agent-loop.test.ts),
   [`max_running and keep_days parse within their bounds`](../../packages/vimma-core/test/config-agent.test.ts)
 
@@ -499,7 +502,11 @@ own process, not a process group.
   command line. The CLI **must** be given no MCP server but Vimma's, so that it reaches pages
   only through the gate: `--strict-mcp-config`; for Gemini CLI `--allowed-mcp-server-names`
   naming its server alone (`vimma_chat`, whose entry in the run folder's settings replaces a
-  user's entry of that name whole), its extensions off (`-e none`), and a tool of any other MCP
+  user's entry of that name whole), its extensions off (`-e none`), its subagents off
+  (`experimental.enableAgents: false` in that file, since a user's subagent may declare a
+  server named `vimma_chat`, which the allow-list would start and merge into Vimma's entry; the
+  system settings, an administrator's, come after the run folder's and could turn them back on,
+  as they could already replace Vimma's entry), and a tool of any other MCP
   server that ran ending the run, as does a call to one that has no id to match its result by,
   one still unanswered at the run's `result` or the stream's end, and a call that reuses the id
   of one still open (its result could be either's);
@@ -536,11 +543,14 @@ own process, not a process group.
   [`test_a_server_named_as_vimmas_refuses_the_run`](../../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../../tests/browser/browser_vimma_agent_cli_codex.js),
   [`vimma's server is in the run folder's settings file, the ticket in its env`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`gemini's subagents are off, so none brings a server named as vimma's (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`gemini trusts the run folder from its environment, and keeps its reports there`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`a tool of another mcp server that ran ends the run; one never offered does not`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`a tool of another mcp server called without an id ends the run (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`a call to another mcp server left unanswered ends the run (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),
-  [`an id reused while its call is open ends the run (M56)`](../../packages/vimma-core/test/agent-cli.test.ts)
+  [`an id reused while its call is open ends the run (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`only the prefix mcp_vimma_chat_ marks vimma's tools (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`each of vimma's tools keeps its name through gemini's tool names`](../../packages/vimma-core/test/agent-cli.test.ts)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
   own (the `Enter` grant covers them, checkpoints and `vimma_show` still ask), and shown from the
   gate's record, never from the CLI's account of them. A CLI's output **must** be rendered as

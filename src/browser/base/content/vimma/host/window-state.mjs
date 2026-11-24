@@ -19,6 +19,7 @@ import { HintOverlay } from "../ui/hint-overlay.mjs";
 import { Notice } from "../ui/notice.mjs";
 import {
   AddonPicker,
+  BookmarkPicker,
   DownloadPicker,
   GotoPicker,
   PermissionPicker,
@@ -27,6 +28,7 @@ import {
   WorkspacePicker,
 } from "../ui/picker.mjs";
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
+import { focusOpener } from "../ui/toolbar.mjs";
 import { SidePanel } from "../ui/side-panel.mjs";
 import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
 import { OutlinePanel } from "../ui/pdf-outline.mjs";
@@ -35,17 +37,24 @@ import { AgentPrompt } from "../ui/agent-prompt.mjs";
 import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
+import { shownAsleep } from "../services/TabSleep.sys.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.mjs";
+import { HostServices } from "./host-services.mjs";
 import { Find } from "./find.mjs";
 import { ElementFocus } from "./element-focus.mjs";
 import { CHAT_SERVICES, giveSelectedTab } from "./agent-chat-ops.mjs";
-import { bookmarkContext, runBookmarkEffect } from "./bookmark-actions.mjs";
-import { loadTree, observeBookmarks } from "./bookmark-ops.mjs";
+import {
+  bookmarkContext,
+  openUserBookmark,
+  pageSeen,
+  runBookmarkEffect,
+} from "./bookmark-actions.mjs";
+import { bookmarkletsSetting, loadTree, observeBookmarks } from "./bookmark-ops.mjs";
 import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
 import { GrepSession } from "./grep.mjs";
-import { closeTabById } from "./tab-ops.mjs";
+import { closeTabById, selectableTabs } from "./tab-ops.mjs";
 import { firefoxIds } from "./browser-ops.mjs";
 import {
   hasPanes,
@@ -71,6 +80,7 @@ import { addonNames, addonOp, addonPickerItems, openAddonById, sayAddon } from "
 import { sitePermissionItems, sitePermissionKey } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, runPopupRow } from "./popup-ops.mjs";
 import { PdfOps } from "./pdf-ops.mjs";
+import { siteBindCompletions } from "./site-keys-ops.mjs";
 import {
   dropOutlineAsk,
   followOutline,
@@ -86,8 +96,8 @@ import {
 /**
  * What the widgets' callbacks call on the host.
  * @typedef {Pick<typeof VimmaHost, "_onKeyDown" | "_onKeyDownAfter" | "_onKeyPress"
- *   | "_onKeyPressAfter" | "_cancelPending" | "_cancelHints" | "_runCommand" | "_emit"
- *   | "_mode">} WindowHost
+ *   | "_onKeyPressAfter" | "_cancelPending" | "_cancelHints" | "_hintsScrolled" | "_runCommand"
+ *   | "_emit" | "_mode" | "baseKeymap">} WindowHost
  */
 
 /**
@@ -130,6 +140,7 @@ export function newWindowState(host, win, keymap, env) {
     onTabSelect: () => {
       host._cancelPending(win, state);
       host._cancelHints(state);
+      state.find.onTabSelect();
       state.element.leave();
       state.help.close({ tabChanged: true });
       state.cmdline.close({ tabChanged: true });
@@ -139,6 +150,7 @@ export function newWindowState(host, win, keymap, env) {
       state.permissionPicker.close({ tabChanged: true });
       state.popups.close({ tabChanged: true });
       state.splitPicker.close({ tabChanged: true });
+      state.bookmarkPicker.close({ tabChanged: true });
       state.downloadPicker.close({ tabChanged: true });
       state.mcpLog.close({ tabChanged: true });
       state.grep.close({ tabChanged: true });
@@ -148,6 +160,56 @@ export function newWindowState(host, win, keymap, env) {
         state.outline.close();
       }
       showOutlineBeside(state, env.outline);
+    },
+    // What had focus when a dialog opened. A window dialog (gDialogBox) has taken focus by the
+    // time `dialogopen` comes, so the element focused before the current one is kept as well.
+    focusNow: null,
+    focusBefore: null,
+    /** @param {FocusEvent} e */
+    onFocusIn: (e) => {
+      const el = /** @type {Element | null} */ (e.target);
+      if (!el || el === state.focusNow) return;
+      state.focusBefore = state.focusNow;
+      state.focusNow = el;
+    },
+    dialogOpener: null,
+    onDialogOpen: () => {
+      const el = win.document.activeElement;
+      state.dialogOpener = el?.closest("dialog, .dialogOverlay") ? state.focusBefore : el;
+    },
+    // SubDialog gives focus back on close to what had it when the first dialog opened
+    // (SubDialog.sys.mjs, `_onDialogClose` and `_topLevelPrevActiveElement`). One of Vimma's
+    // surfaces closed since (a `:` line closed by a tab switch under its dialog, or open when a
+    // background tab's dialog opened) is hidden and takes no focus: focus is then nowhere, the
+    // mode insert with no field and every binding dead (#1304). The selected page gets it. The
+    // hidden toolbar's address bar refuses that direct focus too; focusOpener reveals it first.
+    // A window that is not the active one when its dialog closes (another window in front, or a
+    // window manager slow to give the activation back) is looked at once it is active again,
+    // after the focus manager has given its focused element the focus back (#1423).
+    onDialogClose: () => {
+      win.setTimeout(() => {
+        const opener = state.dialogOpener;
+        state.dialogOpener = null;
+        const doc = win.document;
+        const check = () => {
+          const lost = () => {
+            const el = doc.activeElement;
+            return (
+              !el ||
+              el === doc.documentElement ||
+              el === doc.body ||
+              !el.isConnected ||
+              !el.checkVisibility()
+            );
+          };
+          if (!lost()) return;
+          // SubDialog's own focus() on it failed; focusOpener reveals a hidden address bar.
+          if (opener?.isConnected) focusOpener(win, opener);
+          if (lost()) win.gBrowser?.selectedBrowser.focus();
+        };
+        if (doc.hasFocus()) check();
+        else win.addEventListener("activate", () => win.setTimeout(check, 0), { once: true });
+      }, 0);
     },
     dispatcher: createDispatcher(keymap),
     help: new HelpOverlay(win, keymap, env.runnable, () => state.firefoxKeys?.status().on ?? []),
@@ -159,12 +221,17 @@ export function newWindowState(host, win, keymap, env) {
         addon: addonNames(),
         firefox: firefoxIds(win),
         workspace: workspaceNames(win),
+        // `:tab ` completes the workspace's tabs by number, each with what its tab shows.
+        tab: selectableTabs(win).map((t) => getTabLabel(t) ?? t.label),
         search: SearchHost.completions,
+        sitebind: siteBindCompletions(win, host.baseKeymap()),
+        bookmarksfile: HostServices.bookmarksFileWords(),
       }),
     }),
     tabStrip: null,
     toolbar: null,
     urlbarQueries: null,
+    urlbarCommands: null,
     promptKeys: null,
     timer: null,
     onCancelHints: () => host._cancelHints(state),
@@ -172,6 +239,7 @@ export function newWindowState(host, win, keymap, env) {
       host._cancelHints(state);
       state.element.leave();
     },
+    onWheel: (e) => host._hintsScrolled(state, e),
     hint: null,
     element: new ElementFocus({
       overlay: hintOverlay,
@@ -183,6 +251,8 @@ export function newWindowState(host, win, keymap, env) {
     hintOverlay,
     listeners: new Set(),
     statusBar: null,
+    tabLine: null,
+    tabLabels: null,
     picker: new GotoPicker(win, {
       items: () => {
         const { items, windowOf } = tabSearchList(win);
@@ -276,6 +346,21 @@ export function newWindowState(host, win, keymap, env) {
       select: (id) => {
         showSplit(win, Number(id));
         host._emit(state);
+      },
+    }),
+    // docs/specs/bookmark-open.md: Enter opens the row as the panel's Enter does, or in a new tab.
+    bookmarkPicker: new BookmarkPicker(win, {
+      select: (id) => {
+        const say = (/** @type {string} */ t) => state.notice.show(t, { error: true });
+        const picker = state.bookmarkPicker;
+        openUserBookmark({ ...bookmarkContext(state), say }, id, picker.where, {
+          from: "command",
+          listed: picker.row(id)?.listed,
+          page: picker.page ?? pageSeen(win),
+        }).catch((e) => {
+          console.error("vimma: the bookmark could not open", e);
+          say(`bookmark: ${e?.message ?? e}`);
+        });
       },
     }),
     popups: new PopupPicker(win, {
@@ -373,6 +458,7 @@ export function newWindowState(host, win, keymap, env) {
           foreign: !!WindowWorkspaces.get(win)?.isForeign(tab),
           playing: !!tab.soundPlaying,
           pinned: !!tab.pinned,
+          asleep: shownAsleep(tab),
         };
       },
       closeTab: (tabId) => {
@@ -408,6 +494,7 @@ export function newWindowState(host, win, keymap, env) {
       load: () => loadTree(win),
       observe: observeBookmarks,
       effect: (effect) => runBookmarkEffect(bookmarkContext(state), effect),
+      bookmarklets: bookmarkletsSetting,
     }),
     agentChat: new AgentChatWindow(
       win,

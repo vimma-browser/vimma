@@ -75,10 +75,10 @@ export function emptyDefinitions() {
   return { schema: DEFINITIONS_SCHEMA_VERSION, lastActive: null, workspaces: [] };
 }
 
-/** @param {unknown} v @returns {v is Record<string, any>} */
+/** @param {unknown} v @returns {v is Record<string, unknown>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** @param {string} s */
+/** @param {unknown} s @returns {s is string} */
 const validName = (s) =>
   typeof s === "string" &&
   [...s].length >= 1 &&
@@ -127,7 +127,8 @@ export function readDefinitions(input) {
       throw new DefinitionsError("duplicate-name", at("name"), `"${w.name}" twice`);
     }
     const ucid = w.userContextId;
-    if (ucid !== null && !(Number.isInteger(ucid) && ucid > 0)) {
+    // An integer once Number.isInteger passed.
+    if (ucid !== null && !(Number.isInteger(ucid) && /** @type {number} */ (ucid) > 0)) {
       throw new DefinitionsError("invalid", at("userContextId"), "a positive integer or null");
     }
     checkLooks(w, at);
@@ -137,7 +138,9 @@ export function readDefinitions(input) {
     if (w.source !== "config" && w.source !== "runtime") {
       throw new DefinitionsError("invalid", at("source"), '"config" or "runtime"');
     }
-    if (w.bookmarksFolder !== undefined && !PLACES_GUID.test(String(w.bookmarksFolder))) {
+    const folder = w.bookmarksFolder;
+    // String() would read an array of the guid as the guid.
+    if (folder !== undefined && !(typeof folder === "string" && PLACES_GUID.test(folder))) {
       throw new DefinitionsError("invalid", at("bookmarksFolder"), "a Places guid");
     }
     ids.add(w.id);
@@ -146,20 +149,28 @@ export function readDefinitions(input) {
     const def = {
       id: w.id,
       name: w.name,
-      userContextId: ucid,
-      color: w.color,
-      icon: w.icon,
+      // Each was checked above: a positive integer or null, and checkLooks' colour and icon.
+      userContextId: /** @type {number | null} */ (ucid),
+      color: /** @type {string} */ (w.color),
+      icon: /** @type {string} */ (w.icon),
       source: w.source,
     };
     if (w.home !== undefined) def.home = w.home;
-    if (w.bookmarksFolder !== undefined) def.bookmarksFolder = w.bookmarksFolder;
+    // A guid, checked as `folder` above.
+    if (w.bookmarksFolder !== undefined)
+      def.bookmarksFolder = /** @type {string} */ (w.bookmarksFolder);
     return def;
   });
   const last = doc.lastActive;
   if (last !== null && !ids.has(last)) {
     throw new DefinitionsError("invalid", "lastActive", "null or the id of a workspace");
   }
-  return { schema: doc.schema, lastActive: last, workspaces };
+  // `last` is null or a workspace's id, and the schema DEFINITIONS_SCHEMA_VERSION: checked above.
+  return {
+    schema: /** @type {number} */ (doc.schema),
+    lastActive: /** @type {string | null} */ (last),
+    workspaces,
+  };
 }
 
 /**
@@ -191,7 +202,8 @@ export function canWriteDefinitions(existing) {
     }
   }
   const schema = isObject(doc) ? doc.schema : undefined;
-  return !(Number.isInteger(schema) && schema > DEFINITIONS_SCHEMA_VERSION);
+  // An integer once Number.isInteger passed.
+  return !(Number.isInteger(schema) && /** @type {number} */ (schema) > DEFINITIONS_SCHEMA_VERSION);
 }
 
 /** Why the agent workspace is never renamed (vimma-mcp decision 8). */

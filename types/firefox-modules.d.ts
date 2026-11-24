@@ -24,6 +24,16 @@ interface VimmaModules {
   };
   // engine/toolkit/components/places/PlacesUtils.sys.mjs
   "resource://gre/modules/PlacesUtils.sys.mjs": { PlacesUtils: PlacesUtilsApi };
+  // engine/browser/components/places/PlacesBrowserStartup.sys.mjs: set once Places' browser
+  // start-up (its restore included) is done and places-browser-init-complete was notified.
+  "moz-src:///browser/components/places/PlacesBrowserStartup.sys.mjs": {
+    PlacesBrowserStartup: {
+      readonly _placesBrowserInitComplete: boolean;
+      // For the browser tests; product code does not read these.
+      _placesInitialized: boolean;
+      initPlaces(): void;
+    };
+  };
   // engine/toolkit/modules/PrivateBrowsingUtils.sys.mjs
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs": {
     PrivateBrowsingUtils: LazyModules["PrivateBrowsingUtils"] & {
@@ -31,6 +41,8 @@ interface VimmaModules {
       isBrowserPrivate(browser: MozBrowser): boolean;
     };
   };
+  // engine/browser/modules/webrtcUI.sys.mjs
+  "resource:///modules/webrtcUI.sys.mjs": { webrtcUI: LazyModules["webrtcUI"] };
   // engine/toolkit/modules/Timer.sys.mjs
   "resource://gre/modules/Timer.sys.mjs": Pick<
     LazyModules,
@@ -65,6 +77,16 @@ interface VimmaModules {
       _attemptedSetDefaultThisSession: boolean;
     };
   };
+  // engine/browser/components/migration/MigrationUtils.sys.mjs: the entry points the import
+  // wizard is opened with (the setup page passes FILE_MENU).
+  "moz-src:///browser/components/migration/MigrationUtils.sys.mjs": {
+    MigrationUtils: {
+      readonly MIGRATION_ENTRYPOINTS: { readonly FILE_MENU: string };
+      // For the browser tests; product code does not read these.
+      readonly availableMigratorKeys: string[];
+      insertManyBookmarksWrapper(bookmarks: object[], parentGuid: string): Promise<void>;
+    };
+  };
   // engine/browser/components/urlbar/QuickSuggest.sys.mjs: resolves once Suggest has started.
   "moz-src:///browser/components/urlbar/QuickSuggest.sys.mjs": {
     QuickSuggest: {
@@ -72,6 +94,36 @@ interface VimmaModules {
       // For the browser tests; product code must not call them.
       init(): Promise<void>;
       _test_reset(): Promise<void>;
+    };
+  };
+  // engine/browser/components/urlbar/UrlbarUtils.sys.mjs: the base class of the address bar's
+  // result providers, which host/urlbar-commands.mjs extends (it overrides the members it uses),
+  // and UrlbarUtils, which tab-ops.mjs reads lazily and the browser tests replace a method of.
+  "moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs": {
+    UrlbarProvider: new () => object;
+    UrlbarUtils: LazyModules["UrlbarUtils"];
+  };
+  // engine/browser/components/urlbar/UrlbarProvidersManager.sys.mjs: a search access point's
+  // providers, one manager per access point.
+  "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs": {
+    ProvidersManager: {
+      getInstanceForSap(sapName: string): {
+        registerProvider(provider: object): void;
+        unregisterProvider(provider: object): void;
+      };
+    };
+  };
+  // engine/browser/components/urlbar/content/UrlbarShared.mjs: the provider types (the product)
+  // and the result types and groups (the browser tests).
+  "chrome://browser/content/urlbar/UrlbarShared.mjs": {
+    UrlbarShared: {
+      readonly PROVIDER_TYPE: { readonly HEURISTIC: number };
+      readonly RESULT_TYPE: {
+        readonly TAB_SWITCH: number;
+        readonly SEARCH: number;
+        readonly URL: number;
+      };
+      readonly RESULT_GROUP: { readonly GENERAL_PARENT: string };
     };
   };
   // engine/browser/components/urlbar/UrlbarPrefs.sys.mjs: the result groups of a search access

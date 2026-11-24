@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Spec: docs/specs/pdf-mode.md (delivery PR 5, decisions 9, 11 and 16),
-// docs/security/20-pdf-viewer.md section 20 (V7, V11): marks with m and ', and the link keys F and
+// docs/security/20-pdf-viewer.md section 20 (V3, V7, V11): marks with m and ', and the link keys F and
 // c in the PDF viewer. file_vimma_pdf_links.pdf has 4 pages; page 1 has three links:
 // https://example.org/vimma-pdf, an explicit destination on page 3, and the named destination
 // chapter-two on page 4.
@@ -233,6 +233,160 @@ add_task(async function a_key_right_after_a_mark_is_not_undone_by_its_page_rende
       at.scrollTop,
       last.scrollTop,
       `page 3's rendering leaves the view on the last page: ${JSON.stringify(at)}`,
+    );
+  });
+});
+
+// The same with a link, which pdf.js follows itself (goToDestination, with its focus): the jump
+// list's walk back (decision 9) found a jump the view had been pulled away from. Frames are held
+// from the click, so page 4 starts drawing only when 2G brings pdf.js's record of the view up to
+// date, and finishes once 2G has moved on.
+add_task(async function a_key_right_after_a_link_is_not_undone_by_its_page_rendering() {
+  await withPdf(async (browser) => {
+    const sh = historyOf(browser);
+    const label = await labelOf("f", (h) => h.endsWith("#chapter-two"));
+    const rendered = BrowserTestUtils.waitForContentEvent(
+      browser,
+      "textlayerrendered",
+      false,
+      (e) => /** @type {CustomEvent<{ pageNumber?: number }>} */ (e).detail?.pageNumber === 4,
+      true,
+    );
+    await SpecialPowers.spawn(browser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
+    let last;
+    try {
+      const before = sh.index;
+      type(label);
+      await TestUtils.waitForCondition(() => sh.index === before + 1, "the link is in the history");
+      await jump(browser, "2G", 2, "2G before page 4 has rendered");
+      last = await view(browser);
+    } finally {
+      await SpecialPowers.spawn(browser, [], () => content.windowUtils.restoreNormalRefresh());
+    }
+    await rendered;
+    const at = await view(browser);
+    Assert.equal(
+      at.scrollTop,
+      last.scrollTop,
+      `page 4's rendering leaves the view on page 2: ${JSON.stringify(at)}`,
+    );
+    // pdf.js still focuses the link's page, as it does without Vimma, only without scrolling.
+    const focused = await SpecialPowers.spawn(
+      browser,
+      [],
+      () =>
+        content.document.activeElement?.closest(".page")?.getAttribute("data-page-number") ?? "",
+    );
+    Assert.equal(focused, "4", "the focus is on page 4's text layer");
+  }, LINKS);
+});
+
+/** @param {XULBrowserElement} browser @param {number} page */
+function goToPage(browser, page) {
+  return SpecialPowers.spawn(browser, [page], (p) => {
+    /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication.page = p;
+  });
+}
+
+// V3: each text layer's own `focus` is defined, not assigned, so a setter the viewer puts on the
+// prototype never runs in the adapter; a layer it cannot be defined on leaves the others theirs;
+// and the function ignores its `this` and arguments.
+add_task(async function a_hostile_viewer_cannot_turn_the_text_layers_focus() {
+  await withPdf(async (browser) => {
+    await SpecialPowers.spawn(browser, [], () => {
+      const doc = content.document;
+      Assert.equal(
+        doc.querySelector('.page[data-page-number="6"] > .textLayer'),
+        null,
+        "page 6 has no text layer yet",
+      );
+      const w = /** @type {typeof globalThis & { setterRan?: number }} */ (content.wrappedJSObject);
+      w.setterRan = 0;
+      const proto = w.HTMLElement.prototype;
+      const native = /** @type {{ focus: unknown }} */ (proto).focus;
+      Object.defineProperty(proto, "focus", {
+        configurable: true,
+        get: Cu.exportFunction(() => native, content),
+        set: Cu.exportFunction(() => {
+          w.setterRan = (w.setterRan ?? 0) + 1;
+          throw new content.Error("hostile");
+        }, content),
+      });
+      // Two text layers added in one batch, the first with a `focus` that cannot be redefined.
+      const page = /** @type {Element} */ (doc.querySelector('.page[data-page-number="1"]'));
+      const stuck = doc.createElement("div");
+      const other = doc.createElement("div");
+      for (const el of [stuck, other]) el.className = "textLayer vimma-test";
+      Object.defineProperty(Cu.waiveXrays(stuck), "focus", { value: 1, configurable: false });
+      page.append(stuck);
+      page.append(other);
+      Assert.equal(page.querySelectorAll(".textLayer").length, 3, "the layers are in the page");
+    });
+    const rendered = BrowserTestUtils.waitForContentEvent(
+      browser,
+      "textlayerrendered",
+      false,
+      (e) => /** @type {CustomEvent<{ pageNumber?: number }>} */ (e).detail?.pageNumber === 6,
+      true,
+    );
+    await goToPage(browser, 6);
+    await rendered;
+    await goToPage(browser, 1);
+    await until(browser, { page: 1 }, "back on page 1");
+    const seen = await SpecialPowers.spawn(browser, [], () => {
+      const doc = content.document;
+      const w = /** @type {typeof globalThis & { setterRan?: number }} */ (content.wrappedJSObject);
+      const own = (/** @type {Element | null} */ el) =>
+        el ? typeof Object.getOwnPropertyDescriptor(Cu.waiveXrays(el), "focus")?.value : "none";
+      const six = /** @type {HTMLElement} */ (
+        doc.querySelector('.page[data-page-number="6"] > .textLayer')
+      );
+      const container = /** @type {HTMLElement} */ (doc.getElementById("viewerContainer"));
+      const top = container.scrollTop;
+      // Arguments the native focus would read: each getter counts its reads.
+      let reads = 0;
+      const hostile = /** @type {object} */ (new w.Object());
+      for (const key of ["preventScroll", "focusVisible"]) {
+        Object.defineProperty(hostile, key, {
+          get: Cu.exportFunction(() => {
+            reads++;
+            return false;
+          }, content),
+        });
+      }
+      const focus = /** @type {Function} */ (
+        /** @type {{ focus: unknown }} */ (Cu.waiveXrays(six)).focus
+      );
+      let threw = "";
+      let returned;
+      try {
+        returned = focus.call(Cu.waiveXrays(doc.body), hostile, hostile);
+      } catch (e) {
+        threw = String(e);
+      }
+      return {
+        setterRan: w.setterRan,
+        six: own(six),
+        other: own(doc.querySelectorAll(".textLayer.vimma-test")[1]),
+        reads,
+        threw,
+        returned: typeof returned,
+        moved: container.scrollTop - top,
+        focused: doc.activeElement?.closest(".page")?.getAttribute("data-page-number") ?? "",
+      };
+    });
+    Assert.equal(seen.setterRan, 0, "the viewer's focus setter never ran");
+    Assert.equal(seen.six, "function", "a text layer added later has its own focus");
+    Assert.equal(seen.other, "function", "a layer after one that refused it has its own focus");
+    Assert.equal(seen.threw, "", "the focus throws nothing into the viewer");
+    Assert.equal(seen.returned, "undefined", "and returns nothing");
+    Assert.equal(seen.reads, 0, "it reads none of its arguments");
+    Assert.equal(seen.moved, 0, "focusing page 6's text layer from page 1 scrolls nothing");
+    Assert.equal(seen.focused, "6", "and focuses it, whatever its this");
+    await goToPage(browser, 2);
+    await TestUtils.waitForCondition(
+      () => PdfOps.state(browser)?.page === 2,
+      "the adapter still reports state",
     );
   });
 });

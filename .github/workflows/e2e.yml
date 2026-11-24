@@ -202,13 +202,20 @@ jobs:
 
       # Before the import, which replaces upstream's brandings.ftl with a link to ours and leaves
       # no copy (the engine has no history). Fails when src/'s generated file is stale or upstream
-      # has a new Firefox or Mozilla name the mapping does not decide (docs/rebase.md).
+      # has a new Firefox or Mozilla name the mapping does not decide (docs/rebase.md). Beta mode
+      # (spec upstream-beta-canary B4, since #858) regenerates the file from the Beta's first: the
+      # committed one follows the release and cannot match a Beta too, and the suites then run
+      # with the Beta's names. The generator still stops on an undecided term or a renamed term
+      # the Beta dropped, which main can fix ahead of the bump.
       - name: Product names follow upstream's brandings.ftl (tools/branding/brandings.ts)
         id: brandings
         continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}
         env:
+          BETA: ${{ steps.mode.outputs.beta }}
           BRANDINGS_REQUIRE_UPSTREAM: "1"
-        run: npx --no -- vitest run tools/branding/test/brandings.test.ts
+        run: |
+          if [ "$BETA" = true ]; then node tools/branding/brandings.ts; fi
+          npx --no -- vitest run tools/branding/test/brandings.test.ts
 
       - name: Import our patches and sources
         id: import

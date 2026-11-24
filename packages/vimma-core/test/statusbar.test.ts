@@ -48,6 +48,15 @@ describe("status bar segments", () => {
     expect(segs[1]?.fg).toBe("--vimma-text-blue");
   });
 
+  // docs/specs/tab-line.md decision 16: the tab line shows the tab's place and name.
+  test("tabLineHasTab drops the tab and title segments, never the URL", () => {
+    const segs = statusSegments({ ...base, tabLineHasTab: true });
+    expect(segs.map((s) => s.id)).toEqual(["mode", "workspace", "url"]);
+    const hidden = statusSegments({ ...base, tabLineHasTab: true, toolbarHidden: true });
+    expect(hidden.map((s) => s.id)).toContain("url");
+    expect(statusSegments({ ...base, tabLineHasTab: false }).map((s) => s.id)).toContain("tab");
+  });
+
   test("every token named is a theme token", () => {
     const names = new Set(THEME_TOKENS.map((t) => t.name));
     const segs = statusSegments({

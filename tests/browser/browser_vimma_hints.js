@@ -5,6 +5,7 @@
 // Spec: docs/specs/m1-hints.md; docs/specs/follow-link-switch.md (gF's upper-case last key)
 
 /* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf, windowGlobalOf -- from head.js */
+/* global XULBrowserWindow -- a browser window global (browser.js) */
 
 "use strict";
 
@@ -22,6 +23,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 const PAGE = DIR + "file_vimma_hints.html";
 const MANY = DIR + "file_vimma_hints_many.html";
 const MENU = DIR + "file_vimma_hints_menu.html";
+const OVERLINK = DIR + "file_vimma_hints_overlink.html";
 const CONSENT = DIR + "file_vimma_consent.html";
 const { compileKeymap } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/keymap.mjs",
@@ -216,6 +218,40 @@ async function labelFor(browser, id, key = "f") {
   return /** @type {string} */ (label);
 }
 
+/**
+ * A label as the user sees it: its text with the case its style draws it in.
+ * @param {string} label
+ */
+function seenLabel(label) {
+  const el = /** @type {HTMLElement} */ (
+    document.querySelector(`#vimma-hints .vimma-hint[data-label="${label}"]`)
+  );
+  const transform = window.getComputedStyle(el).textTransform;
+  const text = /** @type {string} */ (el.textContent);
+  if (transform === "uppercase") return text.toUpperCase();
+  Assert.equal(transform, "none", "labels are drawn upper case or as they are");
+  return text;
+}
+
+/**
+ * Types a label character by character as seen, with Shift on each upper-case letter.
+ * @param {string} seen
+ */
+function typeAsSeen(seen) {
+  for (const c of seen) {
+    const upper = c !== c.toLowerCase();
+    EventUtils.synthesizeKey(c, upper ? { shiftKey: true } : {});
+  }
+}
+
+/**
+ * `seen` with its last character upper case, as a user types `sD` to go there.
+ * @param {string} seen
+ */
+function upperLastSeen(seen) {
+  return seen.slice(0, -1) + seen.slice(-1).toUpperCase();
+}
+
 add_task(async function f_labels_every_visible_target_and_nothing_else() {
   await withPage(PAGE, async (browser) => {
     const hints = await startHints();
@@ -224,6 +260,7 @@ add_task(async function f_labels_every_visible_target_and_nothing_else() {
     Assert.equal(windowMode(), "hint", "hint mode");
     const labels = hints.hints.map((h) => h.label);
     Assert.deepEqual(drawnLabels().sort(), [...labels].sort(), "every label is drawn in chrome");
+    for (const l of labels) Assert.equal(seenLabel(l), l.toUpperCase(), "f draws upper case");
     for (const a of labels) {
       for (const b of labels) {
         if (a !== b) Assert.ok(!b.startsWith(a), `${a} is not a prefix of ${b}`);
@@ -246,6 +283,61 @@ add_task(async function a_label_follows_the_link() {
     await loaded;
     Assert.ok(found(browser.currentURI).spec.endsWith("?to=2"), "followed l2");
     Assert.strictEqual(VimmaHost._hints(window), null, "hints are gone");
+  });
+});
+
+/**
+ * The mouse events a link of file_vimma_hints_overlink.html got, in order.
+ * @param {XULBrowserElement} browser
+ * @param {string} id
+ * @returns {Promise<string[]>}
+ */
+function linkEvents(browser, id) {
+  return SpecialPowers.spawn(browser, [id], (link) =>
+    [...content.wrappedJSObject.seen].filter((e) => e.startsWith(`${link}:`)),
+  );
+}
+
+/**
+ * The label `f` gives the element with this id, on a page without frames.
+ * @param {XULBrowserElement} browser
+ * @param {string} id
+ */
+async function pageLabelFor(browser, id) {
+  const hints = await startHints();
+  const label = labelAt(hints, (await pageCentres(browser, [id]))[id]);
+  Assert.ok(label, `${id} has a label`);
+  return /** @type {string} */ (label);
+}
+
+// Issue #1309: the link preview showed the URL of a link followed with a label until the page
+// loaded another document, as if the pointer still rested on the link.
+add_task(async function following_a_link_leaves_no_url_in_the_link_preview() {
+  await withPage(OVERLINK, async (browser) => {
+    for (const id of ["stay", "hash"]) {
+      type(await pageLabelFor(browser, id));
+      await TestUtils.waitForCondition(
+        async () => (await linkEvents(browser, id)).includes(`${id}:click`),
+        `${id} got its click`,
+      );
+      // A round trip through the page: what the page sent the parent before it has arrived.
+      await SpecialPowers.spawn(browser, [], () => {});
+      Assert.equal(XULBrowserWindow.overLink, "", `${id}: the link preview shows no URL`);
+      // A menu that opened on the hover stays open: the page sees the pointer stay on the link.
+      Assert.deepEqual(
+        await linkEvents(browser, id),
+        [`${id}:mouseover`, `${id}:click`],
+        `${id}: the page got no mouseout or mouseleave`,
+      );
+      Assert.equal(VimmaHost._browserMode(browser), "normal", `${id}: back in normal mode`);
+    }
+    Assert.ok(found(browser.currentURI).spec.endsWith("#x"), "the same-document link went to #x");
+    const loaded = BrowserTestUtils.browserLoaded(browser, false, (u) => u.endsWith("?to=away"));
+    type(await pageLabelFor(browser, "away"));
+    await loaded;
+    // A top-level load clears the preview by itself (browser.js onLocationChange): this guards
+    // the ordinary case, the two links above are the ones the fix is for.
+    Assert.equal(XULBrowserWindow.overLink, "", "away: the link preview shows no URL");
   });
 });
 
@@ -327,8 +419,11 @@ add_task(async function gF_opens_the_link_in_a_background_tab() {
 
     const selected = gBrowser.selectedTab;
     const label = await labelFor(browser, "l3", "gF");
+    // gF reads the case typed, so it draws the background form: typing what is seen opens there.
+    const seen = seenLabel(label);
+    Assert.equal(seen, label.toLowerCase(), "gF draws its labels lower case");
     const opened = BrowserTestUtils.waitForNewTab(gBrowser, (u) => u.endsWith("?to=3"), true);
-    type(label);
+    typeAsSeen(seen);
     const tab = await opened;
     Assert.equal(gBrowser.selectedTab, selected, "the new tab opened in the background");
     Assert.equal(tab.userContextId, selected.userContextId, "in the same container");
@@ -362,7 +457,7 @@ async function openL3(browser, typeLabel, key = "gF") {
 add_task(async function gF_with_an_upper_case_last_key_opens_and_selects_the_tab() {
   await withPage(PAGE, async (browser) => {
     const hinted = gBrowser.selectedTab;
-    const tab = await openL3(browser, typeUpperLast);
+    const tab = await openL3(browser, (l) => typeAsSeen(upperLastSeen(seenLabel(l))));
     await TestUtils.waitForCondition(() => gBrowser.selectedTab === tab, "the new tab is selected");
     Assert.equal(tab.userContextId, hinted.userContextId, "in the hinted tab's container");
     Assert.equal(tab.owner, hinted, "the hinted tab owns it");
@@ -444,6 +539,8 @@ add_task(async function the_status_bar_shows_both_outcomes_in_gF() {
       () => segment()?.startsWith(`${next} background`),
       "it follows the typed prefix",
     );
+    const typed = /** @type {HTMLElement} */ (document.querySelector(".vimma-hint-typed"));
+    Assert.equal(window.getComputedStyle(typed).textTransform, "none", "the typed part too");
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => segment() === null, "gone when hint mode ends");
     await startHints("f");
@@ -750,39 +847,49 @@ add_task(async function every_entry_of_an_open_dropdown_menu_gets_a_label() {
 // viewport has its size, as Floating UI does, or the entries sit above the viewport (#605).
 // Pausing the chrome refresh driver holds that layout back, as a busy macOS runner did.
 add_task(async function a_menu_opened_in_a_tab_not_sized_yet_gets_its_labels() {
-  const utils = window.windowUtils;
-  registerCleanupFunction(() => utils.restoreNormalRefresh());
-  utils.advanceTimeAndRefresh(0);
-  const tab = gBrowser.addTab(MENU, {
-    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-  });
-  gBrowser.selectedTab = tab;
-  const browser = tab.linkedBrowser;
+  // With Firefox's toolbar shown: with it hidden, the default (toolbar-toggle decision 3), the
+  // window is laid out before the new tab's page loads even with the refresh driver paused, so
+  // the page loads with its size and the race this reproduces does not happen.
+  /** @type {MozTabbrowserTab | undefined} */
+  let tab;
   try {
-    await BrowserTestUtils.browserLoaded(browser, false, MENU);
-    const size = await SpecialPowers.spawn(browser, [], () => content.innerHeight);
-    Assert.equal(size, 0, "the page loaded before the parent sized it");
-  } finally {
-    utils.restoreNormalRefresh();
-  }
-  try {
-    await TestUtils.waitForCondition(
-      () => SpecialPowers.spawn(browser, [], () => content.innerHeight > 0),
-      "the page gets its size",
-    );
-    await SpecialPowers.spawn(browser, [], async () => {
-      const menu = /** @type {HTMLElement} */ (content.document.getElementById("menu"));
-      await Promise.all(menu.getAnimations().map((a) => a.finished));
+    await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.toolbar.hidden", false]] });
+    const utils = window.windowUtils;
+    registerCleanupFunction(() => utils.restoreNormalRefresh());
+    utils.advanceTimeAndRefresh(0);
+    tab = gBrowser.addTab(MENU, {
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
     });
-    await focusContent(browser);
-    await waitForMode(browser, "normal");
-    const hints = await startHints();
-    const at = await pageCentres(browser, MENU_ENTRIES);
-    for (const id of MENU_ENTRIES) Assert.ok(labelAt(hints, at[id]), `${id} has a label`);
-    Assert.equal(hints.hints.length, MENU_ENTRIES.length, "one label per entry");
+    gBrowser.selectedTab = tab;
+    const browser = tab.linkedBrowser;
+    try {
+      await BrowserTestUtils.browserLoaded(browser, false, MENU);
+      const size = await SpecialPowers.spawn(browser, [], () => content.innerHeight);
+      Assert.equal(size, 0, "the page loaded before the parent sized it");
+    } finally {
+      utils.restoreNormalRefresh();
+    }
+    try {
+      await TestUtils.waitForCondition(
+        () => SpecialPowers.spawn(browser, [], () => content.innerHeight > 0),
+        "the page gets its size",
+      );
+      await SpecialPowers.spawn(browser, [], async () => {
+        const menu = /** @type {HTMLElement} */ (content.document.getElementById("menu"));
+        await Promise.all(menu.getAnimations().map((a) => a.finished));
+      });
+      await focusContent(browser);
+      await waitForMode(browser, "normal");
+      const hints = await startHints();
+      const at = await pageCentres(browser, MENU_ENTRIES);
+      for (const id of MENU_ENTRIES) Assert.ok(labelAt(hints, at[id]), `${id} has a label`);
+      Assert.equal(hints.hints.length, MENU_ENTRIES.length, "one label per entry");
+    } finally {
+      if (VimmaHost._hints(window)) EventUtils.synthesizeKey("KEY_Escape");
+      if (tab) BrowserTestUtils.removeTab(tab);
+    }
   } finally {
-    if (VimmaHost._hints(window)) EventUtils.synthesizeKey("KEY_Escape");
-    BrowserTestUtils.removeTab(tab);
+    await SpecialPowers.popPrefEnv();
   }
 });
 

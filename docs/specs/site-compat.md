@@ -80,8 +80,9 @@ runner is not used (decision 10).
   `tools/e2e/driver.mjs:92` (`Ctl`) runs `vimma-ctl` for `send-keys`, `state` and `open`.
 - `state` (`ctl/VimmaControl.sys.mjs:260`) reports `mode`, `pending` (`"prefix"` after
   `ctrl+b`), `workspace` and each tab's `id` (the browserId), `url` and `title`. That is enough
-  for keys, navigation and modes, but not for what a check must see in the page: scroll
-  positions, the focused element, hint labels, the find result, the clipboard, errors.
+  for keys, navigation and modes (Since changed: an unloaded tab's `id` is its workspace uuid
+  until it loads, and a check reads only loaded tabs; #1332), but not for what a check must see
+  in the page: scroll positions, the focused element, hint labels, the find result, the clipboard, errors.
 
 ### How to observe the page without changing what a site sees
 
@@ -134,7 +135,8 @@ needs no dependency.
   `notFound`, `current` and `total` once the find bar reports (live on GitHub: "neovim",
   10 matches).
 - **`yy`.** `page.yank_url` copies `currentURI.spec` with `nsIClipboardHelper`
-  (`host/page-ops.mjs:75-80`). The suite writes a sentinel first and reads the clipboard back
+  (`host/page-ops.mjs:75-80`). (Since changed: it copies `pageUrl(currentURI.spec)`, the
+  article's URL in Reader View; issue #1310.) The suite writes a sentinel first and reads the clipboard back
   in chrome. It always runs under its own Xvfb, so it never touches the desktop's clipboard.
 - **`ctrl+b`.** `state.pending` is `"prefix"` after `ctrl+b`. A keydown listener the probe adds
   to the page's window (capture phase) shows whether the page saw the key.
@@ -149,6 +151,10 @@ needs no dependency.
   `chrome://browser/content/vimma/` and, through `console-api-log-event`, Vimma's own
   `console.error`. GitHub alone logs dozens of the site's own errors and warnings (the
   prototype saw referrer-policy warnings); those are ignored.
+  (Since changed: one upstream Firefox error with Vimma's click on its stack is ignored too,
+  `PictureInPictureChild.sys.mjs`'s `shadowRoot is null`
+  (`toolkit/actors/PictureInPictureChild.sys.mjs:603-605`), matched on both source and message;
+  #1245.)
 - **Site shortcuts.** A key the site handles shows as `defaultPrevented`, a focus change, a URL
   change, a scroll or a new dialog. On GitHub, `s` focused the search field (and Vimma went to
   insert mode, correctly). How the key reaches the page is settled in the implementation log.

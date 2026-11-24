@@ -3,6 +3,8 @@ import {
   MAX_CLIPBOARD_CHARS,
   classifyClipboard,
   inputIndex,
+  pageUrl,
+  readerOriginalUrl,
   refusedScheme,
   urlRoot,
   urlUp,
@@ -311,5 +313,72 @@ describe("pageurl edges", () => {
   test("a negative field count means no field", () => {
     expect(inputIndex(1, -2)).toBe(-1);
     expect(inputIndex(undefined, -1)).toBe(-1);
+  });
+});
+
+// Issue #1310: Reader View's page is its article's URL, as Firefox's address bar shows it
+// (ReaderMode.getOriginalUrl).
+describe("readerOriginalUrl and pageUrl (Reader View)", () => {
+  const reader = (url: string) => `about:reader?url=${encodeURIComponent(url)}`;
+
+  test("an about:reader address gives the article's own URL", () => {
+    expect(readerOriginalUrl(reader("http://127.0.0.1:28561/article.html"))).toBe(
+      "http://127.0.0.1:28561/article.html",
+    );
+    expect(pageUrl(reader("https://example.com/a/b?q=1"))).toBe("https://example.com/a/b?q=1");
+  });
+
+  test("the reader's hash applies to the article's URL, as ReaderMode does", () => {
+    expect(pageUrl(`${reader("https://example.com/a")}#part-2`)).toBe(
+      "https://example.com/a#part-2",
+    );
+  });
+
+  test("a file: article is a page too", () => {
+    expect(pageUrl(reader("file:///home/me/a.html"))).toBe("file:///home/me/a.html");
+  });
+
+  test("any other address is itself", () => {
+    expect(readerOriginalUrl("https://example.com/")).toBeNull();
+    expect(pageUrl("https://example.com/about:reader?url=x")).toBe(
+      "https://example.com/about:reader?url=x",
+    );
+    expect(pageUrl("about:config")).toBe("about:config");
+    expect(pageUrl("")).toBe("");
+  });
+
+  test("a malformed about:reader address falls back to the raw address", () => {
+    for (const raw of [
+      "about:reader",
+      "about:reader?",
+      "about:reader?url=",
+      "about:reader?nourl=https%3A%2F%2Fexample.com%2F",
+      "about:reader?url=not%20a%20url",
+      "about:reader?url=%2Frelative%2Fpath",
+      `about:reader?url=${encodeURIComponent("http://[")}`,
+    ]) {
+      expect(readerOriginalUrl(raw)).toBeNull();
+      expect(pageUrl(raw)).toBe(raw);
+    }
+  });
+
+  test("an article URL Reader View cannot load stays the raw address, never a script URL", () => {
+    for (const inner of ["javascript:alert(1)", "data:text/html,x", "about:config", "blob:x"]) {
+      expect(readerOriginalUrl(reader(inner))).toBeNull();
+      expect(pageUrl(reader(inner))).toBe(reader(inner));
+    }
+  });
+
+  test("the article's credentials are dropped, as Firefox's makeURIReadable does", () => {
+    expect(pageUrl(reader("https://user:secret@example.com/a.html"))).toBe(
+      "https://example.com/a.html",
+    );
+    expect(pageUrl(`${reader("https://user@example.com/a")}#b`)).toBe("https://example.com/a#b");
+  });
+
+  test("gu works on the article, not on the reader address", () => {
+    expect(urlUp(pageUrl(reader("https://example.com/a/b/c.html")))).toBe(
+      "https://example.com/a/b/",
+    );
   });
 });

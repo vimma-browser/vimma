@@ -45,6 +45,19 @@ export const PKGBUILD_INSTALL_COMMAND = `mkdir -p ~/.cache/vimma-build && cd ~/.
 export const FLATPAK_UPDATE_COMMAND = "flatpak update dev.vimma.browser";
 
 /**
+ * The file each package manager's repository setup writes (spec package-repositories,
+ * decision 18). A `.deb` or `.rpm` is the same file from a release and from the repository, so
+ * only these say whether the package manager's upgrade command would find a newer Vimma. The
+ * host reads whether they exist, never what they hold.
+ */
+export const REPOSITORY_FILES = Object.freeze({
+  apt: "/etc/apt/sources.list.d/vimma.sources",
+  dnf: "/etc/yum.repos.d/vimma.repo",
+  zypper: "/etc/zypp/repos.d/vimma.repo",
+});
+/** @typedef {{ apt?: boolean, dnf?: boolean, zypper?: boolean }} Repositories */
+
+/**
  * Where the Homebrew cask installs Vimma, and the Caskroom folder it keeps beside it (spec
  * macos-homebrew, decision 8; Apple Silicon's Homebrew prefix).
  */
@@ -54,10 +67,11 @@ export const HOMEBREW_CASKROOM = "/opt/homebrew/Caskroom/vimma";
 /**
  * How Vimma was installed (spec §3): `source` is a build run from its objdir, `packaged` an
  * `is-packaged-app` marker this version does not know, `flatpak` the Flatpak (spec flatpak,
- * decision 10); on macOS, `homebrew` is the cask and `dmg` any other copy of the app (spec
+ * decision 10), `pacman` the package from Vimma's pacman repository (spec package-repositories,
+ * decision 18); on macOS, `homebrew` is the cask and `dmg` any other copy of the app (spec
  * macos-homebrew, decision 19).
  * @typedef {"source" | "tarball" | "appimage" | "deb" | "rpm" | "aur" | "pkgbuild-release"
- *   | "flatpak" | "packaged" | "homebrew" | "dmg"} InstallType
+ *   | "pacman" | "flatpak" | "packaged" | "homebrew" | "dmg"} InstallType
  */
 /** @typedef {{ id: string, slot: "primary" | "secondary", spki: string }} PinnedKey */
 /**
@@ -113,13 +127,18 @@ export function base64Decode(text) {
   const pad = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;
   const out = new Uint8Array((text.length / 4) * 3 - pad);
   let o = 0;
+  // Stryker disable next-line EqualityOperator: one more pass reads only "" (charAt past the end)
+  // and writes nothing, since o has reached out.length.
   for (let i = 0; i < text.length; i += 4) {
+    // The pattern above leaves only B64's characters and a final "=" or "==", which index -1.
     const n =
-      (B64.indexOf(text[i] ?? "A") << 18) |
-      (B64.indexOf(text[i + 1] ?? "A") << 12) |
-      (Math.max(0, B64.indexOf(text[i + 2] ?? "A")) << 6) |
-      Math.max(0, B64.indexOf(text[i + 3] ?? "A"));
+      (B64.indexOf(text.charAt(i)) << 18) |
+      (B64.indexOf(text.charAt(i + 1)) << 12) |
+      (Math.max(0, B64.indexOf(text.charAt(i + 2))) << 6) |
+      Math.max(0, B64.indexOf(text.charAt(i + 3)));
     for (const byte of [(n >> 16) & 255, (n >> 8) & 255, n & 255]) {
+      // Stryker disable next-line ConditionalExpression,EqualityOperator: a Uint8Array ignores a
+      // write past its end, so the padding's bytes are dropped either way; the check states the bound.
       if (o < out.length) out[o++] = byte;
     }
   }
@@ -167,6 +186,7 @@ const COMMENT = /^<!-- vimma-signature v1((?: key=[0-9a-f]{8} sig=[A-Za-z0-9+/]+
 export function splitManifest(text) {
   const at = text.indexOf(COMMENT_START);
   if (at < 0) return { ok: false, reason: "unsigned: no vimma-signature comment" };
+  // Stryker disable next-line EqualityOperator: a second comment starts past at, never at 0.
   if (text.indexOf(COMMENT_START, at + 1) >= 0) {
     return { ok: false, reason: "unsigned: more than one signature comment" };
   }
@@ -219,7 +239,7 @@ export async function verifyManifest(text, keys, subtle) {
         return { ok: true, body: split.body, key: { id: pin.id, slot: pin.slot } };
       }
     } catch {
-      continue;
+      // Try the next signature.
     }
   }
   return {
@@ -253,14 +273,16 @@ function attributes(text) {
   let at = 0;
   while (at < rest.length) {
     const spaceAt = at;
-    while (SPACE.test(rest[at] ?? "")) at++;
-    if (at === spaceAt || !NAME_START.test(rest[at] ?? "")) return null;
+    while (SPACE.test(rest.charAt(at))) at++;
+    if (at === spaceAt || !NAME_START.test(rest.charAt(at))) return null;
     const nameAt = at;
     do at++;
-    while (NAME_CHAR.test(rest[at] ?? ""));
+    while (NAME_CHAR.test(rest.charAt(at)));
     const name = rest.slice(nameAt, at);
     if (!rest.startsWith('="', at)) return null;
     const close = rest.indexOf('"', at + 2);
+    // Stryker disable next-line ConditionalExpression,EqualityOperator: close is past `="`, never
+    // 0; without the check the scan starts over at 0 and refuses the name it has already read.
     if (close < 0) return null;
     const raw = rest.slice(at + 2, close);
     if (raw.includes("<")) return null;
@@ -270,7 +292,7 @@ function attributes(text) {
     if (/&(?!(?:amp|lt|gt|quot|apos);)/.test(raw)) return null;
     map.set(
       name,
-      raw.replace(/&(amp|lt|gt|quot|apos);/g, (_, e) => ENTITIES[e] ?? ""),
+      raw.replace(/&(amp|lt|gt|quot|apos);/g, (_, e) => /** @type {string} */ (ENTITIES[e])),
     );
   }
   return map;
@@ -291,6 +313,7 @@ function startTags(text, name) {
     const next = text[at + open.length] ?? "";
     if (!/[\s/>]/.test(next)) continue; // <updates>, <updateX>
     const end = text.indexOf(">", at);
+    // Stryker disable next-line EqualityOperator: text[at] is "<", so end is never at, nor 0.
     if (end < 0 || text.slice(at + 1, end).includes("<")) return null;
     out.push(text.slice(at + open.length, end));
   }
@@ -307,6 +330,7 @@ function withoutComments(text) {
   let at = 0;
   for (let open = text.indexOf("<!--"); open >= 0; open = text.indexOf("<!--", at)) {
     const close = text.indexOf("-->", open + 4);
+    // Stryker disable next-line EqualityOperator: close is past "<!--", never 0.
     if (close < 0) return null;
     out += text.slice(at, open);
     at = close + 3;
@@ -349,15 +373,16 @@ function readAssets(content) {
     if (tags.length > 1) return { ok: false, why: `more than one <${element}>` };
     const attrs = attributes(/** @type {string} */ (tags[0]));
     if (!attrs) return { ok: false, why: `<${element}> has malformed attributes` };
-    const size = attrs.get("size") ?? "";
-    const hash = attrs.get("hashValue") ?? "";
-    if (!SIZE.test(size)) return { ok: false, why: `<${element}> size is not a whole number` };
+    const size = attrs.get("size");
+    const hash = attrs.get("hashValue");
+    if (!textOf(size, SIZE)) return { ok: false, why: `<${element}> size is not a whole number` };
     if (attrs.get("hashFunction") !== "sha512") {
       return { ok: false, why: `<${element}> hashFunction is not sha512` };
     }
-    if (!SHA512_HEX.test(hash)) return { ok: false, why: `<${element}> hashValue is not SHA-512` };
-    const url = attrs.get("URL") ?? "";
-    if (!url.startsWith("https://")) {
+    if (!textOf(hash, SHA512_HEX))
+      return { ok: false, why: `<${element}> hashValue is not SHA-512` };
+    const url = attrs.get("URL");
+    if (!url?.startsWith("https://")) {
       return { ok: false, why: `<${element}> URL is not https` };
     }
     assets[/** @type {keyof Assets} */ (key)] = { size: Number(size), sha512: hash, url };
@@ -381,8 +406,8 @@ function readPatch(content) {
   const attrs = attributes(/** @type {string} */ (tags[0]));
   if (!attrs) return { ok: false, why: "<patch> has malformed attributes" };
   if (attrs.get("type") !== "complete") return { ok: false, why: "<patch> is not complete" };
-  const url = attrs.get("URL") ?? "";
-  if (!url.startsWith("https://")) return { ok: false, why: "<patch> URL is not https" };
+  const url = attrs.get("URL");
+  if (!url?.startsWith("https://")) return { ok: false, why: "<patch> URL is not https" };
   return { ok: true, url };
 }
 
@@ -396,15 +421,93 @@ export function offerAssets(value) {
   /** @type {Assets} */
   const out = {};
   if (!value || typeof value !== "object" || Array.isArray(value)) return out;
-  const record = /** @type {Record<string, any>} */ (value);
+  // Any entry, unchecked: a number's or a string's fields read as undefined, which is dropped.
+  const record =
+    /** @type {Record<string, { size?: unknown, sha512?: unknown, url?: unknown } | undefined>} */ (
+      value
+    );
   for (const key of /** @type {(keyof Assets)[]} */ (Object.keys(ASSET_ELEMENTS))) {
     const a = record[key];
-    if (a && Number.isSafeInteger(a.size) && a.size >= 0 && SHA512_HEX.test(a.sha512)) {
-      out[key] = { size: a.size, sha512: a.sha512 };
+    // test() reads its argument as text: an array of the hex would pass without typeof.
+    if (
+      a &&
+      Number.isSafeInteger(a.size) &&
+      /** @type {number} */ (a.size) >= 0 && // a safe integer, just checked
+      typeof a.sha512 === "string" &&
+      SHA512_HEX.test(a.sha512)
+    ) {
+      out[key] = { size: /** @type {number} */ (a.size), sha512: a.sha512 };
       if (typeof a.url === "string" && a.url.startsWith("https://")) out[key].url = a.url;
     }
   }
   return out;
+}
+
+/**
+ * `value` is a string of the form `re` describes: RegExp.test reads anything else as its text,
+ * so an array such as `["12345678901234"]` would pass on its own (#1237).
+ * @param {unknown} value
+ * @param {RegExp} re
+ * @returns {value is string}
+ */
+function textOf(value, re) {
+  return typeof value === "string" && re.test(value);
+}
+
+/**
+ * A saved offer read back (the pref `vimma.update.last`, which anyone can edit), held to the
+ * forms parseManifest accepts: anything malformed gives null, and the fields are copied one by
+ * one, so nothing else the pref holds rides along.
+ * @param {unknown} value
+ * @returns {Offer | null}
+ */
+export function savedOffer(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const o = /** @type {Record<string, unknown>} */ (value);
+  const { appVersion, buildId, displayVersion, detailsUrl, urgent, advisories, marUrl } = o;
+  if (
+    !textOf(appVersion, FIREFOX_VERSION) ||
+    !textOf(buildId, BUILD_ID) ||
+    !textOf(displayVersion, SEMVER) ||
+    typeof detailsUrl !== "string" ||
+    !detailsUrl.startsWith("https://") ||
+    typeof urgent !== "boolean" ||
+    !Array.isArray(advisories) ||
+    !advisories.every((a) => textOf(a, ADVISORY))
+  ) {
+    return null;
+  }
+  return {
+    appVersion,
+    buildId,
+    displayVersion,
+    detailsUrl,
+    urgent,
+    advisories: [...advisories],
+    assets: offerAssets(o.assets),
+    marUrl: typeof marUrl === "string" && marUrl.startsWith("https://") ? marUrl : null,
+  };
+}
+
+/**
+ * A saved manifest serial read back: 14 digits as a string, or null.
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function savedSerial(value) {
+  return textOf(value, SERIAL) ? value : null;
+}
+
+/**
+ * A saved signing key read back: its id and slot as strings, or null.
+ * @param {unknown} value
+ * @returns {{ id: string, slot: "primary" | "secondary" } | null}
+ */
+export function savedKey(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const { id, slot } = /** @type {Record<string, unknown>} */ (value);
+  if (typeof id !== "string" || (slot !== "primary" && slot !== "secondary")) return null;
+  return { id, slot };
 }
 
 /**
@@ -424,7 +527,7 @@ export function parseManifest(body) {
   if (/<\/?[A-Za-z][\w.-]*:/.test(body)) return bad("prefixed element names are not allowed");
   const text = withoutComments(body.replace(/^<\?xml[^>]*\?>/, ""));
   if (text === null) return bad("a comment is not closed");
-  const root = /^\s*<updates(\s[^>]*?)?(\/?)>([\s\S]*)$/.exec(text);
+  const root = /^\s*<updates(\s[^>]*?)?(\/?)>([\s\S]*)/.exec(text);
   if (!root) return bad("no <updates> element");
   const rootAttrs = attributes(root[1] ?? "");
   if (!rootAttrs) return bad("<updates> has malformed attributes");
@@ -433,7 +536,7 @@ export function parseManifest(body) {
   const serial = rootAttrs.get("vimmaSerial");
   if (!channel || !target) return bad("no vimmaChannel or vimmaTarget");
   if (!serial || !SERIAL.test(serial)) return bad("vimmaSerial is not a UTC time (YYYYMMDDhhmmss)");
-  const rest = root[3] ?? "";
+  const rest = /** @type {string} */ (root[3]);
   if (root[2] === "/") {
     // The pipeline writes nothing after a self-closing root, not even a second <update> (#1185).
     if (rest.trim()) return bad("content after a self-closing <updates/>");
@@ -455,19 +558,19 @@ export function parseManifest(body) {
   if (!patch.ok) return bad(patch.why);
   const attrs = attributes(/** @type {string} */ (updates[0]));
   if (!attrs) return bad("<update> has malformed attributes");
-  const appVersion = attrs.get("appVersion") ?? "";
-  const buildId = attrs.get("buildID") ?? "";
-  const displayVersion = attrs.get("displayVersion") ?? "";
-  const detailsUrl = attrs.get("detailsURL") ?? "";
+  const appVersion = attrs.get("appVersion");
+  const buildId = attrs.get("buildID");
+  const displayVersion = attrs.get("displayVersion");
+  const detailsUrl = attrs.get("detailsURL");
   const urgency = attrs.get("vimmaUrgency") ?? "normal";
   const advisories = (attrs.get("vimmaAdvisories") ?? "")
     .split(",")
     .map((a) => a.trim())
     .filter(Boolean);
-  if (!FIREFOX_VERSION.test(appVersion)) return bad("appVersion is not a Firefox version");
-  if (!BUILD_ID.test(buildId)) return bad("buildID is not a build ID");
-  if (!SEMVER.test(displayVersion)) return bad("displayVersion is not a Vimma version");
-  if (!detailsUrl.startsWith("https://")) return bad("detailsURL is not https");
+  if (!textOf(appVersion, FIREFOX_VERSION)) return bad("appVersion is not a Firefox version");
+  if (!textOf(buildId, BUILD_ID)) return bad("buildID is not a build ID");
+  if (!textOf(displayVersion, SEMVER)) return bad("displayVersion is not a Vimma version");
+  if (!detailsUrl?.startsWith("https://")) return bad("detailsURL is not https");
   if (urgency !== "normal" && urgency !== "security") return bad("unknown vimmaUrgency");
   if (!advisories.every((a) => ADVISORY.test(a))) return bad("vimmaAdvisories is not MFSA IDs");
   return {
@@ -536,6 +639,7 @@ export function judgeManifest(manifest, running, compare) {
     };
   }
   const u = manifest.update;
+  // Stryker disable next-line UnaryOperator: order is read only when there is an update.
   const order = u ? compare(u.appVersion, running.appVersion) : -1;
   const newer =
     !!u &&
@@ -589,6 +693,8 @@ export function offNotice({ enabled, installType, since, now }) {
   const start = since ?? (!enabled && checks ? now : null);
   return {
     since: start,
+    // Stryker disable next-line ConditionalExpression: start is set whenever checks are off on an
+    // install that checks; the test keeps it a number for the subtraction.
     shown: !enabled && checks && start !== null && now - start < OFF_NOTICE_MS,
   };
 }
@@ -650,6 +756,7 @@ export function installTypeFrom({ packaged, marker, platform, appPath, caskroom 
     name === "rpm" ||
     name === "aur" ||
     name === "pkgbuild-release" ||
+    name === "pacman" ||
     name === "appimage" ||
     name === "flatpak"
   ) {
@@ -698,7 +805,8 @@ function plainFilePath(path) {
  */
 function trimTrailingSlashes(path) {
   let end = path.length;
-  while (end > 0 && path.charCodeAt(end - 1) === 47) end--;
+  // charCodeAt(-1) is NaN, which ends the loop at 0.
+  while (path.charCodeAt(end - 1) === 47) end--;
   return path.slice(0, end);
 }
 
@@ -714,6 +822,7 @@ function trimTrailingSlashes(path) {
 export function appImageOwnership({ installType, marker, appImage, appDir, greDir, forced }) {
   if (installType !== "appimage") return { ok: false, why: "not an AppImage install" };
   if (!forced) {
+    // Stryker disable next-line ConditionalExpression: test(null) reads "null", which fails too.
     if (marker === null || !APPIMAGE_MARKER.test(marker)) {
       return {
         ok: false,
@@ -735,12 +844,15 @@ export function appImageOwnership({ installType, marker, appImage, appDir, greDi
  * @param {InstallType} type
  * @param {Offer} offer
  * @param {{ installDir: string, appImage: string | null, writable?: boolean,
- *   marker?: string | null, appDir?: string | null, forced?: boolean }} where
+ *   marker?: string | null, appDir?: string | null, forced?: boolean,
+ *   repos?: Repositories, repoHint?: boolean }} where
  *   `writable`: false when Vimma cannot write a tarball's directory, so Firefox's updater cannot
  *   apply there (Behaviour 2); `appImage`, `appDir`: `$APPIMAGE` and `$APPDIR`; `marker`: the
  *   `is-packaged-app` file's text; `forced`: a test set the install type. An AppImage's command
- *   names `$APPIMAGE` only when this Vimma is that AppImage (appImageOwnership, #1196)
- * @returns {{ text: string, commands: string[], link: string }}
+ *   names `$APPIMAGE` only when this Vimma is that AppImage (appImageOwnership, #1196).
+ *   `repos`: which of REPOSITORY_FILES exist; `repoHint`: a `.deb` or `.rpm` without its
+ *   repository adds the `note` that points at the guide's repository section
+ * @returns {{ text: string, commands: string[], link: string, note?: string }}
  */
 export function updateSteps(type, offer, where) {
   const v = offer.displayVersion;
@@ -757,7 +869,24 @@ export function updateSteps(type, offer, where) {
     `curl -fL --proto =https -o ${shellQuote(file)} ${url}` +
     (asset ? ` && echo ${shellQuote(`${asset.sha512}  ${file}`)} | sha512sum -c -` : "");
   const assets = offer.assets ?? {};
+  const repos = where.repos ?? {};
+  /** @param {string} managers */
+  const repoNote = (managers) =>
+    where.repoHint === true
+      ? {
+          note:
+            `To have ${managers} upgrade Vimma with the rest of the system, set up its ` +
+            "repository once: the guide's “Package repositories” shows how.",
+        }
+      : {};
   switch (type) {
+    // Spec package-repositories, decision 18: the package manager's own upgrade, a fixed command.
+    case "pacman":
+      return {
+        text: "Upgrade Vimma with the rest of the system from its pacman repository:",
+        commands: ["sudo pacman -Syu"],
+        link,
+      };
     case "pkgbuild-release":
       return {
         text: "Build the package again from the latest release's PKGBUILD:",
@@ -771,6 +900,13 @@ export function updateSteps(type, offer, where) {
         link,
       };
     case "deb": {
+      if (repos.apt) {
+        return {
+          text: "Upgrade Vimma with the rest of the system from its apt repository:",
+          commands: ["sudo apt update && sudo apt upgrade"],
+          link,
+        };
+      }
       const file = `vimma_${v.replace("-", "~")}_amd64.deb`;
       return {
         text: "Download the new .deb and install it over this one:",
@@ -778,11 +914,32 @@ export function updateSteps(type, offer, where) {
           `${fetchChecked(`${dl}/${file}`, file, assets.deb)} && sudo apt install ./${file}`,
         ],
         link,
+        ...repoNote("apt"),
       };
     }
     case "rpm": {
-      // One .rpm for Fedora and openSUSE (spec rpm-package). It carries no OpenPGP signature,
-      // which zypper refuses unless told; the SHA-512 from the signed manifest checks it instead.
+      // One .rpm for Fedora and openSUSE: the command of each package manager whose repository
+      // file exists, since a machine may have either or both.
+      if (repos.dnf || repos.zypper) {
+        const commands = [
+          ...(repos.dnf ? ["sudo dnf upgrade vimma"] : []),
+          ...(repos.zypper ? ["sudo zypper up vimma"] : []),
+        ];
+        const which =
+          repos.dnf && repos.zypper
+            ? "with dnf on Fedora or zypper on openSUSE"
+            : repos.dnf
+              ? "with dnf"
+              : "with zypper";
+        return {
+          text: `Upgrade Vimma with the rest of the system from its rpm repository, ${which}:`,
+          commands,
+          link,
+        };
+      }
+      // A release's .rpm installed by hand (spec rpm-package): zypper refuses a package whose
+      // OpenPGP signature it cannot check unless told; the SHA-512 from the signed manifest
+      // checks it instead.
       const file = `vimma-${v.replace("-", "~")}-1.x86_64.rpm`;
       const fetch = fetchChecked(`${dl}/${file}`, file, assets.rpm);
       return {
@@ -792,6 +949,7 @@ export function updateSteps(type, offer, where) {
           `${fetch} && sudo zypper install --allow-unsigned-rpm ./${file}`,
         ],
         link,
+        ...repoNote("dnf or zypper"),
       };
     }
     case "tarball": {

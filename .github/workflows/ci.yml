@@ -167,12 +167,13 @@ jobs:
       - name: Hand-written changelog lines in order (npm run changelog-lint)
         run: npm run changelog-lint
 
-      # docs/bindings.md, docs/bindings.json and defaults.toml are generated: a hand edit fails here.
+      # docs/bindings.md, docs/bindings.json, defaults.toml and docs/guide.md's config.toml reference
+      # are generated: a hand edit fails here.
       - name: Generated docs are current (npm run gen-docs)
         run: |
           npm run gen-docs
           if ! git diff --exit-code -- docs/bindings.md docs/bindings.json \
-            packages/vimma-core/defaults.toml; then
+            packages/vimma-core/defaults.toml docs/guide.md; then
             echo "::error::Generated docs differ from npm run gen-docs: edit actions.mjs or defaults.mjs and run it, never the output"
             exit 1
           fi

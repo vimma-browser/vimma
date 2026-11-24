@@ -29,7 +29,7 @@ body {
 }
 
 /* Welcome: the logo 96 px high, scaled down with narrow windows. */
-#welcome {
+#v2-welcome {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -38,14 +38,9 @@ body {
   text-align: center;
 }
 
-#welcome .vimma-logo {
+#v2-welcome .vimma-logo {
   height: min(96px, 20vw);
   width: auto;
-}
-
-.tagline {
-  margin: 0;
-  color: var(--vimma-fg-dim, #9197b2);
 }
 
 .buttons {
@@ -78,6 +73,8 @@ button:focus kbd {
 kbd {
   font: inherit;
   color: var(--vimma-text-accent, #2cf5d2);
+  /* A key such as `ctrl+b ?` is one key: never split over two lines. */
+  white-space: nowrap;
 }
 
 button kbd {
@@ -115,6 +112,15 @@ h1 {
 
 .note {
   font-size: 0.8rem;
+}
+
+/* What an action step found (Moving in): a fact about the system, under the step's text. */
+.status {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.8rem;
+  border-inline-start: 3px solid var(--vimma-text-accent, #2cf5d2);
+  background: var(--vimma-bg-dark, #05080a);
+  border-radius: var(--vimma-radius, 0);
 }
 
 .notice {
@@ -208,40 +214,19 @@ h1 {
   font-size: 0.8rem;
 }
 
-.plan {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.5rem 1.5rem;
-  margin: 0;
-}
-
-.plan dt {
-  color: var(--vimma-fg-dim, #9197b2);
-}
-
-.plan dd {
-  margin: 0;
-}
-
 .results li {
   display: flex;
   justify-content: space-between;
   padding: 0.3rem 0;
 }
 
-.results .installed,
-.results .saved {
+.results .installed {
   color: var(--vimma-text-green, #a3be8c);
 }
 
 .results .failed,
-.results .declined,
-.results [class="not saved"] {
+.results .declined {
   color: var(--vimma-text-error, #e06c75);
-}
-
-#summary #setup-engines {
-  display: none;
 }
 
 .keys {
@@ -250,4 +235,362 @@ h1 {
   border-top: 1px solid var(--vimma-muted, #3b4252);
   color: var(--vimma-fg-dim, #9197b2);
   font-size: 0.85rem;
+}
+
+/* Setup v2 (docs/specs/setup-v2.md, "Page layout"): the welcome screen's promise and chapter
+   list, the line a step writes, and the footer every step and stop screen has. */
+#v2-welcome {
+  width: min(40rem, calc(100vw - 4rem));
+}
+
+.promise {
+  margin: 0;
+  text-align: start;
+}
+
+.chapters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  text-align: start;
+}
+
+.chapters li {
+  display: grid;
+  grid-template-columns: 1.6rem max-content 1fr 1.2rem;
+  gap: 0.8rem;
+  align-items: baseline;
+  padding: 0.35rem 0;
+}
+
+.chapters .name {
+  font-weight: 600;
+}
+
+.chapters .steps {
+  color: var(--vimma-fg-dim, #9197b2);
+}
+
+.chapters .tick {
+  color: var(--vimma-text-green, #a3be8c);
+}
+
+.writes {
+  margin: 0;
+  color: var(--vimma-fg-dim, #9197b2);
+}
+
+code {
+  font: inherit;
+  color: var(--vimma-fg-bright, var(--vimma-fg, #c2d6d3));
+}
+
+.writes code {
+  color: var(--vimma-text-accent, #2cf5d2);
+}
+
+/* What a choice does besides its line (the agents step): set apart as a notice is, without the
+   error colour, since it is no failure. */
+.choice-note {
+  margin: 0;
+  padding: 0.3rem 0.8rem;
+  border-inline-start: 3px solid var(--vimma-text-accent, #2cf5d2);
+}
+
+.saved-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.saved-lines li {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 1rem;
+  padding: 0.25rem 0;
+}
+
+.saved-lines .what,
+.saved-lines .none {
+  color: var(--vimma-fg-dim, #9197b2);
+}
+
+.saved-lines li.none {
+  display: block;
+}
+
+#v2-welcome .notice {
+  align-self: stretch;
+  text-align: start;
+}
+
+.flow-footer {
+  width: min(44rem, calc(100vw - 4rem));
+  padding-bottom: 2rem;
+  font-size: 0.85rem;
+  color: var(--vimma-fg-dim, #9197b2);
+}
+
+.flow-footer p {
+  margin: 0.2rem 0;
+}
+
+.flow-footer .place {
+  color: var(--vimma-text-accent, #2cf5d2);
+}
+
+.flow-footer .keys {
+  margin-top: 0.6rem;
+}
+
+/* Setup v2's steps and stop screens (setup-v2 "Page layout"): every one starts at the same
+   height, its progress line and question a fixed distance from the top whatever its list holds,
+   and the footer sits at the bottom of the window. A long list scrolls in its own box, under a
+   header that stays put and above the footer. The welcome screen stays centred. */
+:root[data-screen="step"] body,
+:root[data-screen="stop"] body {
+  box-sizing: border-box;
+  height: 100vh;
+  min-height: 24rem;
+  grid-template-rows: minmax(0, 1fr) auto;
+  place-items: stretch center;
+}
+
+/* Overflow: the lists shrink first, down to about two and a half rows; a window too short for
+   that scrolls the step itself, header and all, so nothing reaches under the footer. Below 24rem
+   the page scrolls too, the footer at 24rem. A short window (a small laptop, a half-height tile)
+   gives the top's space and some of the drawings' to the list. */
+:root[data-screen="step"] .step,
+:root[data-screen="stop"] .step {
+  box-sizing: border-box;
+  min-height: 0;
+  padding: clamp(1.5rem, 9vh, 5rem) 0 1rem;
+  overflow-y: auto;
+}
+
+/* A window under 40rem (640 px high, such as 800x600) tightens the spacing, so the content
+   blocker keeps two and a half add-ons in view without the step scrolling. */
+@media (max-height: 40rem) {
+  :root[data-screen="step"] .step,
+  :root[data-screen="stop"] .step {
+    gap: 0.6rem;
+    padding: 0.75rem 0 0.5rem;
+  }
+
+  :root[data-screen="step"] #v2-blocker {
+    gap: 0.4rem;
+  }
+
+  :root[data-screen="step"] .flow-footer,
+  :root[data-screen="stop"] .flow-footer {
+    padding-bottom: 1rem;
+  }
+
+  :root[data-screen="step"] .flow-footer .keys,
+  :root[data-screen="stop"] .flow-footer .keys {
+    margin-top: 0.3rem;
+  }
+}
+
+#v2-stop h1 {
+  margin-top: 0;
+}
+
+.step,
+.step .list,
+#v2-stop-saved {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vimma-muted, #3b4252) transparent;
+}
+
+.step > *,
+#v2-blocker > * {
+  flex: none;
+}
+
+#v2-blocker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+}
+
+#v2-blocker,
+#v2-choices,
+#v2-addons,
+#v2-stop-saved {
+  flex: 0 1 auto;
+}
+
+#v2-choices,
+#v2-addons,
+#v2-stop-saved {
+  min-height: 3rem;
+  overflow-y: auto;
+}
+
+/* About two and a half rows at the least, so a list that scrolls shows there is more: an add-on
+   row is about 3.7rem high, a choice 2.5rem. Lists of two rows or fewer keep 3rem, so a short
+   one never gains empty space. */
+#v2-addons:has(> li:nth-child(3)) {
+  min-height: 10rem;
+}
+
+#v2-choices:has(> li:nth-child(3)) {
+  min-height: 6.5rem;
+}
+
+/* The prefix step's key under each prefix (setup-v2 behaviour 25). */
+.list .hint,
+.record .hint {
+  color: var(--vimma-fg-dim, #9197b2);
+  font-size: 0.85rem;
+}
+
+/* The prefix step waiting for a key (setup-v2 decision 21): the key pressed, large, in a box
+   drawn as the list's rows are, with the key that lists every key under it. */
+.record {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.record .lede {
+  margin: 0;
+}
+
+.record-chord {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--vimma-text-accent, #2cf5d2);
+  background: var(--vimma-bg-dark, #05080a);
+}
+
+.record-chord > kbd {
+  font-size: 1.6rem;
+}
+
+/* Square corners on every surface of the page, Firefox's own widgets included: the search
+   field's native look (type=search draws a rounded field) and focus rings follow the theme's
+   radius, as about.css and help-overlay.css do. */
+.screen,
+.flow-footer,
+.notice,
+.choice-note,
+.chapters li,
+.saved-lines li,
+.record-chord,
+kbd,
+code,
+input {
+  border-radius: var(--vimma-radius, 0);
+}
+
+.search input {
+  appearance: none;
+}
+
+:focus-visible {
+  outline-offset: 0;
+  border-radius: var(--vimma-radius, 0);
+}
+
+/* The window chapter's drawings (setup-v2 "Page layout"): a small window per choice, square as
+   every Vimma surface, its rows in the theme's colours. Rows the window does not have are not
+   drawn, so the page grows into their place as it does in the window. */
+.list .window {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 11rem;
+  height: 6.5rem;
+  margin-top: 0.5rem;
+  padding: 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--vimma-muted, #3b4252);
+  border-radius: var(--vimma-radius, 0);
+  background: var(--vimma-bg-dark, #04090a);
+}
+
+/* A short window (setup-v2 "Page layout") draws them smaller, so both of the address bar's fit
+   at 800x600. */
+@media (max-height: 40rem) {
+  .list .window {
+    width: 8.5rem;
+    height: 4.25rem;
+    margin-top: 0.3rem;
+  }
+}
+
+.window > div,
+.window span {
+  border-radius: var(--vimma-radius, 0);
+}
+
+.window .w-tabline,
+.window .w-toolbar {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  flex: none;
+  height: 0.7rem;
+}
+
+.window .w-tab {
+  width: 2.2rem;
+  height: 100%;
+  background: var(--vimma-fg-dim, #9197b2);
+}
+
+.window .w-tab.current {
+  background: var(--vimma-text-accent, #2cf5d2);
+}
+
+/* The toolbar row is what tells the address bar's two drawings apart: fg-dim on bg-dark keeps it
+   well above 3:1 in the built-in palettes, where muted is about 2:1. */
+.window .w-toolbar {
+  padding: 0 3px;
+  background: var(--vimma-fg-dim, #9197b2);
+}
+
+.window .w-buttons {
+  width: 1.4rem;
+  height: 0.3rem;
+  background: var(--vimma-bg-dark, #04090a);
+}
+
+.window .w-url {
+  flex: 1;
+  height: 0.45rem;
+  background: var(--vimma-bg, #071011);
+}
+
+.window .w-page {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  padding: 5px;
+  background: var(--vimma-bg, #071011);
+}
+
+.window .w-line {
+  height: 0.25rem;
+  width: 80%;
+  background: var(--vimma-muted, #3b4252);
+}
+
+.window .w-line.short {
+  width: 50%;
+}
+
+.window .w-status {
+  flex: none;
+  height: 0.45rem;
+  background: var(--vimma-mode-normal, #2cf5d2);
 }

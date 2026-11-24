@@ -15,6 +15,7 @@ interface nsIPrefBranch {
   unlockPref(name: string): void;
   prefHasDefaultValue(name: string): boolean;
   getChildList(startingAt: string): string[];
+  deleteBranch(startingAt: string): void;
 }
 interface nsIPrefDefaultBranch extends nsIPrefBranch {}
 
@@ -242,6 +243,7 @@ interface nsIWindowWatcher {
 // engine/dom/webidl/Document.webidl
 interface Document {
   readonly hasValidTransientUserGestureActivation: boolean;
+  readonly hasBeenUserGestureActivated: boolean;
   notifyUserGestureActivation(): void;
   /** Chrome-only: the document's sandbox flags, or null when it has none. */
   readonly sandboxFlagsAsString: string | null;
@@ -256,6 +258,8 @@ interface Window {
 interface Tabbrowser {
   readonly splitViews: MozTabSplitViewWrapper[];
   pinTab(tab: MozTabbrowserTab, options?: { metricsContext?: unknown }): void;
+  /** Flushes the tab's state to SessionStore; Firefox's unload paths call it before a discard. */
+  prepareDiscardBrowser(tab: MozTabbrowserTab): Promise<void>;
   discardBrowser(tab: MozTabbrowserTab, forceDiscard?: boolean): boolean;
   explicitUnloadTabs(tabs: MozTabbrowserTab[]): Promise<void>;
   addTabSplitView(
@@ -288,9 +292,6 @@ interface Tabbrowser {
       fromExternal?: boolean;
     },
   ): MozTabbrowserTab[];
-  // A browser's TabDialogBox (engine/browser/base/content/browser-tabdialogs.js), untyped here:
-  // one test counts its content dialogs.
-  getTabDialogBox(browser: MozBrowser): any;
 }
 
 // engine/netwerk/base/nsIPermissionManager.idl: permissions scoped to one tab's browser.
@@ -455,6 +456,8 @@ interface UrlbarInputTestMembers {
       readonly payload: { readonly suggestion?: string; readonly url?: string };
     } | null;
     readonly selectedElement: Element | null;
+    /** The view's panel, which holds its rows (the address bar's `.urlbarView`). */
+    readonly panel: HTMLElement;
     /** Closes the view (engine/browser/components/urlbar/content/UrlbarView.mjs). */
     close(options?: { elementPicked?: boolean; showFocusBorder?: boolean }): void;
   };
@@ -497,6 +500,12 @@ interface MozDialogElement extends Element {
 // engine/toolkit/content/widgets/radio.js (MozRadiogroup): the selected <radio>, null for none.
 interface MozRadiogroupElement extends Element {
   selectedItem: Element | null;
+}
+
+// engine/browser/base/content/browser.js (TabDialogBox): its content dialogs, untyped here: the
+// tests wait for one to be ready and read its frame's document and arguments.
+interface TabDialogBox {
+  getContentDialogManager(): { readonly dialogs: any[] };
 }
 
 // engine/toolkit/modules/SubDialog.sys.mjs: a sub-dialog, as its "dialogopen" event's
@@ -592,7 +601,7 @@ interface MozNotificationBox {
   /** Resolves with the <notification-message> it shows. */
   appendNotification(
     type: string,
-    notification: { label: string; priority: number },
+    notification: { label: string; priority: number; eventCallback?: (event: string) => void },
     buttons?: NotificationButton[],
     disableClickJackingDelay?: boolean,
     dismissable?: boolean,
@@ -714,6 +723,16 @@ interface BrowserWindow {
     readonly canOpen: boolean;
     initElements(): void;
     hideAllTabsPanel(): void;
+  };
+}
+
+// engine/browser/base/content/browser.js (XULBrowserWindow): `overLink` is the URL the window's
+// link preview (the status panel) shows for the link under the pointer or focus, "" for none;
+// setOverLink sets it as a hover does.
+interface BrowserWindow {
+  readonly XULBrowserWindow: {
+    readonly overLink: string;
+    setOverLink(url: string): void;
   };
 }
 
@@ -842,6 +861,8 @@ interface OverflowableToolbarElement extends XULElement {
 // closing this one selects again; null without one, or once the owner is closing.
 interface MozTabbrowserTab {
   owner: MozTabbrowserTab | null;
+  /** Sets `lastAccessed`, now when no time is given (tab.mjs). */
+  updateLastAccessed(aDate?: number): void;
 }
 
 // The pdf.js viewer's own objects, which a test reads past the Xray wrapper
@@ -871,15 +892,21 @@ interface PdfJsViewer {
   scrollMode: number;
   /** 14797 and 14800: SpreadMode (NONE 0, ODD 1, EVEN 2). */
   spreadMode: number;
+  /** 13636: settles once every page is fetched; null while no document is open. */
+  readonly pagesPromise: Promise<void> | null;
 }
 /**
  * `class PDFDocumentProxy` (engine/toolkit/components/pdfjs/content/build/pdf.mjs, line 15353):
  * `getOutline` (15421) resolves with the outline's top entries, null for a document without one;
- * `getData` (15441) with the document's bytes.
+ * `getData` (15441) with the document's bytes; `cachedPageNumber` (15456) gives a page reference's
+ * number once pdf.js has fetched that page, null before; `getDestination` (15391) resolves a
+ * named destination to its explicit one, null when the name is not in the document.
  */
 interface PdfJsDocument {
   getOutline(): Promise<object[] | null>;
+  getDestination(name: string): Promise<unknown[] | null>;
   getData(): Promise<Uint8Array>;
+  cachedPageNumber(ref: object): number | null;
 }
 /** `class ViewsManager` (line 17218), pdf.js's sidebar: `isOpen` is its own field (17255). */
 interface PdfJsViewsManager {

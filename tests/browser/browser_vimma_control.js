@@ -8,8 +8,9 @@
 
 "use strict";
 
-const { validateMessage, MAX_LINE_LENGTH, TOKYO_NIGHT, BUILTIN_THEMES } =
-  ChromeUtils.importESModule("chrome://browser/content/vimma/core/index.mjs");
+const { validateMessage, MAX_LINE_LENGTH, VIMMA_DARK, BUILTIN_THEMES } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/index.mjs",
+);
 const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
@@ -21,6 +22,12 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 );
 const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
+);
+const { SessionStore } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
+);
+const { TabStateFlusher } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
 );
 const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
@@ -486,7 +493,7 @@ add_task(async function test_state_names_each_top_level_field() {
     Object.keys(result).sort(),
     [
       ...["agent", "chat", "downloads", "grep", "mode", "notice", "panes", "pdf", "pending"],
-      ...["prompt", "splits", "tabs", "update", "urlbar", "workspace"],
+      ...["prompt", "setup", "splits", "tabs", "update", "urlbar", "workspace"],
     ],
     "a new state field: add it here, to the protocol spec's state section " +
       "(docs/specs/m0-control-protocol-and-vimma-ctl.md) and to security.md S9, " +
@@ -594,6 +601,86 @@ add_task(async function test_state_splits() {
   for (const t of tabs) gBrowser.removeTab(t);
   await TestUtils.waitForCondition(() => !view.panes, "no split left");
   await SpecialPowers.popPrefEnv();
+  Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
+});
+
+// docs/specs/multiple-splits.md behaviour 10 (#1318): after a restore, a split that is not on
+// screen names its lazy tabs by their workspace uuids; `state` still gives each of their panes
+// the tab's id and its place, as for any tab, and wakes none of them.
+add_task(async function test_state_splits_with_lazy_tabs() {
+  await enable();
+  const client = await session();
+  const w1 = await BrowserTestUtils.openNewBrowserWindow();
+  await /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(w1)).ready;
+  /** @type {MozTabbrowserTab[]} */
+  const tabs = [];
+  for (const q of ["l1", "l2", "l3", "l4", "l5"]) {
+    const t = BrowserTestUtils.addTab(w1.gBrowser, `https://example.com/?${q}`);
+    await BrowserTestUtils.browserLoaded(t.linkedBrowser);
+    tabs.push(t);
+  }
+  const [a, b, c, d, lone] = tabs;
+  const view1 = /** @type {PaneView} */ (PaneViews.get(w1));
+  Assert.ok(view1.showTabs(/** @type {PaneTab[]} */ ([a, b]), /** @type {PaneTab} */ (a)).ok);
+  w1.gBrowser.selectedTab = lone;
+  await TestUtils.waitForCondition(() => view1.hidden, "lone shows alone");
+  Assert.ok(view1.showTabs(/** @type {PaneTab[]} */ ([c, d]), /** @type {PaneTab} */ (c)).ok);
+  await TestUtils.waitForCondition(() => view1.splits.shown === 2, "S2 shows, S1 does not");
+  const uuid = (/** @type {MozTabbrowserTab} */ t) =>
+    SessionStore.getCustomTabValue(t, "vimma-tab");
+  const [ua, ub] = [a, b].map(uuid);
+  await TabStateFlusher.flushWindow(w1);
+  /** @type {{ windows: { tabs: { entries: { url: string }[] }[] }[] }} */
+  const saved = JSON.parse(SessionStore.getBrowserState());
+  const winState = saved.windows.find((w) =>
+    w.tabs.some((t) => t.entries.some((e) => e.url === "https://example.com/?l1")),
+  );
+  Assert.ok(winState, "the window is saved");
+  await BrowserTestUtils.closeWindow(w1);
+
+  const w2 = await BrowserTestUtils.openNewBrowserWindow();
+  await /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(w2)).ready;
+  const restored = BrowserTestUtils.waitForEvent(w2, "SSWindowRestored");
+  SessionStore.setWindowState(w2, JSON.stringify({ windows: [winState] }), true);
+  await restored;
+  const view2 = /** @type {PaneView} */ (PaneViews.get(w2));
+  await TestUtils.waitForCondition(() => view2.splits.shown === 2, "S2 shows after the restore");
+  await SimpleTest.promiseFocus(w2);
+  const byUuid = (/** @type {string} */ u) =>
+    /** @type {MozTabbrowserTab} */ (w2.gBrowser.tabs.find((t) => uuid(t) === u));
+  const [ra, rb] = [ua, ub].map(byUuid);
+  Assert.ok(!ra.linkedPanel && !rb.linkedPanel, "S1's tabs are lazy");
+
+  const { result } = await client.request(1, "state");
+  const v = validateMessage(
+    { type: "response", id: 1, ok: true, result },
+    { kind: "response", command: "state" },
+  );
+  Assert.ok(v.valid, `the state is valid: ${v.errors.join("; ")}`);
+  const s1 = result.splits.find((/** @type {{ number: number }} */ x) => x.number === 1);
+  /** @type {{ tab: string | null, index: number }[]} */
+  const panes = s1?.root?.children ?? [];
+  const visible = w2.gBrowser.visibleTabs;
+  Assert.deepEqual(
+    panes.map((p) => p.index),
+    [visible.indexOf(ra), visible.indexOf(rb)],
+    "S1's panes are its two tabs, in their places",
+  );
+  Assert.ok(
+    panes.every((p) => p.index >= 0 && p.tab === result.tabs[p.index].id),
+    "each with the id tabs[] gives it",
+  );
+  // A lazy tab has no browser id yet (0): its workspace uuid tells such tabs apart (#1332).
+  Assert.deepEqual(
+    panes.map((p) => p.tab),
+    [ua, ub],
+    "a lazy tab's id is its workspace uuid",
+  );
+  Assert.ok(!ra.linkedPanel && !rb.linkedPanel, "state woke neither");
+
+  client.close();
+  await disable();
+  await BrowserTestUtils.closeWindow(w2);
   Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
 });
 
@@ -741,6 +828,93 @@ add_task(async function test_send_keys_reach_the_page() {
   await disable();
 });
 
+// #1306: a key that opens a dialog over the page ("Leave page?") does not return until the
+// dialog is answered, because Firefox asks in a nested event loop (browser-custom-element.mjs,
+// permitUnload). send-keys answers once the dialog is up, and a later send-keys answers it.
+/**
+ * Sends `keys`, whose first chord closes a page with unsaved changes, then answers its "Leave
+ * page?" dialog with `n` from another connection, and checks how the answer arrived.
+ * @param {string} keys
+ */
+async function answerOwnDialog(keys) {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["dom.require_user_interaction_for_beforeunload", false],
+      ["security.notification_enable_delay", 0],
+    ],
+  });
+  const leave =
+    getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com") +
+    "file_vimma_leave_page.html";
+  await enable();
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, leave);
+  const shown = TestUtils.topicObserved("common-dialog-loaded").then(([w]) => w);
+  /** @type {KeyboardEvent[]} the answer's keydowns, as the dialog sees them */
+  const answers = [];
+  const record = (/** @type {KeyboardEvent} */ e) => {
+    if (e.code === "KeyN") answers.push(e);
+  };
+  window.addEventListener("keydown", record, true);
+  /** @param {number} ms */
+  const late = (ms) => new Promise((r) => setTimeout(() => r({ late: ms }), ms));
+  const client = await session();
+  const first = await Promise.race([client.request(1, "send-keys", { keys }), late(5000)]);
+  const dialog = /** @type {Window} */ (await shown);
+  const second = await session();
+  try {
+    Assert.deepEqual(
+      first.result,
+      { sent: 1, dialog: true },
+      `${keys}: answered once its dialog is up`,
+    );
+    await TestUtils.waitForCondition(
+      () => dialog.document.querySelector(".vimma-prompt-keys")?.hasAttribute("armed"),
+      "the dialog's keys count",
+    );
+    const answer = await Promise.race([second.request(1, "send-keys", { keys: "n" }), late(5000)]);
+    Assert.deepEqual(answer.result, { sent: 1 }, "a later send-keys answers the dialog");
+    Assert.deepEqual(
+      answers.map((e) => [e.key, e.ctrlKey, e.shiftKey, e.altKey, e.metaKey]),
+      [["n", false, false, false, false]],
+      "the answer is a plain n: no modifier of the first send-keys is still held",
+    );
+    await TestUtils.waitForCondition(() => dialog.closed, "n answered the dialog");
+    Assert.ok(tab.isConnected && !tab.closing, "n stays on the page");
+    const after = await second.request(2, "send-keys", { keys: "j" });
+    Assert.deepEqual(after.result, { sent: 1 }, "send-keys goes on working");
+  } finally {
+    window.removeEventListener("keydown", record, true);
+    // Unwedge a failed run: without an answer, the first key never returns.
+    const box = /** @type {(Element & { cancelDialog(): void }) | null} */ (
+      dialog.closed ? null : dialog.document.querySelector("dialog")
+    );
+    box?.cancelDialog();
+    client.close();
+    second.close();
+    // A failed run's ctrl+n opens a window.
+    for (const w of Services.wm.getEnumerator("navigator:browser")) {
+      if (w !== window) await BrowserTestUtils.closeWindow(w);
+    }
+    gBrowser.removeTab(tab, { skipPermitUnload: true });
+    await disable();
+    await SpecialPowers.popPrefEnv();
+  }
+}
+
+// #1306: a key that opens a dialog over the page ("Leave page?") does not return until the
+// dialog is answered, because Firefox asks in a nested event loop (browser-custom-element.mjs,
+// permitUnload). send-keys answers once the dialog is up, and a later send-keys answers it.
+// `j` comes after the key that opens the dialog, so it is not pressed.
+add_task(async function test_send_keys_answer_the_dialog_they_open() {
+  await answerOwnDialog("x j");
+});
+
+// The key that opened the dialog is still held down, with its ctrl, until the dialog closes:
+// the answer must not arrive as ctrl+n (a new window) instead of n.
+add_task(async function test_send_keys_answer_with_no_modifier_held() {
+  await answerOwnDialog("ctrl+f4");
+});
+
 add_task(async function test_open() {
   await enable();
   const client = await session();
@@ -845,6 +1019,25 @@ add_task(async function test_limits() {
   flood.forEach((c) => c.close());
   await TestUtils.waitForCondition(() => VimmaControl.waiting === 0, "flood closed");
 
+  // A new connection evicts the oldest waiting one that has sent nothing: a connection that has
+  // sent part of a line outlasts two silent ones that came after it (#1344).
+  const silent0 = new Client(port);
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 1, "the silent one waits");
+  const spoken = new Client(port);
+  await spoken.writeRaw("{");
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 2, "the speaking one waits");
+  const silent1 = new Client(port);
+  await silent0.heard();
+  const silent2 = new Client(port);
+  await silent1.heard();
+  for (const [name, c] of Object.entries({ silent0, silent1 })) {
+    Assert.equal(JSON.parse(c.lines[0] ?? "null")?.error?.code, "busy", `${name}: busy`);
+  }
+  Assert.equal(spoken.lines.length, 0, "the one that spoke is not evicted");
+  Assert.equal(spoken.closedWith, null, "and still open");
+  [silent0, spoken, silent1, silent2].forEach((c) => c.close());
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 0, "all closed");
+
   // An oversized line: an error, then a close, without waiting for its newline.
   const big = await session();
   const oversized = big.writeRaw("x".repeat(MAX_LINE_LENGTH + 2));
@@ -911,16 +1104,73 @@ add_task(async function test_vimma_ctl_end_to_end() {
   const reload = await runVimmaCtl(bin, ["reload-theme"]);
   Assert.deepEqual(reload, { exitCode: 0, out: "unchanged\n" }, "vimma-ctl reload-theme");
 
-  // A flood of connections that never say hello does not lock vimma-ctl out.
-  const { port } = await readDiscovery();
+  // A flood of connections that never say hello does not lock vimma-ctl out. Each connects once
+  // the server has taken the one two before it, as in test_limits: a burst beyond the listen
+  // backlog leaves connects that the kernel retries later, which may land in vimma-ctl's
+  // handshake, and the spec promises nothing against such a connect flood (#1139, #1344).
+  const { port, token } = await readDiscovery();
   /** @type {Client[]} */
   const flood = [];
-  for (let i = 0; i < 30; i++) flood.push(new Client(port));
+  for (let i = 0; i < 30; i++) {
+    flood.push(new Client(port));
+    await flood[i - 2]?.heard();
+  }
+  await TestUtils.waitForCondition(
+    () => flood.filter((c) => c.lines.length || c.closedWith !== null).length >= 28,
+    "the server took the flood",
+  );
+  Assert.lessOrEqual(VimmaControl.waiting, 2, "at most two of the flood wait");
+  Assert.equal(JSON.parse(flood[0].lines[0] ?? "null")?.error?.code, "busy", "the oldest: busy");
   for (let i = 0; i < 5; i++) {
     const run = await runVimmaCtl(bin, ["state"]);
     Assert.equal(run.exitCode, 0, `vimma-ctl state during a flood, run ${i}: ${run.out}`);
   }
-  flood.forEach((c) => c.close());
+
+  // The server takes new connections before it reads the ones it has: on a slow machine
+  // vimma-ctl's hello waits in its socket while two silent connections arrive. They do not evict
+  // it (#1344). Holding the main thread lines the three up in that order every time.
+  /** @param {number} ms */
+  const holdMainThread = (ms) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end); // nothing else runs on this thread meanwhile, by design
+  };
+  const proc = await Subprocess.call({
+    command: bin,
+    arguments: ["--profile", PathUtils.profileDir, "state"],
+    stderr: "stdout",
+  });
+  holdMainThread(1000); // vimma-ctl connects and says hello, unread
+  const late = [new Client(port), new Client(port)];
+  holdMainThread(300); // two silent connections queue behind it
+  let held = "";
+  let chunk;
+  while ((chunk = await proc.stdout.readString())) held += chunk;
+  Assert.equal(
+    (await proc.wait()).exitCode,
+    0,
+    `newer silent connections do not evict it: ${held}`,
+  );
+  [...flood, ...late].forEach((c) => c.close());
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 0, "the flood closed");
+
+  // At the connection limit vimma-ctl says busy and "try again" (exit 3), and once a slot is
+  // free it gets in again.
+  /** @type {Client[]} */
+  const open = [];
+  for (let i = 0; i < 8; i++) {
+    const client = new Client(port);
+    Assert.equal((await client.hello(token))?.type, "welcome", `connection ${i} is in`);
+    open.push(client);
+  }
+  const busy = await runVimmaCtl(bin, ["state"]);
+  Assert.equal(busy.exitCode, 3, `at the limit, vimma-ctl exits 3: ${busy.out}`);
+  Assert.stringContains(busy.out, "busy", "says busy");
+  Assert.stringContains(busy.out, "try again", "and to try again");
+  /** @type {Client} */ (open.pop()).close();
+  await TestUtils.waitForCondition(() => VimmaControl.connections === 7, "a slot freed");
+  const again = await runVimmaCtl(bin, ["state"]);
+  Assert.equal(again.exitCode, 0, `a freed slot lets vimma-ctl in: ${again.out}`);
+  open.forEach((c) => c.close());
   await disable();
 
   // A squatter on a stale discovery file's port, without the token: vimma-ctl refuses it and
@@ -990,9 +1240,9 @@ add_task(async function test_vimma_ctl_end_to_end() {
   );
 });
 
-/** An Omarchy colors.toml: Tokyo Night with the status bar's colour (dark_background) set. */
+/** An Omarchy colors.toml: vimma dark's colours with the status bar's (dark_background) set. */
 function colorsToml(/** @type {string} */ darkBackground) {
-  const palette = { ...TOKYO_NIGHT, dark_background: darkBackground };
+  const palette = { ...VIMMA_DARK, dark_background: darkBackground };
   return Object.entries(palette)
     .map(([key, value]) => `${key} = "${value}"`)
     .join("\n");

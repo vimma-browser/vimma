@@ -18,6 +18,8 @@ splits of a workspace can be told apart at a glance. A split picker on `ctrl+b S
 move between them. Splitting a tab that is shown alone is still refused, with a message that
 stays until the next key and names the way back; a second split is made by marking its tabs in
 the side panel.
+(Since changed, #1215: splitting a tab shown alone starts a new split from it;
+see [split-from-lone-tab](split-from-lone-tab.md).)
 
 ## Problem
 
@@ -51,6 +53,8 @@ go back to the editor split and unmark its panes; afterwards the editor split is
    refused. The notice stays until the next key and says
    `split S2 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b for a new split`,
    naming the split shown last. With no split in the workspace, these keys split the tab as today.
+   (Since changed, #1215: these keys start a new split from the lone tab, refused only at
+   `max_splits`; see [split-from-lone-tab](split-from-lone-tab.md).)
 5. **Starting another split.** In the side panel (`ctrl+b b`), marking two or more tabs with
    `space` or `V` and pressing `Enter` makes them a new split with the next free number, shown at
    once; the split shown before becomes hidden. A marked tab that belongs to another split leaves
@@ -73,7 +77,15 @@ workspace` and does not open.
    `split 3 hidden` with one hidden split, as today, and `3 splits hidden` with several.
 10. **Workspaces, restarts and the private workspace.** A workspace switch parks every split with
     its number; the session snapshot keeps them all, which one shows and the tab shown alone. The
-    private workspace and the agent workspace behave the same.
+    private workspace and the agent workspace behave the same. (Since changed: after a restore, a
+    split that is not on screen names each tab that has not loaded by its workspace uuid instead
+    of its panel, so the tab stays lazy and keeps its saved scroll position and form data until
+    the split shows; a tab Firefox unloads is named by its uuid again, so its split keeps it;
+    `vimma-ctl state`, the panel and the picker show those tabs as they show any tab that has not
+    loaded; #1318. Since #1332 the same holds for a split that becomes the current one while it
+    is not on screen: the split shown last when the one on screen ends, or a restored split kept
+    hidden while a tab shows alone; and for a tab of the current split that Firefox unloads
+    while the split is hidden, which Unload Tab makes it by first selecting a tab outside it.)
 11. **`vimma-ctl state`** lists every split of the window's workspace in a new `splits` field.
     `panes` keeps its meaning for older clients.
 12. **Behind a pref until finished.** While `vimma.feature.multiple_splits` is `false` (the
@@ -142,12 +154,16 @@ All references are to `main` at aac585a5, Firefox 157.
 3. **Splitting the lone tab stays refused**, because `ctrl+b v` on a tab shown alone is most often
    pressed by someone who expects their hidden split to still be on screen; starting a new split
    silently would hide that one further. The refusal costs nothing: no page, tab or split changes.
+   (Since changed, #1215: the lone tab is split into a new split;
+   see [split-from-lone-tab](split-from-lone-tab.md).)
 4. **The refusal notice stays until the next key and names the way back**, because the 1.5 s
    notice is missed and a refusal that does not say what to do instead leaves the user stuck.
    `Notice.show` gains `{ untilKey: true }`: the host hides it on the next keydown it sees, and a
    later notice replaces it. The text names the split shown last, the keys back (`]s`,
    `ctrl+b S`) and the way to a new split. Before the keys exist (behaviour 12) it reads
    `the split is hidden: select one of its tabs (ctrl+b b) to go back`.
+   (Since changed, #1215: this refusal is gone, and the limit's refusal from a key stays until
+   the next key instead; see [split-from-lone-tab](split-from-lone-tab.md).)
 5. **A second split is started from the side panel's marks**, because marking tabs and pressing
    `Enter` already makes a split ([m4-side-panel-multiselect](m4-side-panel-multiselect.md)), it
    needs no new key, and it is a deliberate act that cannot happen by the slip decision 3 guards
@@ -158,6 +174,8 @@ All references are to `main` at aac585a5, Firefox 157.
    key such as `ctrl+b V`, because it is one more default key to learn and to keep apart from
    `ctrl+b v`; and confirming with a second `ctrl+b v` while the refusal shows, because a quick
    double press would defeat the refusal's purpose.
+   (Since changed, #1215: `ctrl+b v` on a lone tab also starts a split;
+   see [split-from-lone-tab](split-from-lone-tab.md).)
 6. **Marking a tab of another split moves it**, because the marks state the wanted panes
    (side-panel-unsplit decision 3) and the tab's label shows where it came from. Its pane closes
    in the old split as `ctrl+b x` closes it (side-panel-unsplit decision 15), so the other sizes
@@ -228,6 +246,8 @@ All references are to `main` at aac585a5, Firefox 157.
     with a message the user is looking at. The notice changes from `one split per workspace`,
     which is no longer true, to the way that works. Adopting such a split can follow in a later
     change without changing the model.
+    (Since changed, #1215: Vimma's own split keys also start another split;
+    see [split-from-lone-tab](split-from-lone-tab.md).)
 
 ### Control protocol
 
@@ -311,6 +331,8 @@ Each test is written first and seen to fail.
   keeps both and the shown one; the private workspace with two splits.
 - `browser_vimma_side_panel_unsplit.js`: the refusal notice stays after 2 s and hides on the next
   key (behaviour 4); everything else unchanged with the pref off.
+  (Since changed, #1215: that test moved, changed, to `browser_vimma_split_lone_tab.js`;
+  see [split-from-lone-tab](split-from-lone-tab.md).)
 - `browser_vimma_split_picker.js` (new): the picker lists splits with label, count and titles;
   digit and `Enter` show a split; the empty-workspace notice.
 - `browser_vimma_control.js`: `state.splits` with two splits; `panes` as before.

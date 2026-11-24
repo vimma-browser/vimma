@@ -389,13 +389,20 @@ function onScreen(el) {
 }
 
 /**
+ * A `Vimma:Block` message's data as the parent sends it; run checks each field it reads.
+ * @typedef {{ op?: unknown, gen?: unknown, count?: unknown, id?: unknown, line?: unknown }}
+ *   BlockMessage
+ */
+
+/**
  * The context VimmaChild gives an op.
  * @typedef {object} BlockContext
  * @property {(gen: number, id: number) => Element | null} take  a target of the last hint
  *   collection, by its generation and id; the collection is spent
  * @property {(line: boolean) => boolean} enterCopyMode  copy mode with the selection as it is,
  *   line-wise for `V`
- * @property {(name: string, data: object) => void} send  a message to the parent
+ * @property {(name: "Vimma:BlockGone" | "Vimma:BlockMoved", data: { gen: number }) => void} send
+ *   a message to the parent
  */
 
 /** One frame's element focus. */
@@ -411,11 +418,11 @@ export class BlockFocus {
 
   /**
    * Runs a `Vimma:Block` message; null for anything malformed, stale or not this frame's.
-   * The replies are checked in the parent (core parseBlockReply).
+   * The replies are checked in the parent (core parseBlockReply); their type is the one
+   * inferred from each op's.
    * @param {Window} win
-   * @param {any} data
+   * @param {BlockMessage} data
    * @param {BlockContext} ctx
-   * @returns {object | null}
    */
   run(win, data, ctx) {
     const gen = data?.gen;

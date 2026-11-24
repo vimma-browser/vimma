@@ -159,6 +159,171 @@ add_task(async function prompt_field_types() {
   BrowserTestUtils.removeTab(tab);
 });
 
+// A dialog over the `:` line (issue #1304). The line stays open behind the dialog, as the `/`
+// prompt does: the dialog's keys stay its own (Esc cancels it, not the line), and once it is
+// answered focus is back on the line with what was typed, in command mode.
+
+const { VimmaHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
+const cmdline = () => /** @type {HTMLElement | null} */ (document.getElementById("vimma-cmdline"));
+const cmdInput = () =>
+  /** @type {HTMLInputElement} */ (document.getElementById("vimma-cmdline-input"));
+const lineOpen = () => !!cmdline() && !(/** @type {HTMLElement} */ (cmdline()).hidden);
+const mode = () => VimmaHost.status(window).mode;
+
+/**
+ * Opens a tab on `url`, focuses its page (normal mode), then opens the `:` line and types `tab`.
+ * @param {string} url
+ */
+async function typeOnTheLine(url) {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
+  await SimpleTest.promiseFocus(tab.linkedBrowser);
+  await until(() => mode() === "normal", "the page is in normal mode");
+  EventUtils.synthesizeKey(":", { shiftKey: true });
+  Assert.ok(lineOpen(), ": opens the command line");
+  EventUtils.sendString("tab");
+  return tab;
+}
+
+/**
+ * The dialog `w` was answered: focus comes back to the line, still open with `tab` on it, in
+ * command mode; then Esc, j and : work as in normal mode.
+ * @param {MozTabbrowserTab} tab
+ */
+async function backOnTheLine(tab) {
+  await until(() => document.activeElement === cmdInput(), "focus is back on the line");
+  Assert.ok(lineOpen(), "the line is still open");
+  Assert.equal(cmdInput().value, "tab", "with what was typed on it");
+  Assert.equal(mode(), "command", "in command mode");
+
+  EventUtils.synthesizeKey("KEY_Escape");
+  Assert.ok(!lineOpen(), "Esc closes the line");
+  await normalKeysWork(tab);
+}
+
+/**
+ * Focus is on `tab`'s page in normal mode, where j scrolls and : opens the line.
+ * @param {MozTabbrowserTab} tab
+ */
+async function normalKeysWork(tab) {
+  await until(() => document.activeElement === tab.linkedBrowser, "focus is back on the page");
+  Assert.equal(mode(), "normal", "normal mode");
+
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    content.document.body.style.height = "5000px";
+  });
+  EventUtils.synthesizeKey("j");
+  await TestUtils.waitForCondition(
+    () => SpecialPowers.spawn(tab.linkedBrowser, [], () => content.scrollY > 0),
+    "j scrolls the page",
+  );
+  EventUtils.synthesizeKey(":", { shiftKey: true });
+  Assert.ok(lineOpen(), ": opens the line again");
+  Assert.equal(mode(), "command", "in command mode");
+  EventUtils.synthesizeKey("KEY_Escape");
+  Assert.ok(!lineOpen(), "and Esc closes it");
+}
+
+add_task(async function alert_over_the_command_line() {
+  const tab = await typeOnTheLine(PAGE);
+  const shown = nextDialog();
+  // The page's own timer, as a page that alerts while the user types.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    content.setTimeout(() => content.alert("alert?"), 0);
+  });
+  const w = await shown;
+  await until(() => w.document.hasFocus(), "the alert has focus");
+  Assert.notEqual(mode(), "command", "not command mode while the alert has focus");
+  await until(() => lineShows(w, "y ok"), "the alert's keys count");
+  EventUtils.synthesizeKey("KEY_Enter", {}, w);
+  await gone(w);
+  await backOnTheLine(tab);
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function confirm_over_the_command_line_takes_y_and_esc() {
+  const tab = await typeOnTheLine(PAGE);
+  for (const [key, answer] of /** @type {const} */ ([
+    ["y", true],
+    ["KEY_Escape", false],
+  ])) {
+    const shown = nextDialog();
+    await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+      content.setTimeout(() => {
+        content.wrappedJSObject.answer = content.confirm("confirm?");
+      }, 0);
+    });
+    const w = await shown;
+    await until(() => lineShows(w, "y ok · n cancel"), "the confirm's keys count");
+    EventUtils.synthesizeKey(key, {}, w);
+    await gone(w);
+    Assert.equal(
+      await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.wrappedJSObject.answer),
+      answer,
+      `${key} answers the confirm, not the line`,
+    );
+    await until(() => document.activeElement === cmdInput(), "focus is back on the line");
+    Assert.equal(cmdInput().value, "tab", "with what was typed on it");
+  }
+  await backOnTheLine(tab);
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function a_tab_switch_under_the_dialog_closes_the_line_and_leaves_normal_mode() {
+  const other = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
+  const tab = await typeOnTheLine(PAGE);
+  const shown = nextDialog();
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    content.setTimeout(() => content.alert("alert?"), 0);
+  });
+  const w = await shown;
+  await until(() => w.document.hasFocus(), "the alert has focus");
+  await BrowserTestUtils.switchTab(gBrowser, other);
+  Assert.ok(!lineOpen(), "a tab switch closes the line");
+  await BrowserTestUtils.switchTab(gBrowser, tab);
+  await until(() => w.document.hasFocus(), "the alert has focus again");
+  await until(() => lineShows(w, "y ok"), "the alert's keys count");
+  press("y", w);
+  await gone(w);
+  // Firefox gives focus back to the line's input it had before, hidden now.
+  await normalKeysWork(tab);
+  BrowserTestUtils.removeTab(other);
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function focus_moving_on_from_the_dialog_closes_the_line() {
+  const tab = await typeOnTheLine(PAGE);
+  const shown = nextDialog();
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    content.setTimeout(() => content.alert("alert?"), 0);
+  });
+  const w = await shown;
+  await until(() => w.document.hasFocus(), "the alert has focus");
+  Assert.ok(lineOpen(), "the line stays open behind the alert");
+  gURLBar.focus();
+  await until(() => !lineOpen(), "focus moving on to the address bar closes the line");
+  // The keys go to the address bar now: OK as a click would.
+  w.document.getElementById("commonDialog").getButton("accept").click();
+  await gone(w);
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function leave_page_over_the_command_line() {
+  const tab = await typeOnTheLine(LEAVE);
+  const shown = nextDialog();
+  closeTab(tab);
+  const w = await shown;
+  await until(() => lineShows(w, "y leave page · n stay on page"), "the keys count");
+  press("n", w);
+  await gone(w);
+  Assert.ok(tab.isConnected && !tab.closing, "n stays on the page");
+  await backOnTheLine(tab);
+  const closed = BrowserTestUtils.waitForEvent(tab, "TabClose");
+  gBrowser.removeTab(tab, { skipPermitUnload: true });
+  await closed;
+});
+
 add_task(async function window_dialog() {
   // Firefox's own questions over the window (gDialogBox), such as the caret browsing one.
   for (const [key, expected] of /** @type {[string, boolean][]} */ ([
@@ -176,6 +341,61 @@ add_task(async function window_dialog() {
     await until(() => answer !== undefined, "the dialog answered");
     Assert.equal(answer, expected, `${key} answers the window's dialog`);
   }
+});
+
+// A dialog opened from the hidden toolbar's address bar (#1387 re-review L2): SubDialog gives
+// focus back to the field directly, which the collapsed bar refuses, so Vimma gives it back
+// through gURLBar.focus(), which reveals the minimal bar, instead of to the page.
+add_task(async function a_dialog_closed_gives_focus_back_to_the_hidden_address_bar() {
+  Assert.ok(
+    Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
+    "the toolbar is hidden by default",
+  );
+  gURLBar.focus();
+  await until(() => gURLBar.focused, "the address bar has focus");
+  const shown = nextDialog();
+  /** @type {boolean | undefined} */
+  let answer;
+  setTimeout(() => (answer = Services.prompt.confirm(window, "Vimma", "Turn it on?")), 0);
+  const w = await shown;
+  await until(() => lineShows(w, "y ok · n cancel"), "a window dialog names the keys");
+  press("n", w);
+  await until(() => answer !== undefined, "the dialog answered");
+  await until(() => gURLBar.focused, "the address bar has focus again");
+  Assert.ok(
+    gURLBar.inputField.checkVisibility({ visibilityProperty: true }),
+    "in the minimal bar, visible",
+  );
+  EventUtils.synthesizeKey("KEY_Escape");
+  gBrowser.selectedBrowser.focus();
+});
+
+// The window may not be the active one when its dialog closes (another window in front, or the
+// window manager slow to give the activation back, as on a loaded macOS runner): the address bar
+// still has the focus once the window is in front again (#1423).
+add_task(async function a_dialog_closed_behind_another_window_gives_the_address_bar_focus_later() {
+  gURLBar.focus();
+  await until(() => gURLBar.focused, "the address bar has focus");
+  const shown = nextDialog();
+  /** @type {boolean | undefined} */
+  let answer;
+  setTimeout(() => (answer = Services.prompt.confirm(window, "Vimma", "Turn it on?")), 0);
+  const w = await shown;
+  await until(() => lineShows(w, "y ok · n cancel"), "a window dialog names the keys");
+  const other = await BrowserTestUtils.openNewBrowserWindow();
+  await SimpleTest.promiseFocus(other);
+  Assert.ok(!document.hasFocus(), "another window is in front");
+  w.document.getElementById("commonDialog").getButton("cancel").click();
+  await until(() => answer !== undefined, "the dialog answered");
+  await BrowserTestUtils.closeWindow(other);
+  await SimpleTest.promiseFocus(window);
+  await until(() => gURLBar.focused, "the address bar has focus once the window is in front");
+  Assert.ok(
+    gURLBar.inputField.checkVisibility({ visibilityProperty: true }),
+    "in the minimal bar, visible",
+  );
+  EventUtils.synthesizeKey("KEY_Escape");
+  gBrowser.selectedBrowser.focus();
 });
 
 // The external protocol questions (permissionDialog.xhtml, "Allow this site to open the link

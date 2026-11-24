@@ -23,9 +23,9 @@ running browser, and with it off nothing listens and no token file exists.
   on or off), before a start, and when the pref goes off, at `quit-application-granted` and
   (as a backstop) in an `AsyncShutdown.profileBeforeChange` blocker.
 - Line framing, 1 MiB limit, 5 s hello deadline, 60 s idle timeout, 8 authenticated connections
-  then `busy`, at most 2 waiting for a hello (a new one evicts the oldest), constant-time token
-  check (`tokensEqual`), a challenge proving the token before the client sends it, every message
-  checked with `validateMessage`.
+  then `busy`, at most 2 waiting for a hello (a new one evicts the oldest that has not spoken,
+  else the oldest), constant-time token check (`tokensEqual`), a challenge proving the token
+  before the client sends it, every message checked with `validateMessage`.
 - Commands `send-keys`, `state`, `open`, `reload-theme` (since m5-omarchy-theme:
   `ThemeHost.reload()`); `list-tabs`, `screenshot`, `reload-config` answer `not-implemented`.
 - Host seam: none of our own. `state` reads `VimmaHost.status(win)` (`{ mode, pending }`, added
@@ -82,6 +82,20 @@ running browser, and with it off nothing listens and no token file exists.
 - **Quitting while a command runs** (`send-keys ctrl+q`): the in-flight request is answered,
   then the connection closes; the file is removed. Verified with the real build (exit 0, file
   gone, `vimma-ctl` exit 0).
+- **A key that opens a dialog** (since
+  [#1306](https://github.com/vimma-browser/vimma/issues/1306)): Firefox runs "Leave page?" and a
+  window's prompts in a nested event loop, so the keydown that opens one returns only once the
+  dialog is answered, and while it is being dispatched no other TextInputProcessor can begin a
+  transaction on the window (`TextInputProcessor::BeginInputTransactionInternal`). `send-keys`
+  therefore presses its keys in a task of its own and answers with `dialog: true` when a
+  `dialogopen` reaches the window while they are being pressed, and every `send-keys` presses
+  through one processor with one callback, which can begin again mid-dispatch, so the next
+  `send-keys` reaches the dialog. Each `send-keys` starts with no modifier held in that
+  processor (`shareModifierStateOf(null)`), and releases a chord's modifiers even when a key
+  throws, so the waiting key's ctrl never turns the answer `n` into `ctrl+n`. Known gap: a dialog
+  in a window of its own, or a nested event loop with no `dialogopen`, still holds that
+  `send-keys`' answer and its connection's later requests until it ends; a `send-keys` on
+  another connection can still answer it.
 - **`SIGTERM` does not run our shutdown** (measured, 157.0.1 headless: the process dies by the
   signal in ~20 ms, exit 143). The discovery file then stays; clients report it as stale ("not
   running") and the next start overwrites it. Harnesses should quit with `send-keys ctrl+q`
@@ -107,7 +121,8 @@ running browser, and with it off nothing listens and no token file exists.
 - `send-keys ctrl+b` → `state.pending` `"prefix"`; `?` → overlay opens, host saw real keydowns,
   `state.mode` `help`; `esc` closes it, back to `normal`; a bad chord → `invalid-args` and nothing
   sent. `state` fields: tabs, ids (`browserId`), url, index, pinned, the workspace's name; `panes`
-  null with one pane, after a split the tree (`test_state_panes`).
+  null with one pane, after a split the tree (`test_state_panes`). (Since changed: an unloaded
+  tab's id is its workspace uuid until it loads, not its browser id `0`; #1332.)
 - `send-keys "j shift+k"` with the page focused, in normal mode: Vimma takes `j` (as with a real
   `j`), the page records `Shift`, `K`.
 - `open https://example.com/` → new selected tab, result id, content principal; `where: current`
@@ -115,11 +130,16 @@ running browser, and with it off nothing listens and no token file exists.
   `chrome:` → `invalid-args`, nothing opened.
 - Limits: 8 authenticated connections, the 9th hello gets `busy` (id null, no doubled "busy:") and a
   close, a freed slot works; 20 connections that never say hello leave 2 waiting (the evicted told
-  `busy`) and a client with the token still gets in; an oversized line → `bad-request` and a close;
-  idle (500 ms pref) → closed without a message; no hello (300 ms pref) → `bad-request` and a close.
+  `busy`) and a client with the token still gets in; a connection that sent part of a line
+  outlasts two silent ones after it, which are told `busy` (#1344); an oversized line →
+  `bad-request` and a close; idle (500 ms pref) → closed without a message; no hello (300 ms
+  pref) → `bad-request` and a close.
 - `vimma-ctl --profile <test profile> state --json` exits 0 with the live state; 5 more runs
-  succeed during a flood of 30 idle connections; against a squatting socket (a stale discovery
-  file with a token it does not know) it exits 4 and the squatter receives no command.
+  succeed during a flood of 30 idle connections, and one more when two silent connections arrive
+  after its hello but before the server reads it (#1344); at 8 authenticated connections it exits
+  3 saying `busy` and "try again", and gets in once a slot is free; against a squatting socket (a
+  stale discovery file with a token it does not know) it exits 4 and the squatter receives no
+  command.
 - The handshake: every challenge's proof is checked by the test client with WebCrypto; a hello
   without a nonce, a hello carrying the token, an auth before the hello and a request before
   the auth are `bad-request` and close; a hello that never gets its auth is closed at the
@@ -163,6 +183,12 @@ Two weaknesses were fixed before the server shipped:
    connection that never says hello: a reconnect loop made `vimma-ctl state` fail `busy` 10/10.
    Now 8 authenticated slots and, apart, 2 waiting ones; a new connection evicts the oldest
    waiting one (`busy`). vimma-ctl says hello right after connecting, so it wins the race.
+   Amended (#1344): the server takes new connections before it reads the ones it has, so on a
+   slow machine vimma-ctl's hello could wait unread while two silent connections arrived, and
+   it was the one evicted (CI, `vimma-ctl state during a flood`). Now a new connection evicts
+   the oldest waiting one that has sent nothing (read, or still in its socket), else the oldest.
+   Red: the mochitest holding the main thread so vimma-ctl's connect and hello come before two
+   silent connects failed 2/2 with `busy: evicted`; green 20/20 on two busy CPUs.
 2. **A stale discovery file let a squatter impersonate the server.** With the pref off nothing
    removed a crashed run's file, so another local user could bind its port and receive
    `send-keys`. Now: (a) the first window's `init` removes whatever is at the path (pref on or

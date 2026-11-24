@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Local AI agents and the agent workspace (docs/specs/vimma-mcp.md): `[mcp]` from config.toml,
-// the pref `vimma.mcp.enabled` that `:mcp on|off` sets, `:mcp forget` and `:mcp revoke`. The
+// AI agents and the agent workspace (docs/specs/vimma-mcp.md): `[mcp]` from config.toml,
+// the pref `vimma.mcp.enabled` that `:mcp on|off` sets, `:mcp off`'s hold for the session
+// (docs/specs/setup-v2.md decision 16), `:mcp forget` and `:mcp revoke`. The
 // control socket's agent role (ctl/VimmaControl.sys.mjs) runs while `state.enabled` is true and
 // hears of every change through MCP_CHANGED_TOPIC.
 
@@ -11,6 +12,7 @@ import {
   MCP_FORGET_QUESTION,
   mcpActivity,
   mcpOnQuestion,
+  mcpState,
   mcpStatus,
   parseMcpCommand,
   planMcpSwitch,
@@ -37,6 +39,18 @@ ChromeUtils.defineESModuleGetters(lazy, {
 let config = null;
 /** @type {AgentConfig | null} config.toml's `[agent]` (docs/specs/builtin-agent.md), once read. */
 let agentConfig = null;
+/**
+ * `:mcp off` this session (setup-v2 decision 16): in memory only, so that a restart clears it,
+ * and never touched by `configure`, so that no read of config.toml clears it; `:mcp on` does.
+ */
+let heldOff = false;
+/** How many times `:mcp off` ran: a yes to an `:mcp on` asked before the latest one is refused. */
+let offs = 0;
+
+/**
+ * @typedef {Readonly<{ offs: number, agent: string | null }>} McpConsentTicket  how many
+ *   `:mcp off`s had run, and the agent workspace, when the setup's agents step was drawn
+ */
 
 /** @param {unknown} e */
 const reason = (e) => /** @type {Error} */ (e).message;
@@ -57,6 +71,34 @@ export const McpHost = {
   },
 
   /**
+   * Whether an agent connection is open, as `:mcp` counts them: tab sleep keeps the agent
+   * workspace's tabs loaded meanwhile, so that the ids agents name them by stay valid
+   * (docs/specs/tab-sleep.md decision 8). Only the count leaves the gate.
+   */
+  get agentConnected() {
+    return lazy.AgentGate.connections.length > 0;
+  },
+
+  /**
+   * Calls `fn` whenever `agentConnected` changes, and tells it nothing else: tab sleep marks the
+   * agent workspace's tabs for Firefox's low-memory unloader meanwhile (docs/specs/tab-sleep.md
+   * decision 21). Returns the call that stops it.
+   * @param {() => void} fn
+   * @returns {() => void}
+   */
+  watchAgentConnected(fn) {
+    let was = this.agentConnected;
+    const listener = () => {
+      const now = this.agentConnected;
+      if (now === was) return;
+      was = now;
+      fn();
+    };
+    lazy.AgentGate.addListener(listener);
+    return () => lazy.AgentGate.removeListener(listener);
+  },
+
+  /**
    * `[agent]` from config.toml (ConfigHost, at every read): the built-in agent's providers and
    * limits.
    * @param {AgentConfig | null} agent  null: the defaults (tests)
@@ -72,13 +114,86 @@ export const McpHost = {
   },
 
   /**
-   * Whether agents may connect, and what decides it: `[mcp] enabled` when the file sets it,
-   * else the pref.
-   * @returns {{ enabled: boolean, from: "config" | "pref" }}
+   * Whether agents may connect, and what decides it: `:mcp off` this session ("session"), else
+   * `[mcp] enabled` when the file sets it, else the pref.
+   * @returns {{ enabled: boolean, from: "session" | "config" | "pref" }}
    */
   get state() {
-    if (config?.enabled !== undefined) return { enabled: config.enabled, from: "config" };
-    return { enabled: Services.prefs.getBoolPref(MCP_ENABLED_PREF, false), from: "pref" };
+    return mcpState(switchState());
+  },
+
+  /**
+   * Tests only: ends `:mcp off`'s hold, so that a test file stopped between its `:mcp off` and
+   * `:mcp on` does not leave agents off for the files after it. Not reachable from a page, the
+   * control socket or an agent.
+   */
+  _clearHoldForTests() {
+    heldOff = false;
+    Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
+  },
+
+  /** `:mcp on|off`'s pref and whether `:mcp off` holds agents off (setup-v2 behaviour 9). */
+  get switchState() {
+    const { pref, off } = switchState();
+    return { pref, off };
+  },
+
+  /**
+   * What `:mcp on`'s question remembers when it is asked, taken when the setup's agents step is
+   * drawn: that step's `enter` on "on" is the consent a yes is (setup-v2 behaviour 28), and is
+   * checked against it as the yes is (docs/security/12-agents-mcp.md M65).
+   * @returns {McpConsentTicket}
+   */
+  consentTicket() {
+    return Object.freeze({ offs, agent: WorkspaceStore.agent?.id ?? null });
+  },
+
+  /**
+   * Why a consent given on `ticket` may not turn agents on now, where `:mcp on`'s yes would be
+   * refused too: no agent workspace, another one since, or an `:mcp off` since. Null when it may.
+   * @param {McpConsentTicket} ticket
+   * @returns {string | null}
+   */
+  consentRefusal(ticket) {
+    const agent = WorkspaceStore.agent;
+    if (!agent) return "there is no agent workspace (containers off?)";
+    if (ticket.agent !== agent.id) return `"${agent.name}" changed since this step was drawn`;
+    // An `:mcp off` typed after the step was drawn (in another window, say) is the newer word.
+    if (ticket.offs !== offs) return ":mcp off ran since this step was drawn";
+    return null;
+  },
+
+  /**
+   * The setup's agents step turned agents on (its `[mcp] enabled = true` written and read):
+   * ends `:mcp off`'s hold, as `:mcp on`'s yes does, after the same checks. Refused here, after
+   * the write (the workspace changed or went away meanwhile), it holds agents off as `:mcp off`
+   * does, so that the file just written does not turn them on without a consent that counts.
+   * @param {McpConsentTicket} ticket
+   * @returns {string | null} why not, or null once agents may connect
+   */
+  consentFromSetup(ticket) {
+    const why = this.consentRefusal(ticket);
+    if (why) {
+      heldOff = true;
+      Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
+      return why;
+    }
+    heldOff = false;
+    // Always: the file's read already told the topic while the hold still stood.
+    Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
+    return null;
+  },
+
+  /**
+   * The agent workspace as the agents step shows it: missing (containers off), or one Vimma
+   * did not make, with its tabs, as `:mcp on`'s question names it (decision 8).
+   * @returns {{ missing?: boolean, adopted?: { name: string, tabs: number } | null }}
+   */
+  setupAgent() {
+    const agent = WorkspaceStore.agent;
+    if (!agent) return { missing: true };
+    if (WorkspaceStore.agentIsOurs()) return { adopted: null };
+    return { adopted: { name: agent.name, tabs: countTabs(agent) } };
   },
 
   /** The agent workspace's name, as questions and notices show it. */
@@ -131,24 +246,36 @@ export const McpHost = {
       }
       case "on":
       case "off": {
-        const plan = planMcpSwitch(command.kind, {
-          pref: Services.prefs.getBoolPref(MCP_ENABLED_PREF, false),
-          ...(config?.enabled === undefined ? {} : { config: config.enabled }),
-        });
+        const plan = planMcpSwitch(command.kind, switchState());
         if (plan.kind === "say") return plan.text;
-        if (plan.kind === "set") {
-          Services.prefs.setBoolPref(MCP_ENABLED_PREF, plan.value);
+        if (plan.kind === "off") {
+          const was = this.state.enabled;
+          heldOff = true;
+          offs++;
+          // The pref's observers hear the pref; the hold alone is told through the topic.
+          if (plan.pref) Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
+          else if (was) Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
           return plan.text;
         }
         if (!agent) return "mcp: there is no agent workspace (containers off?)";
         // A workspace of yours that took the name: agents would read what is already in it.
         const adopted = WorkspaceStore.agentIsOurs() ? null : { tabs: countTabs(agent) };
+        const asked = offs;
         ask(mcpOnQuestion(agent.name, adopted), () => {
           if (WorkspaceStore.agent?.id !== agent.id) {
             say(`mcp: "${agent.name}" changed since you were asked; MCP stays off`);
             return;
           }
-          Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+          // An `:mcp off` typed after this question (in another window, say) is the newer word.
+          if (offs !== asked) {
+            say("mcp: :mcp off ran since you were asked; MCP stays off");
+            return;
+          }
+          heldOff = false;
+          // With `[mcp] enabled = true` the file turns agents on: the pref stays as it is.
+          if (config?.enabled !== true) Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+          // Always: a pref that was already true (set under the hold) tells no observer.
+          Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
           say(`mcp on: agents may ask to use "${agent.name}"; each request asks you first`);
         });
         return null;
@@ -157,6 +284,15 @@ export const McpHost = {
     return null;
   },
 };
+
+/** What `:mcp on|off` and `state` decide from: the pref, the file, and `:mcp off`'s hold. */
+function switchState() {
+  return {
+    pref: Services.prefs.getBoolPref(MCP_ENABLED_PREF, false),
+    ...(config?.enabled === undefined ? {} : { config: config.enabled }),
+    off: heldOff,
+  };
+}
 
 /**
  * `:mcp forget` (decision 8): after a yes, the agent workspace's cookies and site data go; the

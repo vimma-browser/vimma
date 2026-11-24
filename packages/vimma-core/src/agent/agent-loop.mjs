@@ -26,7 +26,7 @@ import { UNTRUSTED_FROM } from "./agent.mjs";
  * @typedef {import("./agent-budget.mjs").Budget} Budget
  * @typedef {import("./agent-budget.mjs").Exceeded} Exceeded
  *
- * @typedef {(name: string, args: Record<string, any>, opts: { signal: AbortSignal })
+ * @typedef {(name: string, args: Record<string, unknown>, opts: { signal: AbortSignal })
  *   => Promise<{ content?: ToolContent[], isError?: boolean }>} RunTool
  *   One tool call, answered as MCP's CallToolResult: through the gate, so it may wait for the
  *   user's answer and come back denied (`isError`).
@@ -106,10 +106,9 @@ export function pruneResults(messages, keep) {
   if (leave === 0) return messages;
   let seen = 0;
   return messages.map((m) => {
-    if (m.role !== "tool" || seen >= leave) {
-      if (m.role === "tool") seen += m.results.length;
-      return m;
-    }
+    // A message after the left-out block goes as it is, the same object; `seen` no longer
+    // matters past it.
+    if (m.role !== "tool" || seen >= leave) return m;
     const results = m.results.map((r) => (seen++ < leave ? leaveOut(r) : r));
     return { role: "tool", results };
   });
@@ -124,6 +123,7 @@ function leftOutCount(messages, keep) {
   if (!(keep > 0)) return 0;
   let total = 0;
   for (const m of messages) if (m.role === "tool") total += m.results.length;
+  // Stryker disable next-line EqualityOperator: the `<=` case: at total === keep both give 0
   return total < keep ? 0 : Math.floor((total - keep) / keep) * keep;
 }
 
@@ -152,7 +152,8 @@ function leaveOut(r) {
 const TYPES = {
   string: (v) => typeof v === "string",
   integer: (v) => Number.isInteger(v),
-  number: (v) => typeof v === "number" && Number.isFinite(v),
+  // Only a number is finite.
+  number: (v) => Number.isFinite(v),
   boolean: (v) => typeof v === "boolean",
   array: (v) => Array.isArray(v),
   object: (v) => typeof v === "object" && v !== null && !Array.isArray(v),
@@ -170,7 +171,8 @@ export function checkToolCall(call, tools) {
   if (call.error) return call.error;
   const tool = tools.find((t) => t.name === call.name);
   if (!tool) return `there is no tool named ${JSON.stringify(call.name)}`;
-  const args = /** @type {Record<string, any>} */ (call.args);
+  // A call without an error has an object as its arguments (agent-providers.mjs, toolCall).
+  const args = /** @type {Record<string, unknown>} */ (call.args);
   const schema = tool.inputSchema;
   const props = schema.properties ?? {};
   for (const name of schema.required ?? [])
@@ -183,10 +185,13 @@ export function checkToolCall(call, tools) {
         return `${call.name} takes no ${JSON.stringify(name)}`;
       continue;
     }
-    const is = TYPES[prop.type];
+    // No type, or a list of types (a key of their names joined by commas), has no check in
+    // TYPES: the runner checks those. `type` is from Vimma's own tools/list, never the model's.
+    const type = /** @type {string} */ (prop.type);
+    const is = TYPES[type];
     if (is && !is(value)) {
-      const article = /^[aeiou]/.test(prop.type) ? "an" : "a";
-      return `${JSON.stringify(name)} must be ${article} ${prop.type}`;
+      const article = /^[aeiou]/.test(type) ? "an" : "a";
+      return `${JSON.stringify(name)} must be ${article} ${type}`;
     }
   }
   return null;
@@ -261,16 +266,20 @@ async function run(opts, signal, pending) {
   const stopped = () => ({ outcome: /** @type {const} */ ("stopped"), messages, after });
 
   let serverErrors = 0;
-  /** The last refused call as `name args`, and how many times in a row it was refused. */
-  let refused = { key: "", times: 0 };
+  /**
+   * The last refused call as `name args`, and how many times in a row it was refused; null when
+   * the last call was not refused.
+   * @type {{ key: string, times: number } | null}
+   */
+  let refused = null;
   /** @param {ToolCall} call @param {boolean} wasRefused @returns {boolean} the limit is reached */
   const count = (call, wasRefused) => {
     if (!wasRefused) {
-      refused = { key: "", times: 0 };
+      refused = null;
       return false;
     }
     const key = `${call.name} ${JSON.stringify(call.args)}`;
-    refused = { key, times: refused.key === key ? refused.times + 1 : 1 };
+    refused = { key, times: refused?.key === key ? refused.times + 1 : 1 };
     return refused.times >= REPEAT_LIMIT;
   };
 
@@ -365,7 +374,7 @@ async function run(opts, signal, pending) {
       /** @type {ToolResult} */
       let result;
       try {
-        const r = await runTool(call.name, /** @type {Record<string, any>} */ (call.args), {
+        const r = await runTool(call.name, /** @type {Record<string, unknown>} */ (call.args), {
           signal,
         });
         result = { id: call.id, name: call.name, isError: !!r?.isError, content: r?.content ?? [] };
@@ -383,6 +392,7 @@ async function run(opts, signal, pending) {
       const error = `stopped: ${repeated.name} was refused ${REPEAT_LIMIT} times in a row with the same arguments`;
       return { outcome: "error", messages, error };
     }
+    // Stryker disable next-line ConditionalExpression: `false`: the next turn's first check finds it
     if (exceeded) return { outcome: "budget", messages, exceeded };
   }
 }

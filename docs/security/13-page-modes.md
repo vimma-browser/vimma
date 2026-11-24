@@ -47,13 +47,17 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   the `<browser>` it came from (a late reply never edits the tab or pane focused since), and no
   message from a content process can ask for it. The content actor's `Vimma:Edit` **must** run only the three editor commands
   (`INSERT_EDIT_COMMANDS`), never Enter. A compromised content process that claims insert mode
-  (K1) gets an `Enter` in place of its own `ctrl+j`, which it could synthesize itself.
+  (K1) gets an `Enter` in place of its own `ctrl+j`, which it could synthesize itself. In insert
+  mode `ctrl+j` is also a suggestion key (K6): its `Enter` comes from that key's fallback, after
+  the page's reply to the keypress, under K6's checks (and, at the press, still insert mode and
+  still the frame that was asked whether its list is open), and never also from the keydown's reply,
+  so one `ctrl+j` presses at most one key.
   [`Enter is no editor command: the content actor never takes it`](../../packages/vimma-core/test/editable.test.ts),
   [`a_page_that_takes_ctrl_j_keeps_it`](../../tests/browser/browser_vimma_edit_keys.js),
   [`a_late_reply_presses_no_enter_in_another_tab`](../../tests/browser/browser_vimma_edit_keys.js),
   [`ctrl_j_m_submit_a_single_line_inputs_form_with_a_trusted_enter`](../../tests/browser/browser_vimma_edit_keys.js)
 
-- K6. `ctrl+n` and `ctrl+p` in a page's suggestion list
+- K6. `ctrl+n` and `ctrl+p`, and `ctrl+j` and `ctrl+k` beside them, in a page's suggestion list
   ([page-suggestions](../specs/page-suggestions.md)) **must** press `ArrowDown` or `ArrowUp` only
   for a key the user pressed in insert mode, only after the page left it alone, only in the
   `<browser>` the key went to, and only in the frame focused when the page's reply arrives and
@@ -65,13 +69,26 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   boolean computed from its page's own attributes; the parent treats anything but `true` as
   "no list", and no message from a content process can ask for a key. A page, or a compromised
   content process, can at most turn the user's own `ctrl+n` into an arrow key in itself, which it
-  could do by handling `ctrl+n`.
+  could do by handling `ctrl+n`. On macOS, where the focused field would run Cocoa's own
+  `ctrl+n` or `ctrl+p` on the keypress, the parent marks the keypress of a suggestion key it sends
+  to the page, and the frame's actor keeps a trusted, marked keypress from the field while that
+  same test says a list is open: a page can at most keep the user's own key from moving the caret
+  in its own field, which it could also do by handling the key. The mark is a chrome-only event
+  flag, which page script can neither set nor read; the actor only stops the keypress on its way
+  to the field, and neither prevents its default nor makes a key; and the parent reads no mark
+  back from a reply. In the address bar the keys press `ArrowDown` or `ArrowUp` only while its
+  results show and its field has focus, checked again at the press; the results are Firefox's
+  own chrome, so no page takes part in that decision.
   [`suggestionListOpen`](../../packages/vimma-core/test/suggestions.test.ts),
-  [`ctrl_n_and_ctrl_p_move_an_aria_combobox`](../../tests/browser/browser_vimma_page_suggestions.js),
+  [`ctrl_n_p_and_ctrl_j_k_move_an_aria_combobox`](../../tests/browser/browser_vimma_page_suggestions.js),
+  [`with_no_list_open_ctrl_j_is_enter_and_ctrl_k_is_the_pages`](../../tests/browser/browser_vimma_page_suggestions.js),
+  [`the_suggestion_keys_move_the_address_bars_results`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_pressed_arrow_key_runs_no_vimma_binding`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_page_that_takes_ctrl_n_keeps_it`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_late_reply_presses_no_arrow_key_in_another_tab`](../../tests/browser/browser_vimma_page_suggestions.js),
-  [`a_hidden_list_left_aria_expanded_is_not_open`](../../tests/browser/browser_vimma_page_suggestions.js)
+  [`a_hidden_list_left_aria_expanded_is_not_open`](../../tests/browser/browser_vimma_page_suggestions.js),
+  [`the_caret_stays_where_it_was_in_an_open_list`](../../tests/browser/browser_vimma_page_suggestions.js),
+  [`the_caret_stays_where_it_was_in_an_open_contenteditable_list`](../../tests/browser/browser_vimma_page_suggestions.js)
 - K7. The content actor **must** attach only to http, https, file, `about:` and `view-source:`
   documents and Vimma's start page (`VimmaActors.register`); `moz-extension:`, `data:`, `blob:` and
   `chrome:` documents get none and stay in insert, though their `view-source:` forms match. A
@@ -104,3 +121,40 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   again in the child: only an integer from 1 to 2000 CSS pixels is taken, anything else scrolls
   by the default 60.
   [`the_child_ignores_a_step_config_toml_could_not_set`](../../tests/browser/browser_vimma_scroll_step.js)
+- K11. Which keys a site keeps (`[sites."<host>"] unbind`, [site-unbind](../specs/site-unbind.md))
+  **must** come only from `config.toml` or the user's `:siteunbind` (K13): the keymap compiles
+  them, and no page or content-process message reaches it. The site is the focused `<browser>`'s top document host, and `esc` and the
+  prefix **must not** be given to a page.
+  [`a_site_unbound_key_reaches_the_page`](../../tests/browser/browser_vimma_site_unbind.js),
+  [`the_same_key_is_vimmas_on_another_site`](../../tests/browser/browser_vimma_site_unbind.js),
+  [`esc_still_leaves_insert`](../../tests/browser/browser_vimma_site_unbind.js),
+  [`a remapped prefix is the one kept`](../../packages/vimma-core/test/site-unbind.test.ts)
+- K12. A binding that closes a tab from a text field (`[modal.insert] "<C-w>" = "tab.close"`) or
+  from the side panel (`panel.close_active_tab`, [close-active-tab](../specs/close-active-tab.md))
+  **must** run only for a key the user pressed: it goes through the dispatcher from the window's
+  capture-phase `keydown` listener, and no message from a content process can ask for it. A
+  remote page's own key events stay in its content process (process separation), and a page in
+  the parent process cannot reach the listener either, because on a chrome window
+  `addEventListener` defaults `wantsUntrusted` to false. A page's own `ctrl+w`, dispatched at its
+  focused field, closes nothing.
+  [`a_ctrl_w_the_page_dispatches_closes_nothing`](../../tests/browser/browser_vimma_close_active_tab.js)
+- K13. `:siteunbind` and `:sitebind` ([site-unbind-command](../specs/site-unbind-command.md))
+  change which keys a site keeps, and with `--save` or `--delete` write `config.toml`, so they
+  **must** run only from the user's `:` line or the user's own binding: `vimma_keys` refuses `:`
+  and runs neither action (`site.unbind`, `site.bind`), and no page or content-process message
+  reaches them or the keys they set. `esc` and the prefix **must not** be given to a page, as
+  in K11. The write **must not** touch a `config.toml` with errors, and **must** change nothing
+  in it but the one `unbind` list (or the table that list empties): the result is parsed again
+  and compared before it is written, through a temporary file renamed over it. A private window
+  **must not** save a site to the file; `:sitebind --delete` there may only remove keys from a
+  table the file already has, so no host it visits reaches the disk. Keys given until restart
+  from a private window stay in memory and apply in every window until restart. The table is
+  named after the page's host, which a link chooses, so keys given until restart **must** apply
+  to a table of any name, one named like an Object member (`__proto__`, a page at
+  `http://__proto__/`) included, and **must not** change a prototype.
+  [`neither action is a vimma_keys action, and the : line is refused`](../../packages/vimma-core/test/site-keys.test.ts),
+  [`a file with errors is refused, never rewritten`](../../packages/vimma-core/test/site-keys.test.ts),
+  [`a_bad_argument_is_refused_and_nothing_changes`](../../tests/browser/browser_vimma_site_unbind_command.js),
+  [`a_config_toml_with_errors_is_never_written`](../../tests/browser/browser_vimma_site_unbind_command.js),
+  [`a_private_window_does_not_save`](../../tests/browser/browser_vimma_site_unbind_command.js),
+  [`a table named __proto__, constructor or toString gets its keys until restart`](../../packages/vimma-core/test/keymap-edges.test.ts)

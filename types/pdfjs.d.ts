@@ -39,6 +39,7 @@ declare namespace PdfJs {
     | "update"
     | "_location"
     | "scrollPageIntoView"
+    | "pagesPromise"
   >;
   /** `app.pdfViewer._location`, waived: pdf.js's record of where the view is. */
   type Location = Members<"pageNumber" | "left" | "top">;
@@ -49,9 +50,7 @@ declare namespace PdfJs {
   /** `app.pdfHistory`, waived. */
   type History = Members<"push" | "pushCurrentPosition">;
   /** `app.pdfDocument`, waived. */
-  type PdfDocument = Members<
-    "getOutline" | "getDestinations" | "getDestination" | "cachedPageNumber"
-  >;
+  type PdfDocument = Members<"getOutline" | "getDestination" | "cachedPageNumber">;
   /** The parts of `App` the adapter calls into, by name. */
   interface Parts {
     eventBus: EventBus;

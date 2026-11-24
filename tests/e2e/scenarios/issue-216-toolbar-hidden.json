@@ -1,7 +1,7 @@
 {
   "name": "issue-216-toolbar-hidden",
   "issue": 216,
-  "description": "docs/specs/toolbar-toggle.md: ctrl+b u hides Firefox's toolbar, and the page (fixture edge.html, its blue band at its top edge; the shot waits out the notice) reaches the top of the window with the status bar below (toolbar-hidden.png); I shows the minimal bar over the page, only the URL field with the typed address, the page not resized (its title, edge <innerHeight>, unchanged) (toolbar-minimal.png); Enter loads the address and the bar hides again. Firefox's suggestions are off, so the minimal-bar shot holds only the field and its one heuristic row.",
+  "description": "docs/specs/toolbar-toggle.md: Firefox's toolbar is hidden by default (decision 3, since 19 Nov 2026); the page starts under the tab line, which two tabs draw by default (docs/specs/tab-line.md decision 3, since 20 Nov 2026), at the window's height less the line and the status bar (its title, edge 759), ctrl+b u shows the toolbar and ctrl+b u again hides it, and the page (fixture edge.html, its blue band at its top edge; the shot waits out the notice) reaches the tab line with the status bar below (toolbar-hidden.png); I shows the minimal bar over the page, only the URL field with the typed address, as a box of its own with the page's blue band showing on both sides (issue #1446), the page not resized (its title, edge <innerHeight>, unchanged) (toolbar-minimal.png); Enter loads the address and the bar hides again. Firefox's suggestions are off, so the minimal-bar shot holds only the field and its one heuristic row.",
   "timeoutSeconds": 60,
   "prefs": {
     "browser.urlbar.suggest.searches": false,
@@ -30,10 +30,14 @@
         "tabs": [
           {},
           {
+            "title": "edge 759",
             "selected": true
           }
         ]
       }
+    },
+    {
+      "keys": "ctrl+b u"
     },
     {
       "keys": "ctrl+b u"
@@ -46,7 +50,7 @@
         "tabs": [
           {},
           {
-            "title": "edge 779",
+            "title": "edge 759",
             "selected": true
           }
         ]
@@ -83,7 +87,7 @@
         "tabs": [
           {},
           {
-            "title": "edge 779",
+            "title": "edge 759",
             "selected": true
           }
         ]

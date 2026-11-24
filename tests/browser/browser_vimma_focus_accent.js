@@ -5,7 +5,7 @@
 // Firefox's focus colour follows the theme (docs/specs/m7-a11y.md, "Focus colour"): the address
 // bar's focus ring and the focused pane's outline in a split are --vimma-focus, the theme accent
 // (moved just far enough to reach 3:1 where it would not), for the built-in vimma dark and light,
-// Tokyo Night, and live after a `[theme.colors] accent` override in config.toml.
+// and live after a `[theme.colors] accent` override in config.toml.
 
 "use strict";
 
@@ -15,7 +15,7 @@ const { ConfigHost } = ChromeUtils.importESModule(
 const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
 );
-const { TOKYO_NIGHT, VIMMA_DARK, contrastRatio } = ChromeUtils.importESModule(
+const { VIMMA_DARK, contrastRatio } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/theme.mjs",
 );
 
@@ -50,7 +50,7 @@ let writes = 0;
 /** config.toml, with a unique trailer so the poll sees every write. */
 async function writeConfig(/** @type {string} */ text) {
   writes++;
-  await IOUtils.writeUTF8(file, `schema = 2\n${text}\n${"#".repeat(writes)}\n`);
+  await IOUtils.writeUTF8(file, `${text}\n${"#".repeat(writes)}\n`);
   await ConfigHost.reload();
 }
 
@@ -147,11 +147,6 @@ add_task(async function vimma_light_rings_are_its_accent_at_three_to_one() {
   await assertFocusColour("vimma light", "#006659");
   await SpecialPowers.popPrefEnv();
   await until(() => token("--vimma-color-scheme") === "dark", "dark again");
-});
-
-add_task(async function tokyo_night_rings_are_its_blue_accent() {
-  await writeConfig(`[theme]\nsource = "file"\nname = "tokyo-night"`);
-  await assertFocusColour("Tokyo Night", TOKYO_NIGHT.accent);
 });
 
 add_task(async function a_theme_colors_accent_override_applies_live() {

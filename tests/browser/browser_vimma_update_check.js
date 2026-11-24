@@ -326,7 +326,7 @@ add_task(async function off_by_pref_or_config_sends_nothing() {
   await SpecialPowers.popPrefEnv();
 
   const file = PathUtils.join(dir, "config.toml");
-  await IOUtils.writeUTF8(file, "schema = 2\n[updates]\ncheck = false\n");
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n");
   await ConfigHost.reload(file);
   await until(() => !VimmaUpdates.status().enabled, "[updates] check = false applied");
   Assert.equal((await VimmaUpdates.check()).outcome, "off");
@@ -342,7 +342,7 @@ add_task(async function checks_off_show_updates_off_briefly_once_per_session() {
   await fetch(`${HOST}?reset`);
   VimmaUpdates._reset(); // a new session: the notice has not been shown
   const file = PathUtils.join(dir, "config.toml");
-  await IOUtils.writeUTF8(file, "schema = 2\n[updates]\ncheck = false\n");
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n");
   await ConfigHost.reload(file);
   await until(() => !VimmaUpdates.status().enabled, "[updates] check = false applied");
   Assert.equal((await VimmaUpdates.check()).outcome, "off", "the install type is known");
@@ -479,6 +479,87 @@ add_task(async function flatpak_gets_flatpak_update() {
   VimmaUpdates._reset();
 });
 
+/**
+ * `:update` with an offer, then the Updates section's text once about:vimma has rendered.
+ * @returns {Promise<string>}
+ */
+async function updateStepsText() {
+  /** @type {string} */
+  let text = "";
+  await BrowserTestUtils.withNewTab("https://example.com/", async () => {
+    const opened = BrowserTestUtils.waitForNewTab(gBrowser, "about:vimma#updates", true);
+    runCommand("update");
+    const tab = await opened;
+    const browser = tab.linkedBrowser;
+    await until(
+      () => browser.contentDocument?.documentElement?.dataset.ready === "true",
+      "rendered",
+    );
+    text = /** @type {Element} */ (
+      /** @type {Document} */ (browser.contentDocument).getElementById("updates")
+    ).textContent;
+    BrowserTestUtils.removeTab(tab);
+  });
+  return text;
+}
+
+// Spec package-repositories, decision 18: the pacman package upgrades with the system, and a
+// .deb or .rpm whose repository file exists gets its package manager's upgrade command; without
+// it, the download command, plus one line to the guide once vimma.feature.packageRepos is on.
+add_task(async function package_repositories_get_the_upgrade_command() {
+  const root = PathUtils.join(dir, "root");
+  /** @param {string} path */
+  const make = async (path) => {
+    await IOUtils.makeDirectory(PathUtils.parent(root + path) ?? root, { createAncestors: true });
+    await IOUtils.writeUTF8(root + path, "");
+  };
+  /**
+   * @param {string} type
+   * @param {[string, string | boolean][]} [prefs]
+   */
+  const stepsFor = async (type, prefs = []) => {
+    await SpecialPowers.pushPrefEnv({
+      set: [["vimma.update.installType", type], ["vimma.update.testRepoRoot", root], ...prefs],
+    });
+    VimmaUpdates._reset();
+    await serve(await manifest({}));
+    const text = await updateStepsText();
+    await SpecialPowers.popPrefEnv();
+    VimmaUpdates._reset();
+    return text;
+  };
+  const guide = "the guide's “Package repositories”";
+
+  let text = await stepsFor("pacman");
+  Assert.ok(text.includes("Vimma's pacman repository"), "pacman: the install type");
+  Assert.ok(text.includes("sudo pacman -Syu"), "pacman: its upgrade command");
+  Assert.ok(!text.includes("curl "), "pacman: no download command");
+
+  text = await stepsFor("deb");
+  Assert.ok(text.includes("sudo apt install ./vimma_9.9.9_amd64.deb"), "deb: the download");
+  Assert.ok(!text.includes(guide), "deb: no line to the guide while the feature is off");
+  text = await stepsFor("deb", [["vimma.feature.packageRepos", true]]);
+  Assert.ok(text.includes("sudo apt install ./vimma_9.9.9_amd64.deb"), "deb: still the download");
+  Assert.ok(text.includes(guide), "deb: one line to the guide's repository section");
+
+  await make("/etc/apt/sources.list.d/vimma.sources");
+  text = await stepsFor("deb", [["vimma.feature.packageRepos", true]]);
+  Assert.ok(text.includes("sudo apt update && sudo apt upgrade"), "deb: apt's upgrade");
+  Assert.ok(!text.includes("curl "), "deb with its repository: no download command");
+  Assert.ok(!text.includes(guide), "deb with its repository: no line to the guide");
+
+  text = await stepsFor("rpm");
+  Assert.ok(text.includes("sudo dnf install ./vimma-9.9.9-1.x86_64.rpm"), "rpm: the download");
+  await make("/etc/yum.repos.d/vimma.repo");
+  text = await stepsFor("rpm");
+  Assert.ok(text.includes("sudo dnf upgrade vimma"), "rpm: dnf's upgrade");
+  Assert.ok(!text.includes("zypper"), "rpm with dnf's repository only: no zypper command");
+  await make("/etc/zypp/repos.d/vimma.repo");
+  text = await stepsFor("rpm");
+  Assert.ok(text.includes("sudo zypper up vimma"), "rpm: zypper's upgrade");
+  Assert.ok(!text.includes("curl "), "rpm with its repository: no download command");
+});
+
 add_task(async function update_command_says_up_to_date() {
   await serve(await manifest({ update: null }));
   await BrowserTestUtils.withNewTab("https://example.com/", async () => {
@@ -525,6 +606,39 @@ add_task(async function a_damaged_saved_result_is_dropped_not_thrown() {
   VimmaUpdates._reset();
 });
 
+add_task(async function a_saved_array_is_not_read_as_its_text() {
+  // #1237: RegExp.test reads ["1"] as "1", so an array in the pref passed as a string.
+  const offer = {
+    appVersion: "999.0",
+    buildId: "1",
+    displayVersion: "999.0.0",
+    detailsUrl: "https://github.com/vimma-browser/vimma/releases",
+    urgent: false,
+    advisories: [],
+  };
+  const save = (/** @type {object} */ extra) =>
+    Services.prefs.setStringPref(
+      "vimma.update.last",
+      JSON.stringify({ outcome: "offer", offer, ...extra }),
+    );
+  save({ serial: "20991231000000", key: { id: "k", slot: "primary" } });
+  VimmaUpdates._load();
+  Assert.equal(VimmaUpdates.status().offer?.displayVersion, "999.0.0", "a sound offer is kept");
+  Assert.equal(VimmaUpdates.status().serial, "20991231000000");
+  Assert.deepEqual(VimmaUpdates.status().key, { id: "k", slot: "primary" });
+  for (const field of ["appVersion", "buildId", "displayVersion", "detailsUrl"]) {
+    save({ offer: { ...offer, [field]: [/** @type {Record<string, unknown>} */ (offer)[field]] } });
+    VimmaUpdates._load();
+    Assert.equal(VimmaUpdates.status().offer, null, `${field} as an array`);
+    Assert.equal(VimmaUpdates.status().outcome, "current", `${field} as an array`);
+  }
+  save({ serial: ["20991231000000"], key: { id: ["k"], slot: "primary" } });
+  VimmaUpdates._load();
+  Assert.equal(VimmaUpdates.status().serial, null, "a serial as an array");
+  Assert.equal(VimmaUpdates.status().key, null, "a key id as an array");
+  VimmaUpdates._reset();
+});
+
 add_task(async function an_oversized_or_compressed_bomb_response_is_refused() {
   for (const query of ["big", "bigstream"]) {
     await SpecialPowers.pushPrefEnv({ set: [["vimma.update.url", `${HOST}?${query}`]] });
@@ -568,10 +682,7 @@ add_task(async function a_config_with_errors_still_turns_checks_off() {
   await fetch(`${HOST}?reset`);
   await serve(await manifest());
   const file = PathUtils.join(dir, "broken.toml");
-  await IOUtils.writeUTF8(
-    file,
-    "schema = 2\n[updates]\ncheck = false\n[keys]\nnot_an_action = 1\n",
-  );
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n[keys]\nnot_an_action = 1\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   await until(() => !VimmaUpdates.status().enabled, "check = false honoured from the broken file");
@@ -585,12 +696,12 @@ add_task(async function an_opt_out_under_a_misspelt_table_never_turns_checks_on(
   await fetch(`${HOST}?reset`);
   await serve(await manifest());
   const off = PathUtils.join(dir, "off.toml");
-  await IOUtils.writeUTF8(off, "schema = 2\n[updates]\ncheck = false\n");
+  await IOUtils.writeUTF8(off, "[updates]\ncheck = false\n");
   await ConfigHost.reload(off);
   await until(() => !VimmaUpdates.status().enabled, "check = false");
   // [update] for [updates]: the file parses and may mean check = false.
   const misspelt = PathUtils.join(dir, "misspelt.toml");
-  await IOUtils.writeUTF8(misspelt, "schema = 2\n[update]\ncheck = false\n");
+  await IOUtils.writeUTF8(misspelt, "[update]\ncheck = false\n");
   await ConfigHost.reload(misspelt);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   Assert.ok(!VimmaUpdates.status().enabled, "checks stay off");
@@ -606,16 +717,16 @@ add_task(async function an_unreadable_check_never_undoes_an_opt_out_stated_in_a_
   await serve(await manifest());
   // 1. A valid file without [updates]: checks on.
   const file = PathUtils.join(dir, "967.toml");
-  await IOUtils.writeUTF8(file, "schema = 2\n");
+  await IOUtils.writeUTF8(file, "");
   await ConfigHost.reload(file);
   await until(() => VimmaUpdates.status().enabled, "on with a valid file");
   // 2. check = false beside an error elsewhere: off, the valid file stays in force.
-  await IOUtils.writeUTF8(file, "schema = 2\n[updates]\ncheck = false\n[keys]\nnope = 1\n");
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n[keys]\nnope = 1\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   await until(() => !VimmaUpdates.status().enabled, "check = false from the broken file");
   // 3. The TOML no longer parses: check = false was the last word, so checks stay off.
-  await IOUtils.writeUTF8(file, "schema = 2\n[updates\ncheck = false\n");
+  await IOUtils.writeUTF8(file, "[updates\ncheck = false\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   Assert.ok(!VimmaUpdates.status().enabled, "checks stay off");
@@ -632,7 +743,7 @@ add_task(async function a_config_that_parses_with_errors_still_checks() {
   // A key a newer build writes: the file parses, and says nothing about [updates] check. (An
   // unknown provider cli, the case #741 met, is now only a warning: #742.)
   const file = PathUtils.join(dir, "newer.toml");
-  await IOUtils.writeUTF8(file, "schema = 2\n[agent]\nfuture_key = 1\n");
+  await IOUtils.writeUTF8(file, "[agent]\nfuture_key = 1\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   Assert.ok(VimmaUpdates.status().enabled, "checks stay on");

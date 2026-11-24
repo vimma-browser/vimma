@@ -233,56 +233,62 @@ describe("the gate on a real measurement", () => {
     (r.head.cases[KEY_CASE]?.ratio ?? NaN) / (r.base.cases[KEY_CASE]?.ratio ?? NaN) - 1;
   const keyCase = CASES.filter((c) => c.name === KEY_CASE);
 
-  it("fails a dispatcher made 20 % slower and passes the unchanged code", () => {
-    // Size the injected work from its cost per iteration, measured with enough of it (512
-    // iterations, about doubling a single key) that the runner's noise is small next to it. Aim
-    // at +25 % so that a reading of at least +20 % below needs no second try most of the time.
-    const SIZING = 512;
-    const sizing = measure(
-      [...variant("a|", 0, keyCase), ...variant("b|", SIZING, keyCase)],
-      reference,
-    );
-    const perIteration = keyChange(against([sizing], "b|", "a|")) / SIZING;
-    let n = Math.max(1, Math.round(0.25 / perIteration));
-
-    // Under the coverage pool, an A/B can still read every case of one variant a few per cent
-    // off another, even the apply case the slowdown does not touch, and the injected loop's cost
-    // moves as the JIT recompiles it (14 iterations read +19 % in one A/B, +3 % in
-    // the next). The bench takes the median of 15 processes for this; the test takes the median
-    // of three A/Bs, and checks the slowdown on that same median: while a single key reads under
-    // +20 %, it grows the work towards +25 % and measures again. The work only grows.
-    const ab = () =>
-      measure(
-        [
-          ...variant("base|", 0, CASES),
-          ...variant("same|", 0, CASES),
-          ...variant("slow|", n, CASES),
-        ],
+  // A timing gate: hosted macOS runners are too noisy for it, and failed it on unchanged code
+  // again and again (#667, #1277). It runs on Linux, where CI's required jobs run it.
+  it.skipIf(process.platform === "darwin")(
+    "fails a dispatcher made 20 % slower and passes the unchanged code",
+    () => {
+      // Size the injected work from its cost per iteration, measured with enough of it (512
+      // iterations, about doubling a single key) that the runner's noise is small next to it. Aim
+      // at +25 % so that a reading of at least +20 % below needs no second try most of the time.
+      const SIZING = 512;
+      const sizing = measure(
+        [...variant("a|", 0, keyCase), ...variant("b|", SIZING, keyCase)],
         reference,
       );
-    let runs = [ab(), ab(), ab()];
-    for (let attempt = 1; attempt < 3; attempt++) {
-      const change = keyChange(against(runs, "slow|"));
-      if (change >= 0.2) break;
-      n = Math.max(Math.ceil(n * 1.25), change > 0 ? Math.ceil((n * 0.25) / change) : 2 * n);
-      runs = [ab(), ab(), ab()];
-    }
-    slow.iterations = 0;
-    const slower = against(runs, "slow|");
+      const perIteration = keyChange(against([sizing], "b|", "a|")) / SIZING;
+      let n = Math.max(1, Math.round(0.25 / perIteration));
 
-    // The dispatcher is at least 20 % slower: every case that dispatches, not the apply case, so
-    // the suite (geometric mean of five cases) moves about 1.2 ** (4 / 5), +15.7 %, over the 10 %
-    // gate. The multi-key cases move a little less than a single key does.
-    // The gate under test is the ratio gate. The 50 µs budget is for the code as it ships, and
-    // compare.test.ts covers it; under coverage, the instrumented apply case can read over it
-    // in all three A/Bs, which says nothing about the gate (issue #202).
-    const gate = { budgetUs: Infinity };
-    expect(keyChange(slower)).toBeGreaterThanOrEqual(0.15);
-    const regressed = compare(slower.head, slower.base, gate);
-    expect(regressed.ok, regressed.failures.join("\n")).toBe(false);
-    expect(regressed.failures.join("\n")).toMatch(/^suite: \+/);
-    const unchanged = against(runs, "same|");
-    const same = compare(unchanged.head, unchanged.base, gate);
-    expect(same.ok, same.failures.join("\n")).toBe(true);
-  }, 180_000);
+      // Under the coverage pool, an A/B can still read every case of one variant a few per cent
+      // off another, even the apply case the slowdown does not touch, and the injected loop's cost
+      // moves as the JIT recompiles it (14 iterations read +19 % in one A/B, +3 % in
+      // the next). The bench takes the median of 15 processes for this; the test takes the median
+      // of three A/Bs, and checks the slowdown on that same median: while a single key reads under
+      // +20 %, it grows the work towards +25 % and measures again. The work only grows.
+      const ab = () =>
+        measure(
+          [
+            ...variant("base|", 0, CASES),
+            ...variant("same|", 0, CASES),
+            ...variant("slow|", n, CASES),
+          ],
+          reference,
+        );
+      let runs = [ab(), ab(), ab()];
+      for (let attempt = 1; attempt < 3; attempt++) {
+        const change = keyChange(against(runs, "slow|"));
+        if (change >= 0.2) break;
+        n = Math.max(Math.ceil(n * 1.25), change > 0 ? Math.ceil((n * 0.25) / change) : 2 * n);
+        runs = [ab(), ab(), ab()];
+      }
+      slow.iterations = 0;
+      const slower = against(runs, "slow|");
+
+      // The dispatcher is at least 20 % slower: every case that dispatches, not the apply case, so
+      // the suite (geometric mean of five cases) moves about 1.2 ** (4 / 5), +15.7 %, over the 10 %
+      // gate. The multi-key cases move a little less than a single key does.
+      // The gate under test is the ratio gate. The 50 µs budget is for the code as it ships, and
+      // compare.test.ts covers it; under coverage, the instrumented apply case can read over it
+      // in all three A/Bs, which says nothing about the gate (issue #202).
+      const gate = { budgetUs: Infinity };
+      expect(keyChange(slower)).toBeGreaterThanOrEqual(0.15);
+      const regressed = compare(slower.head, slower.base, gate);
+      expect(regressed.ok, regressed.failures.join("\n")).toBe(false);
+      expect(regressed.failures.join("\n")).toMatch(/^suite: \+/);
+      const unchanged = against(runs, "same|");
+      const same = compare(unchanged.head, unchanged.base, gate);
+      expect(same.ok, same.failures.join("\n")).toBe(true);
+    },
+    180_000,
+  );
 });

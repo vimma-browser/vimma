@@ -129,7 +129,7 @@ async function connect(port, ticket, session = SESSION) {
   const client = new Client(port);
   const welcome = await ticketHandshake(client, ticket);
   Assert.equal(welcome?.type, "welcome", "the ticket is welcomed");
-  Assert.equal(welcome.role, "agent", "as the agent role");
+  Assert.equal(welcome?.role, "agent", "as the agent role");
   const hello = await client.call("agent-hello", { client: { name: "claude-code" }, session });
   Assert.ok(hello.ok, `agent-hello: ${JSON.stringify(hello.error)}`);
   return client;

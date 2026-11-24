@@ -61,11 +61,93 @@ export function parseToml(text, { integersAsBigInt = false } = {}) {
   } catch (e) {
     /* c8 ignore next */
     if (!(e instanceof TomlError)) throw e;
+    // Stryker disable next-line Regex: every smol-toml message starts so; `^` changes nothing
     let message = e.message.replace(/^Invalid TOML document: /, "").split("\n")[0] ?? "";
     const opened = unclosedBracket(text, e.line, e.column);
+    // Past the last line: the file ends inside a bracket, or after a key with no value. The
+    // line the user wrote is the bracket's, or the last one (#1273).
+    const lines = text.split("\n");
+    const last = lines.length - (text.endsWith("\n") ? 1 : 0);
+    if (e.line > last) {
+      if (opened) {
+        message = `unclosed "${opened.char}": the file ends before it is closed`;
+        return { ok: false, error: { line: opened.line, column: opened.column, message } };
+      }
+      return {
+        ok: false,
+        error: {
+          line: last,
+          column: (lines[last - 1] ?? "").replace(/\r$/, "").length + 1,
+          message,
+        },
+      };
+    }
     if (opened) message += ` (unclosed "${opened.char}" opened at line ${opened.line}?)`;
+    const redefined = redefinedHeader(text, e.line, message);
+    if (redefined?.dotted) {
+      const name = redefined.name;
+      message +=
+        ` ([${name}] is already made by a ${name}.… line above: a table is either dotted` +
+        ` keys or a [${name}] header, not both; write those lines under [${name}], without` +
+        ` "${name}.")`;
+    } else if (redefined) {
+      message += ` ([${redefined.name}] is already at line ${redefined.line}: put these lines under it)`;
+    } else {
+      const twice = redefinedKey(text, e.line, message);
+      if (twice) message += ` (${twice.name} is already set at line ${twice.line})`;
+    }
     return { ok: false, error: { line: e.line, column: e.column, message } };
   }
+}
+
+/**
+ * For a redefinition reported at a `[name]` header: where `[name]` was made before, by the same
+ * header earlier in the file (an example pasted with its headers) or by a line before the first
+ * header that starts with the dotted key `name.` (a line pasted at the top) (#1270). A rough
+ * scan, only used to word a hint: inline tables and quoted names are not looked for.
+ * @param {string} text
+ * @param {number} line  1-based, where the parser stopped
+ * @param {string} message
+ * @returns {{ name: string, line: number, dotted: boolean } | undefined}
+ */
+function redefinedHeader(text, line, message) {
+  if (!message.startsWith("trying to redefine")) return undefined;
+  const lines = text.split("\n");
+  const headerOf = (/** @type {string} */ l) =>
+    /^[ \t]*\[[ \t]*([A-Za-z0-9_.-]+)[ \t]*\][ \t]*(?:#.*)?\r?$/.exec(l)?.[1];
+  const name = headerOf(lines[line - 1] ?? "");
+  if (!name) return undefined;
+  const dotted = new RegExp(`^[ \\t]*${name.replaceAll(".", "\\.")}[ \\t]*\\.`);
+  let inHeader = false;
+  for (const [i, l] of lines.slice(0, line - 1).entries()) {
+    if (headerOf(l) === name) return { name, line: i + 1, dotted: false };
+    if (/^[ \t]*\[/.test(l)) inHeader = true;
+    else if (!inHeader && dotted.test(l)) return { name, line: i + 1, dotted: true };
+  }
+  return undefined;
+}
+
+/**
+ * For a redefinition reported at a `key = …` line: the earlier line of the same table that set
+ * that key, so the message names it. A rough scan, only used to word a hint: back to the
+ * table's header, bare and dotted keys only.
+ * @param {string} text
+ * @param {number} line  1-based, where the parser stopped
+ * @param {string} message
+ * @returns {{ name: string, line: number } | undefined}
+ */
+function redefinedKey(text, line, message) {
+  if (!message.startsWith("trying to redefine")) return undefined;
+  const keyOf = (/** @type {string} */ l) => /^[ \t]*([A-Za-z0-9_.-]+)[ \t]*=/.exec(l)?.[1];
+  const lines = text.split("\n");
+  const name = keyOf(lines[line - 1] ?? "");
+  if (!name) return undefined;
+  for (let n = line - 2; n >= 0; n--) {
+    const l = /** @type {string} */ (lines[n]);
+    if (/^[ \t]*\[/.test(l)) return undefined;
+    if (keyOf(l) === name) return { name, line: n + 1 };
+  }
+  return undefined;
 }
 
 /**
@@ -75,18 +157,23 @@ export function parseToml(text, { integersAsBigInt = false } = {}) {
  * @param {string} text
  * @param {number} line
  * @param {number} column
- * @returns {{ char: string, line: number } | undefined}
+ * @returns {{ char: string, line: number, column: number } | undefined}
  */
 function unclosedBracket(text, line, column) {
-  /** @type {{ char: string, line: number }[]} */
+  /** @type {{ char: string, line: number, column: number }[]} */
+  // Stryker disable next-line ArrayDeclaration: an element with no line is never found below
   const stack = [];
   let at = 1;
-  let col = 1;
-  for (let i = 0; i < text.length && (at < line || (at === line && col < column)); i++, col++) {
+  let lineStart = 0; // index of line `at`'s first character: column is i - lineStart + 1
+  for (
+    let i = 0;
+    i < text.length && (at < line || (at === line && i - lineStart + 1 < column));
+    i++
+  ) {
     const c = text[i];
     if (c === "\n") {
       at++;
-      col = 0;
+      lineStart = i + 1;
     } else if (c === "#") {
       while (i + 1 < text.length && text[i + 1] !== "\n") i++;
     } else if (c === '"' || c === "'") {
@@ -95,10 +182,17 @@ function unclosedBracket(text, line, column) {
       while (j < text.length && !text.startsWith(q, j) && (q.length === 3 || text[j] !== "\n")) {
         j += c === '"' && text[j] === "\\" ? 2 : 1;
       }
-      for (let k = i; k < j; k++) if (text[k] === "\n") at++;
-      i = j + q.length - 1;
+      for (let k = i; k < j; k++) {
+        if (text[k] === "\n") {
+          at++;
+          lineStart = k + 1;
+        }
+      }
+      // Past the closing quote; an unclosed one-line string stops before its line break, which
+      // the next turn counts (#1257).
+      i = text.startsWith(q, j) ? j + q.length - 1 : j - 1;
     } else if (c === "[" || c === "{") {
-      stack.push({ char: c, line: at });
+      stack.push({ char: c, line: at, column: i - lineStart + 1 });
     } else if (c === "]" || c === "}") {
       stack.pop();
     }
@@ -171,6 +265,7 @@ export function locateKeys(text) {
   /** @param {number} pos */
   const lineAt = (pos) => {
     let lo = 0;
+    // Stryker disable next-line ArithmeticOperator: no index past the end is <= pos, so lo never gets there
     let hi = starts.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
@@ -294,9 +389,11 @@ export function locateKeys(text) {
   };
   /** @param {Path} base */
   const keyval = (base) => {
+    // Stryker disable next-line CallExpression: both callers have just skipped the blanks
     ws();
     const at = i;
     const full = cap([...base, ...key()]);
+    // Stryker disable next-line ArithmeticOperator: the extra prefixes are recorded at this same at or before
     for (let n = base.length + 1; n <= full.length; n++) record(full.slice(0, n), at);
     i++; // "="
     ws();
@@ -330,6 +427,7 @@ export function locateKeys(text) {
     } else {
       keyval(table);
     }
+    // Stryker disable next-line UpdateOperator: unreachable, every pass moves i on; the guard stays for bad input
     /* c8 ignore next */
     if (i === before) i++; // never loop forever on input the parser would have rejected
   }
@@ -357,9 +455,12 @@ export function tomlLiteral(/** @type {string | boolean | number} */ value) {
   return JSON.stringify(value).replace(/\x7f/g, "\\u007F");
 }
 
-/** Structural equality of two parsed TOML values (key order ignored). */
-/** @returns {boolean} */
-function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
+/**
+ * Structural equality of two parsed TOML values (key order ignored). Exported for its tests:
+ * setTomlKeys reaches it only with what a wrong line edit could change.
+ * @returns {boolean}
+ */
+export function sameTomlValue(/** @type {unknown} */ a, /** @type {unknown} */ b) {
   if (a instanceof Date || b instanceof Date) return String(a) === String(b);
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
     return Object.is(a, b);
@@ -370,7 +471,7 @@ function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
   return (
     ka.length === kb.length &&
     ka.every((k) =>
-      same(
+      sameTomlValue(
         /** @type {Record<string, unknown>} */ (a)[k],
         /** @type {Record<string, unknown>} */ (b)[k],
       ),
@@ -383,7 +484,7 @@ function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
  * string, an array or an inline table, which a line edit cannot replace safely.
  * @param {string} line @param {number} i
  */
-function valueEnd(line, i) {
+export function valueEnd(line, i) {
   if (line.startsWith('"""', i) || line.startsWith("'''", i)) return -1;
   const c = line[i];
   if (c === "[" || c === "{") return -1;
@@ -425,14 +526,90 @@ function headerName(line) {
   const close = s.indexOf("]");
   if (close < 0) return null;
   const name = trimBlank(s.slice(1, close));
+  // Stryker disable next-line LogicalOperator: the caller compares with a bare name, never "" or with a "["
   if (!name || name.includes("[")) return null;
   const rest = trimBlank(s.slice(close + 1));
   return rest === "" || rest[0] === "#" ? name : null;
 }
 
 /**
+ * Whether `line` is the header of a sub-table of `table`: `[table.sub]` or `[[table.sub]]`.
+ * A quoted name holding a `]` may be missed; setTomlKeys then refuses the edit as before.
+ * @param {string} line @param {string} table
+ */
+function subTableHeader(line, table) {
+  const s = trimBlank(line.endsWith("\r") ? line.slice(0, -1) : line);
+  if (s[0] !== "[") return false;
+  const array = s.startsWith("[[");
+  const close = s.indexOf(array ? "]]" : "]");
+  if (close < 0) return false;
+  const path = parsePath(s.slice(array ? 2 : 1, close)).map((seg) =>
+    typeof seg === "string" ? trimBlank(seg) : seg,
+  );
+  return path.length > 1 && path[0] === table;
+}
+
+/**
+ * setKey for a `table` with no `[table]` header that the file has all the same: made by
+ * `table.key = …` lines before the first header, whose line is edited, or after whose last one
+ * the new key goes, as `table.key`; or by an inline `table = { … }`, which a line edit cannot
+ * change safely, so the message says what to set by hand. setTomlKeys checks the result.
+ * @param {string[]} lines
+ * @param {(path: Path) => number | undefined} where
+ * @param {{ table: string, key: string, literal: string, sub: unknown, plain: boolean,
+ *   eol: string }} edit
+ * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
+ */
+function dottedKey(lines, where, { table, key, literal, sub, plain, eol }) {
+  const fail = (/** @type {number} */ line, /** @type {string} */ message) => ({
+    ok: /** @type {const} */ (false),
+    error: { line, column: 1, message },
+  });
+  const at = where([table]) ?? 1;
+  // A quoted `["table"]` header, which headerName does not take: not edited.
+  if (!plain || /^[ \t]*\[/.test(lines[at - 1] ?? "")) {
+    return fail(at, `${table} is not a plain [${table}] table`);
+  }
+  if (new RegExp(`^[ \\t]*${table}[ \\t]*=`).test(lines[at - 1] ?? "")) {
+    return fail(
+      at,
+      `${table} is an inline table ({ … }); set ${key} = ${literal} in it by hand, or write it as a [${table}] table`,
+    );
+  }
+  // The parser's own positions, not a scan of the text: a `[` row of an array or a line in a
+  // multi-line string is neither a header nor one of the table's keys.
+  const keyRe = new RegExp(`^([ \\t]*${table}[ \\t]*\\.[ \\t]*${key}[ \\t]*=[ \\t]*)`);
+  // where() answers a missing key with its table's line: the key's own line only when it is set.
+  const own = key in /** @type {Record<string, unknown>} */ (sub) ? where([table, key]) : undefined;
+  if (own !== undefined) {
+    const line = lines[own - 1] ?? "";
+    const m = keyRe.exec(line);
+    if (!m) return fail(own, `${table}.${key} is not a plain key = value line`);
+    const stop = valueEnd(line, m[0].length);
+    if (stop < 0) return fail(own, `${table}.${key} is not a one-line value`);
+    lines[own - 1] = `${m[0]}${literal}${line.slice(stop)}`;
+    return { ok: true, text: lines.join("\n") };
+  }
+  const dotted = new RegExp(`^[ \\t]*${table}[ \\t]*\\.`);
+  // A sub-table with a header of its own (`[theme.colors]`) is no line of the dotted part.
+  const rows = Object.keys(/** @type {Record<string, unknown>} */ (sub))
+    .map((k) => where([table, k]))
+    .filter((n) => n === undefined || !/^[ \t]*\[/.test(lines[n - 1] ?? ""));
+  if (!rows.length || rows.some((n) => n === undefined || !dotted.test(lines[n - 1] ?? ""))) {
+    return fail(at, `${table} is not a plain [${table}] table`);
+  }
+  const last = Math.max(...rows.map(Number)) - 1;
+  // A CRLF file's last line may have no line end: it gets one, and the new line none.
+  const cr = eol === "\r\n" ? "\r" : "";
+  const ended = (lines[last] ?? "").endsWith("\r") || last < lines.length - 1;
+  if (cr && !ended) lines[last] += cr;
+  lines.splice(last + 1, 0, `${table}.${key} = ${literal}${cr && ended ? cr : ""}`);
+  return { ok: true, text: lines.join("\n") };
+}
+
+/**
  * One edit on parsed `text`.
- * @param {string} text @param {Record<string, any>} doc @param {TomlEdit} edit
+ * @param {string} text @param {Record<string, unknown>} doc  `text`, parsed @param {TomlEdit} edit
  * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
  */
 function setKey(text, doc, { table, key, value }) {
@@ -447,10 +624,26 @@ function setKey(text, doc, { table, key, value }) {
   const literal = tomlLiteral(value);
   const headerAt = lines.findIndex((l) => headerName(l) === table);
   if (headerAt < 0) {
-    if (table in doc) return fail(where([table]) ?? 1, `${table} is not a plain [${table}] table`);
+    const at = (where([table]) ?? 0) - 1;
+    const sub = doc[table];
+    const plain = typeof sub === "object" && sub !== null && !Array.isArray(sub);
+    // Made by sub-table headers alone (`[theme.colors]` without `[theme]`, setup-v2 decision 6):
+    // TOML 1.0 allows the `[table]` header after them too, but before the first one is where a
+    // reader looks for it.
+    if (plain && at >= 0 && subTableHeader(/** @type {string} */ (lines[at]), table)) {
+      const cr = eol === "\r\n" ? "\r" : "";
+      lines.splice(at, 0, `[${table}]${cr}`, `${key} = ${literal}${cr}`, cr);
+      return { ok: true, text: lines.join("\n") };
+    }
+    if (table in doc) return dottedKey(lines, where, { table, key, literal, sub, plain, eol });
     const body = `[${table}]${eol}${key} = ${literal}${eol}`;
     if (text === "") return { ok: true, text: body };
     return { ok: true, text: `${text}${text.endsWith("\n") ? "" : eol}${eol}${body}` };
+  }
+  // A `[table]` line inside a multi-line string is no header: the file has no such table.
+  const t = doc[table];
+  if (typeof t !== "object" || t === null || Array.isArray(t)) {
+    return fail(headerAt + 1, `${table} is not a plain [${table}] table`);
   }
   let end = lines.length;
   for (let n = headerAt + 1; n < lines.length; n++) {
@@ -469,10 +662,12 @@ function setKey(text, doc, { table, key, value }) {
     lines[n] = `${m[0]}${literal}${line.slice(stop)}`;
     return { ok: true, text: lines.join("\n") };
   }
-  if (key in doc[table]) {
+  if (key in t) {
+    // Stryker disable next-line ArithmeticOperator: the fallback is unreachable, locateKeys has every key's line
     return fail(where([table, key]) ?? headerAt + 1, `${name} is not a plain key = value line`);
   }
   let last = headerAt;
+  // Stryker disable next-line ArithmeticOperator: the header line would set last to headerAt
   for (let n = headerAt + 1; n < end; n++) {
     if (!/^[ \t]*(#.*)?\r?$/.test(/** @type {string} */ (lines[n]))) last = n;
   }
@@ -486,13 +681,12 @@ function setKey(text, doc, { table, key, value }) {
  * keeps comments, hence the line edit; the result is parsed again and must equal the old file
  * plus the new values, so an edit the line scan got wrong is an error, never a changed file.
  * @param {string} text  the file; "" for a new one
- * @param {TomlEdit[]} edits
+ * @param {readonly TomlEdit[]} edits
  * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
  */
 export function setTomlKeys(text, edits) {
   const before = parseToml(text);
   if (!before.ok) return before;
-  /** @type {Record<string, any>} */
   const want = structuredClone(before.value);
   let out = text;
   for (const edit of edits) {
@@ -504,11 +698,15 @@ export function setTomlKeys(text, edits) {
     const r = setKey(out, now.value, edit);
     if (!r.ok) return r;
     out = r.text;
-    want[edit.table] = { ...want[edit.table], [edit.key]: edit.value };
+    // setKey refused a `table` that is there but is not a table: it is one, or not there yet.
+    want[edit.table] = {
+      .../** @type {Record<string, unknown> | undefined} */ (want[edit.table]),
+      [edit.key]: edit.value,
+    };
   }
   const after = parseToml(out);
   if (!after.ok) return after;
-  if (!same(after.value, want)) {
+  if (!sameTomlValue(after.value, want)) {
     return {
       ok: false,
       error: { line: 1, column: 1, message: "the edit would change other keys" },

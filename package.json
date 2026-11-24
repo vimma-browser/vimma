@@ -24,7 +24,7 @@
     "diagrams:check": "node tools/diagrams/module-graph.ts --check && node tools/diagrams/render.ts --check",
     "spec-status": "node tools/spec-lint/spec-status.ts",
     "format": "prettier --write .",
-    "gen-docs": "node tools/gen-docs.ts && prettier --log-level warn --write docs/bindings.md docs/bindings.json",
+    "gen-docs": "node tools/gen-docs.ts && prettier --log-level warn --write docs/bindings.md docs/bindings.json docs/guide.md",
     "sync-core": "node tools/sync-core.ts",
     "version-files": "node tools/version-files/version-files.ts",
     "import": "tools/upstream/verify-source.sh --require && npm run sync-core && npm run version-files && node tools/import/restore-patched.ts && surfer config brand vimma && surfer import && node tools/import/link-update-certs.ts && SURFER_MOZCONFIG_ONLY=1 surfer build",
@@ -56,14 +56,14 @@
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
     "@types/node": "^22.20.5",
-    "@vitest/coverage-v8": "^5.1.0",
+    "@vitest/coverage-v8": "^5.1.1",
     "@zen-browser/surfer": "1.14.9",
     "ajv": "^8.20.0",
     "amaro": "^1.3.0",
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "eslint-scope": "9.1.2",
     "espree": "^11.2.0",
-    "fast-check": "^4.10.2",
+    "fast-check": "^4.10.3",
     "globals": "^17.14.0",
     "js-yaml": "^5.5.0",
     "prettier": "^3.10.1",
@@ -73,6 +73,7 @@
   "overrides": {
     "sharp": "^0.35.5",
     "qs": "^6.17.0",
-    "minimatch": "^11.0.4"
+    "minimatch": "^11.0.4",
+    "is-apple-silicon": "1.0.1"
   }
 }

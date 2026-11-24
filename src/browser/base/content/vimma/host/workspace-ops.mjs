@@ -17,8 +17,10 @@ import { findWorkspace, workspaceRefFor } from "../core/workspaces.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import {
+  isMirrored,
+  mirrorWritable,
   moveWorkspaceBookmarks,
-  removeItem,
+  removeWorkspaceFolder,
   renameWorkspaceFolder,
   workspaceFolder,
 } from "./bookmark-ops.mjs";
@@ -86,9 +88,10 @@ export function activeWorkspaceName(win) {
  * `:wsrename name`: renames the active workspace (and its container), in every window.
  * @param {BrowserWindow} win
  * @param {string} name
+ * @param {(text: string) => void} [say]  the notice, for what the folder's rename says later
  * @returns {string | null}
  */
-export function renameWorkspace(win, name) {
+export function renameWorkspace(win, name, say) {
   const { def, refused } = definitionOf(win);
   if (!def) return refused ?? NO_WORKSPACES;
   try {
@@ -97,8 +100,10 @@ export function renameWorkspace(win, name) {
     return `rename workspace: ${reason(e)}`;
   }
   // Its bookmarks folder takes the new name; the link is by guid (docs/specs/bookmarks.md).
-  renameWorkspaceFolder(def, name).catch((e) =>
-    console.error("vimma: the workspace's bookmarks folder kept its name", e),
+  // A folder bookmarks.toml mirrors: its table's header is renamed (bookmarks-file Behaviour 10).
+  renameWorkspaceFolder(def, name).then(
+    (said) => said && say?.(said),
+    (e) => console.error("vimma: the workspace's bookmarks folder kept its name", e),
   );
   return null;
 }
@@ -182,7 +187,22 @@ export function closeWorkspace(win, text, ask, say, choose) {
           if (unchanged()) close();
           return;
         }
-        askBookmarks(now, folder, { unchanged, close, say, choose });
+        // A folder bookmarks.toml mirrors while the file is not written can only be kept
+        // (docs/specs/bookmarks-file.md Behaviour 11), so there is nothing to ask; written, its
+        // table moves or goes with the answer (Behaviour 10).
+        return isMirrored(folder.guid).then(async (fileOwned) => {
+          if (!fileOwned || mirrorWritable()) {
+            const other = WorkspaceStore.definitions.workspaces.find((d) => d.id !== now.id);
+            const into = other ? await workspaceFolder(other) : null;
+            const noMove = !!into && !mirrorWritable() && (await isMirrored(into.guid));
+            askBookmarks(now, folder, { unchanged, close, say, choose, noMove });
+            return;
+          }
+          if (!unchanged()) return;
+          close().then((done) => {
+            if (done) say(`closed "${now.name}"; bookmarks.toml keeps its bookmarks`);
+          });
+        });
       },
       (e) => say(`close workspace: ${reason(e)}`),
     );
@@ -196,12 +216,16 @@ export function closeWorkspace(win, text, ask, say, choose) {
  * @param {WorkspaceDefinition} def
  * @param {{ guid: string, count: number }} folder
  * @param {{ unchanged: () => WorkspaceDefinition | null, close: () => Promise<boolean>,
- *   say: (text: string) => void,
+ *   say: (text: string) => void, noMove?: boolean,
  *   choose: (question: string, choices: Record<string, () => void>) => void }} flow
  */
-function askBookmarks(def, folder, { unchanged, close, say, choose }) {
+function askBookmarks(def, folder, { unchanged, close, say, choose, noMove = false }) {
   const count = (/** @type {number} */ n) => `${n} bookmark${n === 1 ? "" : "s"}`;
-  const to = WorkspaceStore.definitions.workspaces.find((d) => d.id !== def.id) ?? null;
+  // A destination bookmarks.toml mirrors cannot take them (docs/specs/bookmarks-file.md
+  // Behaviour 11): then only k and d are offered.
+  const to = noMove
+    ? null
+    : (WorkspaceStore.definitions.workspaces.find((d) => d.id !== def.id) ?? null);
   /** @param {(guid: string) => Promise<string>} act  what is done with the folder, said after */
   const answer = (act) => () => {
     if (!unchanged()) return;
@@ -225,7 +249,8 @@ function askBookmarks(def, folder, { unchanged, close, say, choose }) {
     k: keep,
     Enter: keep,
     d: answer(async (guid) => {
-      await removeItem(guid);
+      const refused = await removeWorkspaceFolder(guid);
+      if (refused) return `closed "${def.name}"; ${refused}`;
       return `closed "${def.name}" and deleted its ${count(folder.count)}`;
     }),
   };

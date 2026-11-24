@@ -9,7 +9,12 @@
 import { removedAction, resolveActionName, suggestAction } from "./actions.mjs";
 import { parseCommandLine } from "./cmdline.mjs";
 import { DEFAULT_CONFIG, defaultKeys } from "../config/defaults.mjs";
-import { insertEditCommand } from "./editable.mjs";
+import {
+  INSERT_EDIT_DOES,
+  insertEditChords,
+  insertEditCommand,
+  matchSiteRule,
+} from "./editable.mjs";
 import { SUGGESTION_ACTIONS } from "./suggestions.mjs";
 import { firefoxShortcuts } from "./firefox-keys.mjs";
 import {
@@ -122,6 +127,19 @@ function commandOrThrow(text, path, cache) {
 }
 
 /**
+ * A prefix or leader written as a sequence (`ctrl+b ctrl+b`), which parseKey would read as one
+ * chord with an odd modifier (#1273). A lone space is the space key.
+ * @param {unknown} text
+ * @param {string} path
+ * @param {string} message
+ */
+function oneChord(text, path, message) {
+  if (typeof text === "string" && /\s/.test(text.trim())) {
+    throw new KeymapError(`${message}, got ${JSON.stringify(text)}`, path);
+  }
+}
+
+/**
  * @template T
  * @param {() => T} fn
  * @param {string} path
@@ -156,6 +174,73 @@ function asList(v, path) {
 const target = (mode, context) => (mode === "normal" && context === "pdf" ? "pdf" : mode);
 
 /**
+ * A trie over `entries`, which hold one binding per sequence.
+ * @param {readonly Entry[]} entries
+ * @returns {TrieNode}
+ */
+function buildTrie(entries) {
+  /** @type {TrieNode} */
+  const root = { children: new Map(), label: "" };
+  for (const e of entries) {
+    let node = root;
+    e.chords.forEach((c, i) => {
+      const k = formatKey(c);
+      let next = node.children.get(k);
+      if (!next) {
+        next = { children: new Map(), label: /** @type {string} */ (e.labels[i]) };
+        node.children.set(k, next);
+      }
+      node = next;
+    });
+    node.action = e.action;
+  }
+  return root;
+}
+
+/**
+ * Why a page never gets esc or the prefix (docs/specs/site-unbind.md decision 3), after the key's
+ * name: a page holding either would leave the user no key back to Vimma.
+ */
+const KEPT_KEYS = Object.freeze({
+  esc: "stays Vimma's on every site: it leaves insert mode and a pending key",
+  prefix: "stays Vimma's on every site: it reaches every other command",
+});
+
+/**
+ * One `[sites."<host>"] unbind` entry or one `:siteunbind` argument, read as one key in the
+ * notation `[keys]` uses, so that the file and the command accept the same keys
+ * (docs/specs/site-unbind.md behaviour 2, 4 and 5; site-unbind-command.md decision 2). `key` is
+ * the canonical chord (`ctrl+k`). Refused: text that does not parse (`notation`), esc and the
+ * prefix, alone or first (`esc`, `prefix`, with the reason in `message`), and more than one key
+ * (`sequence`, with each key in `keys`), because Vimma consumes a sequence's first key and the
+ * page would never see the second (site-unbind decision 1).
+ * @param {string} text
+ * @param {{ prefix: Chord, leader: Chord }} keys
+ * @returns {{ ok: true, key: string }
+ *   | { ok: false, why: "notation" | "esc" | "prefix", message: string }
+ *   | { ok: false, why: "sequence", keys: string[] }}
+ */
+export function readSiteKey(text, { prefix, leader }) {
+  /** @type {BindingElement[]} */
+  let els;
+  try {
+    els = parseBinding(text);
+  } catch (e) {
+    /* c8 ignore next */
+    if (!(e instanceof KeyNotationError)) throw e;
+    return { ok: false, why: "notation", message: e.message };
+  }
+  const keys = els.map((e) =>
+    formatKey("special" in e ? (e.special === "prefix" ? prefix : leader) : e),
+  );
+  const first = /** @type {string} */ (keys[0]);
+  if (first === "esc") return { ok: false, why: "esc", message: KEPT_KEYS.esc };
+  if (first === formatKey(prefix)) return { ok: false, why: "prefix", message: KEPT_KEYS.prefix };
+  if (keys.length !== 1) return { ok: false, why: "sequence", keys };
+  return { ok: true, key: first };
+}
+
+/**
  * @param {UserConfig} [user]
  * @param {{ mac?: boolean }} [options]  macOS's default keys (defaults.mjs MAC_KEYS) and inventory
  */
@@ -170,11 +255,25 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
   /** @type {Set<string>} */
   const overridden = new Set();
 
-  const prefix = notation(
-    () => parseKey(/** @type {string} */ (userKeys.prefix ?? defKeys.prefix)),
-    "keys.prefix",
-  );
+  const prefixText = /** @type {string} */ (userKeys.prefix ?? defKeys.prefix);
+  oneChord(prefixText, "keys.prefix", 'the prefix is one chord, such as "ctrl+b"');
+  const prefix = notation(() => parseKey(prefixText), "keys.prefix");
+  // Stryker disable next-line LogicalOperator: the default is true, so for an unset, true or false user value && gives the same on or off as ??
+  const insertEditing = userModal.insert_editing ?? defModal.insert_editing;
+  // The prefix must work in every mode (pdf-mode decision 5), and a text-field key is the
+  // field's in insert, command and help mode: refused, as the setup's prefix step does (#1367).
+  const field =
+    insertEditing !== false &&
+    insertEditChords({ mac }).find(([chord]) => chord === formatKey(prefix));
+  if (field) {
+    throw new KeymapError(
+      `${field[0]} ${INSERT_EDIT_DOES[field[1]]} in text fields ([modal] insert_editing), where` +
+        ` the prefix would not work: pick another chord, such as ${defKeys.prefix}`,
+      "keys.prefix",
+    );
+  }
   const leaderText = /** @type {string} */ (userModal.leader ?? defModal.leader);
+  oneChord(leaderText, "modal.leader", 'the leader is one key, such as "space"');
   const leader = notation(() => parseKey(leaderText), "modal.leader");
   const timeoutMs = userModal.timeout_ms ?? defModal.timeout_ms;
   if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs < 0) {
@@ -183,14 +282,14 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
 
   /**
    * @param {BindingElement[]} els
-   * @returns {{ chords: Chord[], labels: string[] }}
+   * @returns {{ chords: Chord[], labels: string[], seq: string }}
    */
   const concretise = (els) => {
     const chords = els.map((e) =>
       "special" in e ? (e.special === "prefix" ? prefix : leader) : e,
     );
     const labels = els.map((e) => ("special" in e ? e.special : formatKey(e)));
-    return { chords, labels };
+    return { chords, labels, seq: chords.map(formatKey).join(" ") };
   };
 
   /** @type {Entry[]} */
@@ -227,11 +326,11 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       const leader = !!first && "special" in first && first.special === "leader";
       /** @type {KeymapTarget[]} */
       const modes = global ? [...TARGETS] : leader ? ["normal", "panel", "pdf"] : ["normal", "pdf"];
-      const { chords, labels } = concretise(els);
+      const { chords, labels, seq } = concretise(els);
       entries.push({
         text,
         action,
-        seq: chords.map(formatKey).join(" "),
+        seq,
         chords,
         labels,
         layer: "keys",
@@ -266,12 +365,19 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
         const action = value.startsWith(":")
           ? commandOrThrow(value, path, commandDefs)
           : resolveOrThrow(value, path);
-        const { chords, labels } = concretise(notation(() => parseBinding(text), path));
+        const { chords, labels, seq } = concretise(notation(() => parseBinding(text), path));
         // The prefix layer must work in every mode and context (pdf-mode decision 5).
         if (mode === "pdf" && chords[0] && formatKey(chords[0]) === formatKey(prefix)) {
+          // A built-in key the user never wrote: the mistake is the prefix (#1273).
+          if (!isUser && "prefix" in userKeys) {
+            throw new KeymapError(
+              `${JSON.stringify(text)} is a [modal.pdf] key by default (${action.name}), and the` +
+                " prefix must work in every mode: pick a chord such as ctrl+a",
+              "keys.prefix",
+            );
+          }
           throw new KeymapError("[modal.pdf] cannot bind the prefix", path);
         }
-        const seq = chords.map(formatKey).join(" ");
         const prev = bySeq.get(seq);
         if (isUser) {
           overridden.add(action.name);
@@ -314,15 +420,15 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
   // carry Firefox's meaning, is not bound in the modes that type into a text field, so the key
   // is the field's there, as in Vim. A binding the user added stays and wins, as for ctrl+w; one
   // that repeats the default (a config.toml copied from defaults.toml) is still the default.
-  const insertEditing = userModal.insert_editing ?? defModal.insert_editing;
   if (insertEditing !== false) {
     /** @type {Set<string>} action name and sequence of each default [keys] binding */
     const defaults = new Set();
     for (const [name, value] of Object.entries(defKeys)) {
+      // Stryker disable next-line StringLiteral: no action is named prefix, so reading its chord as a binding adds an entry no binding matches
       if (name === "prefix") continue;
+      // Stryker disable next-line ArrayDeclaration,StringLiteral: the path only names an error, and the built-in defaults always parse
       for (const text of asList(value, formatPath(["keys", name]))) {
-        const { chords } = concretise(notation(() => parseBinding(text), name));
-        defaults.add(`${name} ${chords.map(formatKey).join(" ")}`);
+        defaults.add(`${name} ${concretise(notation(() => parseBinding(text), name)).seq}`);
       }
     }
     for (const e of entries) {
@@ -342,7 +448,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     if (!isKeymapTable(mode)) throw new KeymapError(`unknown mode "${mode}"`, path);
     asList(list, path).forEach((text, i) => {
       const els = notation(() => parseBinding(text), formatPath(["unbind", mode, i]));
-      const seq = concretise(els).chords.map(formatKey).join(" ");
+      const { seq } = concretise(els);
       for (const e of entries) {
         if (e.seq !== seq || !e.modes.delete(mode)) continue;
         // Unbound in normal mode is unbound in its pdf context too.
@@ -408,24 +514,41 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       }
       if (!prev) seen.set(e.seq, e);
     }
-    /** @type {TrieNode} */
-    const root = { children: new Map(), label: "" };
-    for (const e of seen.values()) {
-      let node = root;
-      e.chords.forEach((c, i) => {
-        const k = formatKey(c);
-        let next = node.children.get(k);
-        if (!next) {
-          next = { children: new Map(), label: /** @type {string} */ (e.labels[i]) };
-          node.children.set(k, next);
-        }
-        node = next;
-      });
-      node.action = e.action;
-    }
-    tries[mode] = root;
     perMode[mode] = [...seen.values()];
+    tries[mode] = buildTrie(/** @type {Entry[]} */ (perMode[mode]));
   }
+
+  // [sites."<host>"] unbind (docs/specs/site-unbind.md): each table's first keys, which the
+  // page gets in normal and insert mode instead of every binding they start.
+  /** @type {Map<string, { match: string, keys: Set<string> }>} */
+  const siteRules = new Map();
+  for (const [match, table] of Object.entries(user.sites ?? {})) {
+    /** @type {Set<string>} */
+    const keys = new Set();
+    const at = ["sites", match, "unbind"];
+    const list = table?.unbind ?? [];
+    if (!Array.isArray(list)) throw new KeymapError("expected a list of keys", formatPath(at));
+    list.forEach((text, i) => {
+      const path = formatPath([...at, i]);
+      if (typeof text !== "string") throw new KeymapError("expected a string", path);
+      const read = readSiteKey(text, { prefix, leader });
+      if (read.ok) keys.add(read.key);
+      else if (read.why === "notation") throw new KeymapError(read.message, path);
+      else if (read.why === "sequence") {
+        const first = /** @type {string} */ (read.keys[0]);
+        throw new KeymapError(
+          `must be one key: on a site, "${first}" gives the page ${first} and every sequence it starts`,
+          path,
+        );
+      } else
+        throw new KeymapError(`${read.why === "esc" ? "esc" : "the prefix"} ${read.message}`, path);
+    });
+    siteRules.set(match, { match, keys });
+  }
+  const rules = [...siteRules.values()];
+  const anyUnbound = rules.some((r) => r.keys.size > 0);
+  /** @type {Map<string, TrieNode>} built on first use (decision 6), keyed by mode and host */
+  const siteTries = new Map();
 
   /**
    * @param {string} name
@@ -450,15 +573,77 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     leader,
     timeoutMs,
     /**
-     * The trie a key is looked up in: the mode's, or the pdf context's in normal mode.
+     * The trie a key is looked up in: the mode's, or the pdf context's in normal mode; on a site
+     * that `site()` named, without the keys it unbinds (docs/specs/site-unbind.md).
      * @param {Mode} mode
      * @param {Context} [context]
+     * @param {string | null} [site]
+     * @returns {TrieNode}
      */
-    trie: (mode, context = "page") => /** @type {TrieNode} */ (tries[target(mode, context)]),
+    trie: (mode, context = "page", site = null) => {
+      const base = /** @type {TrieNode} */ (tries[target(mode, context)]);
+      // Decision 2: only where keys go to the page; Vimma's modes and the PDF viewer keep theirs.
+      if (site === null || context !== "page" || (mode !== "normal" && mode !== "insert")) {
+        return base;
+      }
+      const rule = siteRules.get(site);
+      if (!rule || rule.keys.size === 0) return base;
+      const key = `${mode} ${site}`;
+      let trie = siteTries.get(key);
+      if (!trie) {
+        const kept = /** @type {Entry[]} */ (perMode[mode]).filter(
+          (e) => !rule.keys.has(formatKey(/** @type {Chord} */ (e.chords[0]))),
+        );
+        trie = buildTrie(kept);
+        siteTries.set(key, trie);
+      }
+      return trie;
+    },
+    /**
+     * Whether some `[sites]` table unbinds a key: without one, the host need not read a page's
+     * host on every key (decision 6).
+     */
+    hasSiteUnbinds: () => anyUnbound,
+    /**
+     * Whether `site` (from `site()`) gives the page `key` (canonical chord, `ctrl+w`), so that
+     * Vimma neither runs a binding on it nor edits a field with it (decision 9).
+     * @param {string | null} site
+     * @param {string} key
+     */
+    unbinds: (site, key) => site !== null && !!siteRules.get(site)?.keys.has(key),
+    /**
+     * The `[sites."<host>"]` table, as written, whose `unbind` applies on `host` (a page's
+     * `URL.hostname`), or null: none matches, or the most specific match unbinds nothing.
+     * @param {string} host
+     * @returns {string | null}
+     */
+    site: (host) => {
+      // Stryker disable next-line LogicalOperator: a shortcut only; with no keys unbound, or no host (matchSiteRule skips an empty table name), no rule with keys matches
+      if (!anyUnbound || !host) return null;
+      const rule = matchSiteRule(host, rules);
+      return rule && rule.keys.size > 0 ? rule.match : null;
+    },
+    /**
+     * One `:siteunbind` argument read as config.toml reads an `unbind` entry, with this keymap's
+     * prefix and leader (readSiteKey).
+     * @param {string} text
+     */
+    siteKey: (text) => readSiteKey(text, { prefix, leader }),
+    /** Every `[sites."<host>"]` table, as written, in file order. */
+    siteTables: () => [...siteRules.keys()],
+    /**
+     * The keys `table` (as written) gives the page, canonical, in the order listed.
+     * @param {string} table
+     * @returns {string[]}
+     */
+    siteKeys: (table) => [...(siteRules.get(table)?.keys ?? [])],
+    /** What it was compiled from, for withSiteUnbinds. */
+    source: Object.freeze({ user, mac }),
     /**
      * @param {Mode} mode
      * @param {Context} [context]
      */
+    // Stryker disable next-line StringLiteral: only "pdf" picks another trie (target), so any other default reads the page's
     sequences: (mode, context = "page") =>
       /** @type {Entry[]} */ (perMode[target(mode, context)]).map((e) => ({
         seq: e.seq,
@@ -469,6 +654,24 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
      * @param {string} name
      */
     bindingsFor: (name) => listBindings(name, (text) => text),
+    /**
+     * The first key of every binding not written with `prefix`, in any mode, with the action
+     * it runs (the first found): a chord the prefix cannot also be, since the prefix would take
+     * it from that action (docs/specs/setup-v2.md decision 21). Bindings written with `prefix`
+     * move with it, and an unbound one is no longer the action's.
+     * @returns {Map<string, string>}
+     */
+    keysOutsidePrefix: () => {
+      /** @type {Map<string, string>} */
+      const out = new Map();
+      for (const e of entries) {
+        const first = e.chords[0];
+        if (!first || e.modes.size === 0 || e.labels[0] === "prefix") continue;
+        const key = formatKey(first);
+        if (!out.has(key)) out.set(key, e.action.name);
+      }
+      return out;
+    },
     /**
      * The keys a user presses for each binding, for help and listings: `prefix+b` shows as
      * `ctrl+b b` with this keymap's prefix and leader (displayBinding). Modal bindings outside
@@ -512,3 +715,29 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
 }
 
 /** @typedef {ReturnType<typeof compileKeymap>} Keymap */
+
+/**
+ * `keymap` with more keys given to the page per table (`:siteunbind` until restart,
+ * docs/specs/site-unbind-command.md decision 4): each table's keys join the file's list for it,
+ * or make a table of their own, so that they follow the file's rules exactly. A key that
+ * config.toml has since made the prefix (or that this keymap refuses for another reason) is
+ * left out, so a reload of config.toml never fails on a key given earlier.
+ * @param {Keymap} keymap  config.toml's
+ * @param {ReadonlyMap<string, readonly string[]>} extra  canonical keys by table
+ * @returns {Keymap}
+ */
+export function withSiteUnbinds(keymap, extra) {
+  if (extra.size === 0) return keymap;
+  const { user, mac } = keymap.source;
+  // Without a prototype, a table named after a page's host such as `__proto__` is an own key
+  // like any other: on a plain object, assigning it would set the copy's prototype instead.
+  /** @type {NonNullable<UserConfig["sites"]>} */
+  const sites = Object.assign(Object.create(null), user.sites);
+  for (const [table, all] of extra) {
+    const keys = all.filter((k) => keymap.siteKey(k).ok);
+    if (keys.length === 0) continue;
+    const had = sites[table];
+    sites[table] = { ...had, unbind: [...(had?.unbind ?? []), ...keys] };
+  }
+  return compileKeymap({ ...user, sites }, { mac });
+}

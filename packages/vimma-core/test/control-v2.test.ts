@@ -89,6 +89,7 @@ describe("protocol 2 constants", () => {
       "agent-fill",
       "agent-screenshot",
       "agent-console",
+      "agent-bookmarklet",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");

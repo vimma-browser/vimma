@@ -472,3 +472,34 @@ add_task(async function route_add_says_why_config_toml_refused_the_rule() {
     tidy();
   }
 });
+
+// setup-v2 decision 5: `:route add` appends inside the queue every config.toml edit runs in, so
+// a rewrite that read the file before the append neither refuses ("changed meanwhile") nor drops
+// the rule when it renames its copy over the file.
+add_task(async function route_add_waits_for_a_running_rewrite() {
+  const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-routes");
+  const file = PathUtils.join(dir, "config.toml");
+  await IOUtils.writeUTF8(file, "schema = 2\n");
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
+  try {
+    await ConfigHost.reload();
+    const rewrite = ConfigHost.editSiteUnbind("example.net", { add: ["j"] });
+    const append = ConfigHost.addRoute({ domain: "example.org", workspace: "rt-work" });
+    const [edited, appended] = await Promise.all([rewrite, append]);
+    Assert.ok(!("error" in edited), `the rewrite is written: ${JSON.stringify(edited)}`);
+    Assert.deepEqual(appended, { added: "config.toml" }, "the rule is written");
+    const text = await IOUtils.readUTF8(file);
+    Assert.ok(
+      text.includes('[sites."example.net"]'),
+      `the rewrite's table is in the file:\n${text}`,
+    );
+    Assert.ok(text.includes('domain = "example.org"'), `and the rule after it:\n${text}`);
+    Assert.equal(WorkspaceRouter.routes.length, 1, "the rule is read");
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+    await IOUtils.remove(dir, { recursive: true });
+    route([{ domain: "example.com", workspace: "rt-work" }]);
+    tidy();
+  }
+});

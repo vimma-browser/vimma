@@ -53,7 +53,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -83,7 +83,7 @@ async function openAgentTab(url = WAITS) {
   return tab;
 }
 
-/** The connections the running task opened. @type {any[]} */
+/** The connections the running task opened. @type {Client[]} */
 const clients = [];
 
 /** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
@@ -115,7 +115,8 @@ async function question() {
 
 /**
  * `command` with `args`, its question answered once; the response, and when it came.
- * @param {any} c @param {string} command @param {object} args
+ * @template {string} C
+ * @param {Client} c @param {C} command @param {object} args
  */
 async function call(c, command, args) {
   const id = c.request(command, args);
@@ -129,7 +130,7 @@ async function call(c, command, args) {
   return { r, at };
 }
 
-/** The list's elements by what they say. @param {any} c @param {any} tab */
+/** The list's elements by what they say. @param {Client} c @param {MozTabbrowserTab} tab */
 async function labels(c, tab) {
   const { r } = await call(c, "agent-elements", { tab: idOf(tab) });
   Assert.ok(r.ok, "vimma_elements runs");
@@ -142,11 +143,11 @@ async function labels(c, tab) {
   return by;
 }
 
-/** When the page saw the agent's step (ms since the epoch). @param {any} tab */
+/** When the page saw the agent's step (ms since the epoch). @param {MozTabbrowserTab} tab */
 const pageAt = (tab) =>
   SpecialPowers.spawn(tab.linkedBrowser, [], () => content.wrappedJSObject.at);
 
-/** @param {any} tab */
+/** @param {MozTabbrowserTab} tab */
 const readyState = (tab) =>
   SpecialPowers.spawn(tab.linkedBrowser, [], () => content.document.readyState);
 
@@ -158,7 +159,7 @@ const readyState = (tab) =>
  */
 function requestStatus(prefix) {
   return new Promise((resolve) => {
-    const observe = (/** @type {any} */ subject) => {
+    const observe = (/** @type {nsISupports} */ subject) => {
       const channel = subject.QueryInterface(Ci.nsIHttpChannel);
       if (!channel.URI.spec.startsWith(prefix)) return;
       Services.obs.removeObserver(observe, "http-on-modify-request");
@@ -266,7 +267,7 @@ addTidyTask(async function test_a_followed_link_by_keys_is_ready_at_domcontentlo
   const list = await call(c, "agent-keys", { tab: idOf(tab), keys: "f" });
   Assert.ok(list.r.ok, "f lists the links");
   const line = list.r.result.links
-    .split("\n")
+    ?.split("\n")
     .find((/** @type {string} */ l) => l.includes('"Slow page"'));
   const label = line?.split(" ")[0];
   Assert.ok(label, "the slow page's link is listed");
@@ -314,7 +315,7 @@ addTidyTask(async function test_an_allowed_submission_the_page_holds_back_is_can
 
 /**
  * `agent-activate` of a submit button, its submission question answered once.
- * @param {any} c @param {any} tab @param {string} label
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {string} label
  */
 async function submitClick(c, tab, label) {
   const id = c.request("agent-activate", { tab: idOf(tab), label });

@@ -77,7 +77,13 @@ function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
+// The bar with Firefox's toolbar shown, as m2 specs it: the hidden toolbar, the default since
+// toolbar-toggle decision 3 changed, keeps the URL over the title and adds its security cues
+// (decision 12), which browser_vimma_toolbar.js and statusbar.test.ts cover.
+Services.prefs.setBoolPref("vimma.ui.toolbar.hidden", false);
+
 registerCleanupFunction(() => {
+  Services.prefs.clearUserPref("vimma.ui.toolbar.hidden");
   while (gBrowser.tabs.length > 1) {
     gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
   }
@@ -408,4 +414,39 @@ add_task(async function bar_announces_mode_only() {
     `${VimmaHost.status(window).mode} mode`,
     "it holds the mode",
   );
+});
+
+/**
+ * The host as the status bar shows it: the URL up to its path, without a cut's ellipses.
+ * @param {string | null | undefined} url
+ */
+function hostShown(url) {
+  if (!url) return null;
+  return (
+    url
+      .replace(/^https?:\/\//, "")
+      .split(/[/…]/)
+      .find(Boolean) ?? null
+  );
+}
+
+// The same bar with Firefox's toolbar hidden, the default (toolbar-toggle decisions 3 and 12):
+// the URL with its host outlasts the title in a narrow bar, and the mode badge stays.
+add_task(async function the_default_hidden_toolbar_keeps_the_url() {
+  Services.prefs.clearUserPref("vimma.ui.toolbar.hidden");
+  try {
+    await BrowserTestUtils.withNewTab(TITLE_PAGE, async () => {
+      await until(() => segText("title") === LONG_TITLE, "the title shows");
+      await until(() => hostShown(segText("url")) === "example.com", "and the URL with its host");
+      Assert.equal(seg("security"), null, "an https: page says nothing more");
+      const b = shownBar();
+      b.style.width = "40ch";
+      await until(() => segText("title") !== LONG_TITLE, "the title gives way");
+      Assert.equal(hostShown(segText("url")), "example.com", "the URL keeps its host");
+      Assert.ok(hasSize(seg("mode")), "the mode badge stays");
+      b.style.removeProperty("width");
+    });
+  } finally {
+    Services.prefs.setBoolPref("vimma.ui.toolbar.hidden", false);
+  }
 });

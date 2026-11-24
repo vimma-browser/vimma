@@ -1,0 +1,26 @@
+{
+  "description": "asleep is left out for an awake tab, never false (tab-sleep, behaviour 15)",
+  "kind": "response",
+  "command": "state",
+  "message": {
+    "type": "response",
+    "id": 2,
+    "ok": true,
+    "result": {
+      "mode": "normal",
+      "pending": null,
+      "workspace": "work",
+      "tabs": [
+        {
+          "id": "12",
+          "url": "https://example.com/",
+          "title": "Example Domain",
+          "selected": true,
+          "loading": false,
+          "asleep": false
+        }
+      ],
+      "panes": null
+    }
+  }
+}

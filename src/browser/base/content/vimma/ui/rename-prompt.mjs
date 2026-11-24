@@ -9,6 +9,7 @@
 // yes, any other key no. And it asks for free text (`prompt`, docs/specs/bookmarks.md: add,
 // rename, move a bookmark), with Tab completion of the text before the caret.
 
+import { focusOpener } from "./toolbar.mjs";
 import { loadCmdlineSheet } from "./cmdline.mjs";
 
 export const RENAME_ID = "vimma-rename";
@@ -45,6 +46,10 @@ export class RenamePrompt {
     this.label = null;
     /** @type {(() => void) | null} a y/N question's yes, while one is open */
     this.yes = null;
+    /** @type {(() => void) | null} a y/N question's no: any answer but y, or the prompt closed */
+    this.no = null;
+    /** A y/N question takes no answer before this time (Date.now()); 0: at once. */
+    this.answerAfter = 0;
     /** @type {Record<string, () => void> | null} a `choose` question's answers, by key */
     this.choices = null;
     /** @type {((text: string) => void) | null} a `prompt`'s Enter, while one is open */
@@ -75,11 +80,16 @@ export class RenamePrompt {
    * A y/N question: `y` runs `yes`; any other key, Enter (the default, N) or Esc says no.
    * @param {string} question  ends with "y/N"
    * @param {() => void} yes  after the prompt has closed
+   * @param {() => void} [no]  any other answer, or the question closed or replaced unanswered
+   *   (docs/specs/bookmarks-file.md Behaviour 7: no answer applies nothing)
+   * @param {{ settleMs?: number }} [options]  keys within `settleMs` of it showing are ignored
    * @returns {boolean} whether it opened (not over a page in DOM fullscreen)
    */
-  ask(question, yes) {
+  ask(question, yes, no, { settleMs = 0 } = {}) {
     if (!this.show(`${question} `, "", question, "alertdialog")) return false;
     this.yes = yes;
+    this.no = no ?? null;
+    this.answerAfter = settleMs ? Date.now() + settleMs : 0;
     return true;
   }
 
@@ -123,6 +133,8 @@ export class RenamePrompt {
    */
   show(label, placeholder, ariaLabel, role = "dialog") {
     if (this.win.document.documentElement.hasAttribute("inDOMFullscreen")) return false;
+    const dropped = this.no;
+    this.no = null;
     const input = this.input ?? this.build();
     if (!this.isOpen) this.opener = Services.focus.focusedElement;
     this.tab = null;
@@ -141,6 +153,7 @@ export class RenamePrompt {
     /** @type {HTMLElement} */ (this.el).hidden = false;
     input.focus();
     this.changed();
+    dropped?.();
     return true;
   }
 
@@ -151,6 +164,8 @@ export class RenamePrompt {
    */
   close({ restoreFocus = true, tabChanged = false } = {}) {
     if (!this.isOpen) return;
+    const no = this.no;
+    this.no = null;
     const opener = this.opener;
     this.opener = null;
     this.tab = null;
@@ -162,10 +177,11 @@ export class RenamePrompt {
         /** @type {unknown} */ (this.win)
       ).gBrowser?.selectedBrowser.focus();
     } else if (restoreFocus) {
-      /** @type {HTMLElement} */ (opener).focus();
+      focusOpener(this.win, /** @type {Element} */ (opener));
     }
     /** @type {HTMLElement} */ (this.el).hidden = true;
     this.changed();
+    no?.();
   }
 
   /** Close and remove the element (VimmaHost.uninit). */
@@ -196,14 +212,18 @@ export class RenamePrompt {
     } else if (yes) {
       // Modifier keys alone (shift for `Y`) are not an answer.
       if (["Shift", "CapsLock"].includes(e.key)) return;
-      // Nor is a key held down from before the question (the D of ctrl+b shift+d repeating).
-      if (e.repeat) {
+      // Nor is a key held down from before the question (the D of ctrl+b shift+d repeating),
+      // or typed as a question from outside a key appears.
+      if (e.repeat || (this.answerAfter && Date.now() < this.answerAfter)) {
         e.preventDefault();
         e.stopPropagation();
         return;
       }
-      this.close();
-      if (e.key === "y" || e.key === "Y") yes();
+      if (e.key === "y" || e.key === "Y") {
+        this.no = null;
+        this.close();
+        yes();
+      } else this.close();
     } else if (this.submit && e.key === "Tab") {
       this.complete(e.shiftKey ? -1 : 1);
     } else if (this.submit && e.key === "Enter") {

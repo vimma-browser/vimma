@@ -3,6 +3,7 @@ import {
   GREP_CAPS,
   GREP_SCOPE_NAMES,
   closedPreview,
+  fitAround,
   grepClosed,
   grepCountText,
   grepListText,
@@ -188,6 +189,101 @@ describe("grepText", () => {
     // (quadratic), reads more. The floor only shows the spy saw the work.
     expect(read).toBeGreaterThanOrEqual(big.length);
     expect(read).toBeLessThanOrEqual(2 * big.length + lines);
+  });
+});
+
+describe("fitAround: a row or preview line fitted to its width, the match in view", () => {
+  const line = `Paragraph 7 lorem ipsum dolor sit amet consectetur adipiscing needle7 tail ${"x".repeat(200)}`;
+  const s = line.indexOf("needle7");
+  const at: [number, number] = [s, s + "needle7".length];
+
+  test("a line that fits is left as it is", () => {
+    expect(fitAround("a needle b", [2, 8], 20, 16)).toEqual({ text: "a needle b", at: [2, 8] });
+  });
+
+  test("a long line keeps the match and a third of the width before it, within the width", () => {
+    const {
+      text,
+      at: [a, b],
+    } = fitAround(line, at, 30, 16);
+    expect(text.length).toBeLessThanOrEqual(30);
+    expect(text.slice(a, b)).toBe("needle7");
+    expect(text.startsWith("…")).toBe(true);
+    expect(text.endsWith("…")).toBe(true);
+    // A third of the width, the ellipsis included, comes before the match.
+    expect(a).toBe(Math.floor((30 - 2) / 3) + 1);
+    expect(text.slice(1, a)).toBe(line.slice(s - (a - 1), s));
+  });
+
+  test("before caps the context before the match in a wide box", () => {
+    const {
+      text,
+      at: [a, b],
+    } = fitAround(line, at, 120, 16);
+    expect(a).toBe(17);
+    expect(text.slice(a, b)).toBe("needle7");
+    expect(text.length).toBeLessThanOrEqual(120);
+  });
+
+  test("a match near the end fills the box with more context before it", () => {
+    const end = `${"w".repeat(100)} needle`;
+    const {
+      text,
+      at: [a, b],
+    } = fitAround(end, [101, 107], 30, 16);
+    expect(text).toBe(`…${"w".repeat(21)} needle`);
+    expect(text.slice(a, b)).toBe("needle");
+  });
+
+  test("a match near the start keeps the line's start, with no ellipsis there", () => {
+    const {
+      text,
+      at: [a, b],
+    } = fitAround(`ab needle ${"y".repeat(60)}`, [3, 9], 20, 16);
+    expect(text.startsWith("ab needle")).toBe(true);
+    expect([a, b]).toEqual([3, 9]);
+    expect(text.length).toBeLessThanOrEqual(20);
+  });
+
+  test("a match longer than the width shows its start", () => {
+    const long = `${"z".repeat(50)}${"m".repeat(40)}${"z".repeat(50)}`;
+    const {
+      text,
+      at: [a, b],
+    } = fitAround(long, [50, 90], 12, 16);
+    expect(text.length).toBeLessThanOrEqual(12);
+    expect(text.slice(a, b)).toMatch(/^m+$/);
+    expect(b - a).toBeGreaterThan(0);
+  });
+
+  test("a tiny or empty width still shows some of the match", () => {
+    const {
+      text,
+      at: [a, b],
+    } = fitAround(line, at, 0, 16);
+    expect(b).toBeGreaterThan(a);
+    expect(text.slice(a, b)).toBe("ne");
+  });
+
+  test("a match that starts with a surrogate pair is never marked empty, however narrow", () => {
+    const emoji = `${"x".repeat(40)}😀needle${"x".repeat(40)}`;
+    const {
+      text,
+      at: [a, b],
+    } = fitAround(emoji, [40, 48], 1, 16);
+    expect(text.slice(a, b)).toBe("😀");
+  });
+
+  test("a surrogate pair is never split", () => {
+    const emoji = `${"😀".repeat(40)}needle${"😀".repeat(40)}`;
+    const i = emoji.indexOf("needle");
+    const {
+      text,
+      at: [a, b],
+    } = fitAround(emoji, [i, i + 6], 21, 16);
+    expect(text.slice(a, b)).toBe("needle");
+    expect(text).not.toMatch(/^…?[\udc00-\udfff]/u);
+    expect(/[\ud800-\udbff]…?$/u.test(text)).toBe(false);
   });
 });
 

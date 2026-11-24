@@ -193,6 +193,13 @@ what `parseKey` (vimma-core) accepts: `ctrl+b c`, `g t`, `esc`, `shift+t`. Symbo
 each chord to the window's dispatcher as if typed (same path as a real keydown, including mode
 handling) and returns how many it sent. A chord that fails `parseKey` is `invalid-args` and none
 are sent.
+(Since changed, [#1306](https://github.com/vimma-browser/vimma/issues/1306): a key that opens a
+dialog Firefox runs in a nested event loop, such as "Leave page?", ends the command once the
+dialog is up, with `{ "sent": n, "dialog": true }`: `n` counts that key, and the keys after it are
+not pressed, because the dialog takes keys only after its arming wait
+([firefox-dialogs](firefox-dialogs.md), decision 3). `dialog` is absent otherwise and is never
+`false`. A later `send-keys` answers the dialog. `vimma-ctl send-keys` prints `dialog open` for
+such a result, and nothing otherwise.)
 
 **`state`.** A snapshot of the focused window:
 
@@ -225,6 +232,12 @@ are sent.
   `index`, `selected`, `pinned`, `loading` and `panes` are kept.
 - `tabs`: the window's visible tabs in strip order. `id` is an opaque string, stable for the tab's
   lifetime (the server uses `browser.browserId`); exactly one tab is `selected` when there are any.
+  (Since changed: an unloaded tab has no browser id yet, so it was listed as `"0"`, the same for
+  every such tab. It now has its workspace uuid as its id until it loads, then its browser's id,
+  so the panes of two unloaded tabs stay apart; outside workspaces, as in a private window, it is
+  still `"0"`. So `id` is stable while the tab keeps its browser, not across its first load or
+  an unload. Clients already treat `id` as an opaque string, so this needs no version bump;
+  #1332.)
   `loading` is `true` while the tab's page loads (the tab strip's busy state, or a document load
   in progress), and in a new window before it has started to load its first page: a window is
   listed as soon as it opens, while its tabs still show their initial empty document. It is
@@ -232,6 +245,11 @@ are sent.
   discarded), which `state` leaves without a browser. It names no page, so a private window
   keeps it; there it is the only sign that the start page has loaded. Added without a version
   bump, like `panes`: a client that waits on it treats a missing `loading` as not loaded.
+  (Since changed: a tab without a loaded page is listed with `asleep: true`, and the field is
+  left out for every other tab; read from the tab's attributes, like `loading`, so `state` never
+  loads it. It names no page, so a private window keeps it. Added without a version bump, like
+  `loading`; behind `vimma.feature.tabSleep` until that feature is on.
+  [tab-sleep](tab-sleep.md), behaviour 15 and decision 18.)
 - `panes`: the pane tree once split view exists (M3), `null` before. Its shape is that spec's to
   define; it is added without a version bump because clients ignore what they do not know.
   Since m3-workspaces sub-spec 7: `null` while the window shows one pane, else
@@ -338,6 +356,14 @@ false` in place of `hidden`. `panes` keeps its meaning: the shown split, else th
   outline. It is `null` in a private window, because its documents are part of its browsing. Added
   without a version bump; vimma-core's validator checks the flag's type, refuses any other field
   in `pdf`, and refuses the object in a private window.
+- `setup` (since #1298, for the setup page's e2e screenshots): `null` unless the window's
+  selected tab shows about:vimma-setup ([setup-v2](setup-v2.md)), else `{ "screen": word }`, the
+  screen the page draws: `welcome`, a step's id from the step table (`content_blocker`,
+  `address_bar` and so on) once the step's choices are drawn, `loading` while its view loads, or
+  `stop`. A word from a closed list: never a choice, a search, a
+  line a step writes or what was saved. It is `null` in a private window. Added without a
+  version bump; vimma-core's validator checks the word against the list (`SETUP_SCREENS`),
+  refuses any other field in `setup`, and refuses the object in a private window.
 
 **`open`.** `url` is an absolute URL whose scheme is `http`, `https`, `file` or `about`; anything
 else (notably `javascript:` and `data:`) is `invalid-args`. At most 65536 characters. `where`
@@ -518,11 +544,13 @@ allows; and answers `not-implemented` for reserved commands.
   - **At most 8 authenticated connections** and, apart from them, **at most 2 still in the
     handshake**. Real use is one short-lived `vimma-ctl` per command plus the e2e harness; 8 leaves
     room for scripts running in parallel. Anyone local can open waiting connections, so a new
-    one evicts the oldest waiting one (answered `busy`) instead of being refused: idle
-    connections cannot lock out a client that holds the token, which answers at once. A fast
-    **connect flood still can**: two new connections arriving between a client's connect and its
-    `auth` evict it. That is an active local denial of service by a process of some local user;
-    the remedy is turning the pref off. Up to 16 refused connections linger 1 s to deliver their
+    one evicts the oldest waiting one that has sent nothing yet, else the oldest (answered
+    `busy`), instead of being refused: idle connections cannot lock out a client that holds the
+    token, which answers at once, even while its hello waits unread behind newer connections
+    (#1344). A fast **connect flood still can**: before the client's hello is in, one new
+    connection evicts it when the other waiting one has spoken; after it, two new ones do, the
+    first of which has spoken by the time the second arrives. That is an active local denial of
+    service by a process of some local user; the remedy is turning the pref off. Up to 16 refused connections linger 1 s to deliver their
     `busy`; beyond that they are closed at once.
   - **Handshake deadline 5 s** (above): no `welcome` earned within 5 s of connecting → close.
   - **Idle timeout 60 s after the handshake**: no complete request line for 60 s → the server

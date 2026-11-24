@@ -92,6 +92,7 @@ declare const Services: FirefoxServices;
 
 // The members Vimma's code calls on a default branch.
 interface nsIPrefDefaultBranch {
+  getBoolPref(name: string, defaultValue?: boolean): boolean;
   setBoolPref(name: string, value: boolean): void;
 }
 
@@ -265,9 +266,11 @@ interface IOUtilsNamespace {
     type: "regular" | "directory" | "other";
   }>;
   exists(path: string): Promise<boolean>;
+  computeHexDigest(path: string, method: "sha256" | "sha384" | "sha512"): Promise<string>;
   getChildren(path: string): Promise<string[]>;
   copy(from: string, to: string): Promise<void>;
-  move(from: string, to: string): Promise<void>;
+  // `noOverwrite`: fail when `to` exists (dom/chrome-webidl/IOUtils.webidl MoveOptions).
+  move(from: string, to: string, options?: { noOverwrite?: boolean }): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
 }
 declare const IOUtils: IOUtilsNamespace;
@@ -287,7 +290,8 @@ interface XPCComponentsUtils {
   // it reads. Unwaived, it is the Xray view again.
   waiveXrays(obj: object): { readonly [name: string]: unknown };
   unwaiveXrays<T>(obj: T): T;
-  exportFunction(fn: Function, target: object): Function;
+  /** A function of the target's scope that calls `fn`, with the same parameters and result. */
+  exportFunction<F extends (...args: unknown[]) => unknown>(fn: F, target: object): F;
   cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
 }
 declare const Cu: XPCComponentsUtils;
@@ -474,6 +478,11 @@ interface nsIDOMWindowUtils {
   flushLayoutWithoutThrottledAnimations(): void;
   /** True while an event the user caused (a key, a click) is being handled. */
   readonly isHandlingUserInput: boolean;
+  /**
+   * With true: gives the window's document transient user activation and handles user input
+   * until the helper's destruct() (nsIJSRAIIHelper).
+   */
+  setHandlingUserInput(handlingInput: boolean): { destruct(): void };
   nodesFromRect(
     x: number,
     y: number,
@@ -495,6 +504,8 @@ interface Element {
   readonly openOrClosedAssignedSlot: HTMLSlotElement | null;
   readonly scrollTopMax: number;
   readonly scrollLeftMax: number;
+  /** Negative in a right-to-left scroller, whose scrollLeft runs from it up to 0. */
+  readonly scrollLeftMin: number;
 }
 interface Node {
   /** The global of the document the node lives in (Node.webidl, ChromeOnly). */
@@ -544,6 +555,8 @@ interface nsIPrincipal {
   readonly baseDomain: string;
   readonly exposablePrePath: string;
   readonly privateBrowsingId: number;
+  /** The extension's WebExtensionPolicy for its own principals (moz-extension:), else null. */
+  readonly addonPolicy: object | null;
   schemeIs(scheme: string): boolean;
   equals(other: nsIPrincipal): boolean;
 }
@@ -561,6 +574,9 @@ interface LazyModules {
   setInterval(callback: () => unknown, ms?: number): number;
   clearTimeout(id: number | null | undefined): void;
   clearInterval(id: number | null | undefined): void;
+  // engine/browser/modules/webrtcUI.sys.mjs: whether a browser holds a camera, microphone or
+  // screen stream (tab sleep asks as Firefox's TabUnloader does).
+  webrtcUI: { browserHasStreams(browser: MozBrowser): boolean };
   // engine/toolkit/modules/PrivateBrowsingUtils.sys.mjs
   PrivateBrowsingUtils: {
     isWindowPrivate(win: Window): boolean;
@@ -748,6 +764,13 @@ interface nsILoginInfo {
   ): void;
 }
 
+// engine/dom/chrome-webidl/OriginAttributes.webidl (OriginAttributesDictionary): the members
+// Vimma sets when it makes a principal; the others take their defaults.
+interface OriginAttributes {
+  userContextId?: number;
+  privateBrowsingId?: number;
+}
+
 // engine/netwerk/base/nsIURI.idl (the members Vimma reads)
 interface nsIURI {
   readonly spec: string;
@@ -762,6 +785,8 @@ interface nsIURI {
   readonly prePath: string;
   /** The path without query and fragment (a simple URI's whole path: nsSimpleURI::GetFilePath). */
   readonly filePath: string;
+  /** The part after `?`, without it; empty when there is none. */
+  readonly query: string;
   schemeIs(scheme: string): boolean;
 }
 
@@ -829,8 +854,13 @@ interface MozBrowser extends Element {
   readonly browsingContext: CanonicalBrowsingContext | null;
   /** Null while the browser has no docshell or remote navigation yet. */
   readonly currentURI: nsIURI | null;
-  readonly documentURI: { readonly spec: string } | null;
+  readonly documentURI: nsIURI | null;
   readonly contentTitle: string;
+  /**
+   * The page's security state as Firefox's identity block reads it (nsISecureBrowserUI.idl;
+   * browser-custom-element.mjs, `get securityUI`): null before the browser has one.
+   */
+  readonly securityUI: { readonly state: number; readonly isSecureContext: boolean } | null;
   readonly isRemoteBrowser: boolean;
   /** Its context's (browser-custom-element.mjs); undefined without a context, null without one. */
   readonly webProgress: nsIWebProgress | null | undefined;
@@ -850,7 +880,10 @@ interface MozBrowser extends Element {
   readonly popupAndRedirectBlocker: PopupAndRedirectBlocker;
   focus(): void;
   reload(): void;
-  loadURI(uri: nsIURI, params: { triggeringPrincipal: unknown; referrerInfo?: unknown }): void;
+  loadURI(
+    uri: nsIURI,
+    params: { triggeringPrincipal: unknown; referrerInfo?: unknown; loadFlags?: number },
+  ): void;
   /** The page's full zoom, 1 at 100 % (the fullZoom getter and setter). */
   fullZoom: number;
 }
@@ -898,12 +931,21 @@ interface MozTabbrowserTab extends Element {
   readonly selected: boolean;
   readonly userContextId: number;
   readonly soundPlaying: boolean;
+  /** Shown in Picture-in-Picture (its `pictureinpicture` attribute). */
+  readonly pictureinpicture: boolean;
+  /** When it was last selected, in ms; the selected tab of each window says now. */
+  readonly lastAccessed: number;
   readonly muted: boolean;
   readonly muteReason: string | null | undefined;
   readonly splitview: MozTabSplitViewWrapper | null;
   /** The tab it was opened from, null when none (Tabbrowser addTab's `openerTab`); undefined
    * for a tab addTab did not make, as the window's first. */
   readonly openerTab: MozTabbrowserTab | null | undefined;
+  /** The object the session store and the unloader know the tab's browser by; Firefox moves it
+   * with the browser when a tab changes window (Tabbrowser `swapBrowsersAndCloseOther`). */
+  readonly permanentKey: object | undefined;
+  /** Its `undiscardable` attribute, which TabUnloader honours (tab.mjs). */
+  undiscardable: boolean;
   toggleMuteAudio(muteReason?: string | null): void;
 }
 
@@ -954,11 +996,18 @@ interface Tabbrowser {
   readonly tabbox: Element;
   getTabForBrowser(browser: MozBrowser): MozTabbrowserTab | undefined;
   insertBrowser(tab: MozTabbrowserTab): void;
+  /** Flushes the tab's session state, so a restore after a discard has its latest data. */
+  prepareDiscardBrowser(tab: MozTabbrowserTab): Promise<void>;
+  /** Unloads the tab, keeping it lazy in the strip; false when Firefox refuses. */
+  discardBrowser(tab: MozTabbrowserTab, force?: boolean): boolean;
   hideTab(tab: MozTabbrowserTab, source?: string): void;
   showTab(tab: MozTabbrowserTab): void;
   unpinTab(tab: MozTabbrowserTab): void;
   removeTab(tab: MozTabbrowserTab, options?: TabbrowserRemoveOptions): void;
   removeCurrentTab(options?: TabbrowserRemoveOptions): void;
+  /** The tab Firefox selects when `tab` closes or hides while selected; null: its own pick. */
+  getSuccessor(tab: MozTabbrowserTab): MozTabbrowserTab | null;
+  setSuccessor(tab: MozTabbrowserTab, successor: MozTabbrowserTab | null): void;
   addTab(url: string, options?: TabbrowserAddOptions): MozTabbrowserTab;
   addTrustedTab(url: string, options?: TabbrowserAddOptions): MozTabbrowserTab;
   addProgressListener(listener: object): void;
@@ -1009,11 +1058,18 @@ interface UrlbarQueryListener {
 // there is none. `view` is its UrlbarView (UrlbarView.mjs: `isOpen`, and `queryContext`, the
 // context of the results it last drew). `lastSearchString` is set by startQuery as a query
 // starts; `lastQueryContextPromise` is the last query's, resolved when it ends (a resolved one
-// before any query).
+// before any query). `handleCommand` (Enter, the go button, Paste & Go) and `handleNavigation`
+// (what it calls, and a drop) lead to a load; `handleRevert` puts the page's address back; `goButton` is the arrow at
+// its end.
 type UrlbarInput = HTMLElement & {
   focused: boolean;
-  view: { isOpen: boolean; queryContext: { searchString: string } | null };
+  value: string;
+  view: { isOpen: boolean; queryContext: { searchString: string } | null; close(): void };
   select(): void;
+  handleCommand(event?: Event | null): void;
+  handleNavigation(params: { event?: Event | null; triggeringPrincipal?: unknown }): void;
+  handleRevert(): void;
+  readonly goButton: Element;
   controller?: {
     addListener(listener: UrlbarQueryListener): void;
     removeListener(listener: UrlbarQueryListener): void;
@@ -1088,12 +1144,26 @@ interface MozFindbar extends Element {
 // engine/toolkit/modules/FinderParent.sys.mjs (a <browser>'s finder)
 interface MozFinder {
   set caseSensitive(sensitive: boolean);
-  addResultListener(listener: object): void;
-  removeResultListener(listener: object): void;
+  addResultListener(listener: FinderResultListener): void;
+  removeResultListener(listener: FinderResultListener): void;
   findAgain(query: string, backward: boolean, linksOnly: boolean, outline: boolean): void;
   fastFind(query: string, linksOnly: boolean, outline: boolean): void;
-  requestMatchesCount(query: string, args: object): void;
+  requestMatchesCount(query: string, args: { linksOnly: boolean }): void;
   removeSelection(keepHighlight?: boolean): void;
+}
+
+// What FinderParent tells its result listeners, from the page's process (Finder.sys.mjs).
+interface FinderResultListener {
+  onFindResult(data: { result: number; searchString: string }): void;
+  onMatchesCountResult(result: {
+    searchString: string;
+    current: number;
+    total: number;
+    limit: number;
+  }): void;
+  onHighlightFinished(): void;
+  onCurrentSelection(): void;
+  shouldFocusContent?(): boolean;
 }
 
 // engine/dom/chrome-webidl/XULPopupElement.webidl: a <menupopup>, <panel> or <tooltip>
@@ -1165,6 +1235,8 @@ interface CanonicalBrowsingContext extends BrowsingContext {
 // members). The principals are never null (webidl `Principal`, not nullable).
 interface WindowGlobalParent {
   readonly innerWindowId: number;
+  /** A WebRTC peer connection is open in the page (set on the top window only). */
+  hasActivePeerConnections(): boolean;
   /** The document's window has closed: it no longer shows in its frame. */
   readonly isClosed: boolean;
   readonly isInProcess: boolean;
@@ -1341,6 +1413,8 @@ interface FirefoxDownload extends SessionDownload {
   launcherPath: string | null;
   launcherId: string | null;
   handleInternally: boolean;
+  /** DownloadsCommon opens the downloads panel on its start only while this is true. */
+  openDownloadsListOnStart: boolean;
   finalize(removePartialData?: boolean): Promise<void>;
   whenSucceeded(): Promise<void>;
 }
@@ -1485,6 +1559,18 @@ interface BrowserCommandsApi {
   openTab(): void;
   viewSource(browser: MozBrowser): void;
 }
+// engine/browser/base/content/browser.js (TabDialogBox): the dialogs over one tab's browser.
+// open's closedPromise resolves once the dialog has closed.
+interface Tabbrowser {
+  getTabDialogBox(browser: MozBrowser): TabDialogBox;
+}
+interface TabDialogBox {
+  open(
+    url: string,
+    options?: { features?: string; modalType?: number },
+    ...args: unknown[]
+  ): { closedPromise: Promise<void>; dialog: unknown };
+}
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs (removeTab's options): the
 // TabMetrics context of a user's close.
 interface TabbrowserRemoveOptions {
@@ -1524,11 +1610,17 @@ interface PopupAndRedirectBlockerObserver {
 interface MozNotificationBox {
   /** The last notification with that `value` attribute, or null. */
   getNotificationWithValue(value: string): MozNotificationMessage | null;
+  /** The notification of the highest priority, the one on top; null without one. */
+  readonly currentNotification: MozNotificationMessage | null;
 }
 // notificationbox.js (NotificationMessage): a notification bar.
 interface MozNotificationMessage extends HTMLElement {
   /** Its buttons' container, made in connectedCallback: unset before. */
   readonly buttonContainer?: HTMLElement;
+  /** It shows a close button (moz-message-bar.mjs). */
+  readonly dismissable: boolean;
+  /** The close button, in its shadow root; null while it has none. */
+  readonly closeButton: HTMLElement | null;
   dismiss(): void;
 }
 // engine/toolkit/content/widgets/popupnotification.js (MozPopupNotification): a prompt in the
@@ -1750,6 +1842,15 @@ interface PlacesUtilsApi {
   /** The item and everything under it; null for a guid that names no item. */
   promiseBookmarksTree(guid?: string): Promise<PlacesTreeItem | null>;
   readonly bookmarks: PlacesBookmarksApi;
+  // engine/toolkit/components/places/nsINavHistoryService.idl: the database's state at this
+  // start (DATABASE_STATUS_OK, CREATE, CORRUPT, UPGRADED, LOCKED).
+  readonly history: {
+    readonly databaseStatus: number;
+    /** A new random Places guid (PlacesUtils.sys.mjs, history.makeGuid). */
+    makeGuid(): string;
+    readonly DATABASE_STATUS_CREATE: number;
+    readonly DATABASE_STATUS_CORRUPT: number;
+  };
   // engine/dom/base/PlacesObservers.cpp (PlacesObservers.webidl)
   readonly observers: {
     addListener(types: string[], listener: (events: unknown[]) => void): void;
@@ -1769,14 +1870,28 @@ interface PlacesBookmarkInfo {
   readonly guid: string;
   readonly parentGuid: string;
   readonly title: string;
+  /** A bookmark's address; a folder or separator has none (Bookmarks.sys.mjs, fetch). */
+  readonly url?: URL;
 }
 interface PlacesBookmarksApi {
+  readonly TYPE_BOOKMARK: number;
   readonly TYPE_FOLDER: number;
   readonly DEFAULT_INDEX: number;
+  /** Who made a change (Bookmarks.sys.mjs SOURCES), forwarded to observers. */
+  readonly SOURCES: {
+    readonly DEFAULT: number;
+    readonly SYNC: number;
+    readonly IMPORT: number;
+    readonly SYNC_REPARENT_REMOVED_FOLDER_CHILDREN: number;
+    readonly RESTORE: number;
+    readonly RESTORE_ON_STARTUP: number;
+  };
   /** The first bookmark that matches, null for none. */
   fetch(guidOrInfo: string | { url: string }): Promise<PlacesBookmarkInfo | null>;
   insert(info: {
     parentGuid: string;
+    guid?: string;
+    index?: number;
     type?: number;
     url?: string;
     title?: string;
@@ -1786,8 +1901,13 @@ interface PlacesBookmarksApi {
     parentGuid?: string;
     index?: number;
     title?: string;
+    url?: string;
   }): Promise<PlacesBookmarkInfo>;
-  remove(guid: string): Promise<unknown>;
+  remove(guid: string | { guid: string }[]): Promise<unknown>;
+  /** Inserts children (and their children) under an existing folder, appended, in one go. */
+  insertTree(tree: { guid: string; children: object[] }): Promise<unknown>;
+  /** Sets a folder's order; children the list leaves out follow in their order (:1800). */
+  reorder(parentGuid: string, orderedChildrenGuids: string[]): Promise<unknown>;
 }
 // engine/toolkit/modules/FinderParent.sys.mjs: the frame of the last match, null before one and
 // after close() forgets it.
@@ -1855,6 +1975,8 @@ interface ContextualIdentity {
 interface ContextualIdentityServiceApi {
   getPublicIdentities(): ContextualIdentity[];
   getPublicIdentityFromId(userContextId: number): ContextualIdentity | undefined;
+  /** The name Firefox shows for the container: its own name, or the localised one of a built-in. */
+  getUserContextLabel(userContextId: number): string;
   /** Throws once the container ids run out. */
   create(name: string, icon: string, color: string): ContextualIdentity;
   /** Throws for a name of only whitespace. */
@@ -2154,7 +2276,11 @@ interface XPCOMInterfaces {
   nsILoadContext: nsIJSIID<nsILoadContext>;
   nsILoginInfo: nsIJSIID<nsILoginInfo>;
   nsINestedURI: nsIJSIID<nsINestedURI>;
+  nsIPrincipal: nsIJSIID<nsIPrincipal>;
   nsIProcess: nsIJSIID<nsIProcess>;
+  // engine/netwerk/base/nsIPrompt.idl: the modal types (TabDialogBox.open, and the browser
+  // tests' prompts).
+  nsIPrompt: { readonly MODAL_TYPE_CONTENT: number; readonly MODAL_TYPE_WINDOW: number };
   nsIPropertyBag2: nsIJSIID<nsIPropertyBag2>;
   nsIReferrerInfo: nsIJSIID<nsIReferrerInfo> & {
     readonly EMPTY: number;
@@ -2191,6 +2317,12 @@ interface XPCOMInterfaces {
     readonly FOREGROUND_CHECK: number;
   };
   nsIUpdateManager: nsIJSIID<nsIUpdateManager>;
+  nsIWebBrowserChrome: nsIJSIID<nsIWebBrowserChrome>;
+  // engine/docshell/base/nsIWebNavigation.idl: the load flags a bookmarklet's run passes.
+  nsIWebNavigation: nsIJSIID<nsISupports> & {
+    readonly LOAD_FLAGS_NONE: number;
+    readonly LOAD_FLAGS_ALLOW_POPUPS: number;
+  };
   nsIWebProgressListener: nsIJSIID<nsISupports> & {
     readonly LOCATION_CHANGE_SAME_DOCUMENT: number;
     readonly STATE_CERT_USER_OVERRIDDEN: number;
@@ -2377,6 +2509,11 @@ interface nsIPropertyBag2 extends nsISupports {}
 interface nsIInterfaceRequestor extends nsISupports {
   getInterface<T>(iid: nsIJSIID<T>): T;
 }
+// engine/toolkit/components/browser/nsIWebBrowserChrome.idl: setLinkStatus sets the window's
+// link preview (the status panel), "" to clear it.
+interface nsIWebBrowserChrome extends nsISupports {
+  setLinkStatus(status: string): void;
+}
 // engine/xpcom/threads/nsIProcess.idl: runw runs `file` with UTF-16 arguments; `blocking` false
 // returns at once.
 interface nsIProcess extends nsISupports {
@@ -2423,6 +2560,8 @@ interface nsITextInputProcessor extends nsISupports {
   beginInputTransaction(win: Window, callback: (...args: unknown[]) => boolean): boolean;
   keydown(event: KeyboardEvent, flags?: number): number;
   keyup(event: KeyboardEvent, flags?: number): boolean;
+  /** null: start again with no modifier held. */
+  shareModifierStateOf(other: nsITextInputProcessor | null): void;
 }
 // engine/xpcom/base/nsIConsoleMessage.idl and engine/dom/bindings/nsIScriptError.idl: a console
 // message; a script error or warning's `flags` say which (scriptErrorLevel in core).

@@ -491,6 +491,9 @@ describe("bookmarksFolder", () => {
     const bad = structuredClone(linked);
     (bad.workspaces[0] as any).bookmarksFolder = 12;
     expect(defsError(() => readDefinitions(bad)).path).toBe("workspaces[0].bookmarksFolder");
+    // An array of the guid reads as the guid in text, but is no guid.
+    (bad.workspaces[0] as any).bookmarksFolder = ["abcdefghijkl"];
+    expect(defsError(() => readDefinitions(bad)).path).toBe("workspaces[0].bookmarksFolder");
   });
 
   test("a reconcile keeps it, for config and runtime workspaces, and a rename too", () => {

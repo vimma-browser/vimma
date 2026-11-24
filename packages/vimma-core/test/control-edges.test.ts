@@ -504,6 +504,19 @@ describe("responses and errors", () => {
     expect(error).toMatch(/^error\.code must be one of bad-request, unauthorized, /);
   });
 
+  test("an error code that is no string is refused as an unknown one is", () => {
+    for (const code of [7, null, true, ["failed"], { code: "failed" }]) {
+      const [error, ...rest] = errorsOf({
+        type: "response",
+        id: 1,
+        ok: false,
+        error: { code, message: "no" },
+      });
+      expect(error).toMatch(/^error\.code must be one of bad-request, unauthorized, /);
+      expect(rest).toEqual([]);
+    }
+  });
+
   test("retryAfter is refused on a code other than denied, whatever its reason", () => {
     const error = { code: "failed", message: "no", reason: "busy", retryAfter: 5 };
     expect(errorsOf({ type: "response", id: 1, ok: false, error })).toEqual([
@@ -591,5 +604,152 @@ describe("LineFramer and tokensEqual (S4, S5)", () => {
     expect(tokensEqual(lookalike, "x")).toBe(false);
     // @ts-expect-error -- not a string, as an in-process caller could pass
     expect(tokensEqual("x", lookalike)).toBe(false);
+  });
+});
+
+// The mutation run of issue #1119 after #1319: each test below fails against one surviving mutant.
+describe("arguments and fields no command names are refused (S7)", () => {
+  // The element Stryker's ArrayDeclaration mutator puts in an emptied array (its literal in
+  // node_modules/@stryker-mutator/instrumenter/dist/src/mutators/array-declaration-mutator.js):
+  // the one name an allow-list mutated to it would let through. The names other commands take
+  // pin the realistic regression, a real name added to the wrong allow-list, without it.
+  const STRYKER_ARRAY_PLACEHOLDER = "Stryker was here";
+  /** Every argument name some command takes. */
+  const ARGUMENT_NAMES = [
+    "keys",
+    "url",
+    "where",
+    "client",
+    "via",
+    "ctl",
+    "session",
+    "tab",
+    "format",
+    "max_chars",
+    "elements",
+    "query",
+    "kinds",
+    "label",
+    "fields",
+    "submit",
+    "labels",
+    "full",
+    "since",
+    "name",
+    "id",
+  ];
+  /** Every result field some other command's result has, and agent-fill's own two. */
+  const OTHER_RESULT_FIELDS = [
+    "filled",
+    "reset",
+    "tab",
+    "workspace",
+    "exists",
+    "tabs",
+    "text",
+    "truncated",
+    "background",
+    "selection",
+    "language",
+    "closed",
+    "shown",
+    "ran",
+    "cancelled",
+    "scroll",
+    "steps",
+    "find",
+    "links",
+    "mimeType",
+    "data",
+    "width",
+    "height",
+    "labels",
+    "stale",
+    "time",
+    "errors",
+    "requests",
+  ];
+
+  test.each(["state", "reload-theme", "agent-tabs", "agent-ping"])(
+    "%s takes no argument, whatever its name",
+    (command) => {
+      expect(valid(req(command))).toBe(true);
+      for (const name of ["x", ...ARGUMENT_NAMES, STRYKER_ARRAY_PLACEHOLDER]) {
+        expect(errorsOf(req(command, { [name]: 1 }))).toEqual([`unknown field "args.${name}"`]);
+      }
+    },
+  );
+
+  test("agent-activate's result has no field beyond its own", () => {
+    const result = { url: "https://a.example/", title: "A", loading: false, navigated: false };
+    expect(response("agent-activate", result).valid).toBe(true);
+    for (const name of [...OTHER_RESULT_FIELDS, STRYKER_ARRAY_PLACEHOLDER]) {
+      expect(response("agent-activate", { ...result, [name]: 1 }).errors).toEqual([
+        `unknown field "result.${name}"`,
+      ]);
+    }
+  });
+});
+
+describe("agent-bookmarklet's name (bookmarklets B12)", () => {
+  // Astral characters, so the limit is counted in code points, not UTF-16 code units.
+  const run = (name: string) => req("agent-bookmarklet", { tab: "1", name });
+
+  test("a name of exactly 1024 code points is taken; 1025 are not", () => {
+    expect(valid(run("\u{1d49c}".repeat(1024)))).toBe(true);
+    expect(
+      parseAgentRequest("agent-bookmarklet", { tab: "1", name: "\u{1d49c}".repeat(1024) }),
+    ).not.toBeNull();
+    expect(errorsOf(run("\u{1d49c}".repeat(1025)))).toEqual([
+      "name must be a string of 1 to 1024 characters",
+    ]);
+  });
+});
+
+describe("parseAgentRequest: only a plain object is a command's arguments", () => {
+  test("a function is refused, even one JSON would copy into good arguments", () => {
+    const args = Object.assign(() => undefined, { toJSON: () => ({ tab: "1" }) });
+    expect(JSON.parse(JSON.stringify(args))).toEqual({ tab: "1" });
+    expect(parseAgentRequest("agent-close", { tab: "1" })).not.toBeNull();
+    expect(parseAgentRequest("agent-close", args)).toBeNull();
+  });
+
+  test("arguments JSON cannot copy are refused", () => {
+    expect(parseAgentRequest("agent-close", { tab: "1", big: 1n })).toBeNull();
+    const cycle: Record<string, unknown> = { tab: "1" };
+    cycle.self = cycle;
+    expect(parseAgentRequest("agent-close", cycle)).toBeNull();
+  });
+});
+
+describe("LineFramer and tokensEqual: what is held and what is read (S4, S5)", () => {
+  const bytes = (s: string) => new TextEncoder().encode(s);
+
+  test("a push that ends on a line end holds no partial line", () => {
+    const framer = new LineFramer(16);
+    expect(framer.push(bytes("ab\n"))).toEqual([bytes("ab")]);
+    expect(framer.chunks).toEqual([]);
+    expect(framer.length).toBe(0);
+  });
+
+  test("an empty push holds nothing and completes nothing", () => {
+    const framer = new LineFramer(16);
+    expect(framer.push(new Uint8Array(0))).toEqual([]);
+    expect(framer.chunks).toEqual([]);
+  });
+
+  test("tokensEqual reads as many characters as the longer token has", () => {
+    const spy = vi.spyOn(String.prototype, "charCodeAt");
+    try {
+      const calls = (a: string, b: string) => {
+        spy.mockClear();
+        expect(tokensEqual(a, b)).toBe(false);
+        return spy.mock.calls.length;
+      };
+      expect(calls(TOKEN, TOKEN.slice(0, 63))).toBe(128);
+      expect(calls(TOKEN.slice(0, 1), TOKEN)).toBe(128);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

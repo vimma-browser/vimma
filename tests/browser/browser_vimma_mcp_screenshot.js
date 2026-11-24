@@ -62,7 +62,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -120,7 +120,7 @@ async function question() {
 
 /**
  * `agent-screenshot` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {object} [args] @param {GateAnswer | null} [answer]
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {object} [args] @param {GateAnswer | null} [answer]
  */
 async function screenshot(c, tab, args = {}, answer = { kind: "once" }) {
   const id = c.request("agent-screenshot", { tab: idOf(tab), ...args });
@@ -137,7 +137,7 @@ async function screenshot(c, tab, args = {}, answer = { kind: "once" }) {
   return r;
 }
 
-/** `agent-elements` on `tab`, answered once. @param {any} c @param {any} tab */
+/** `agent-elements` on `tab`, answered once. @param {Client} c @param {MozTabbrowserTab} tab */
 async function elements(c, tab) {
   const id = c.request("agent-elements", { tab: idOf(tab) });
   AgentGate.answer((await question()).id, { kind: "once" });
@@ -149,7 +149,7 @@ async function elements(c, tab) {
  * @param {{ data: string, mimeType: string }} result
  */
 async function decode(result) {
-  const bytes = /** @type {any} */ (Uint8Array).fromBase64(result.data);
+  const bytes = Uint8Array.fromBase64(result.data);
   const bitmap = await createImageBitmap(new Blob([bytes], { type: result.mimeType }));
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
   // A fresh canvas: getContext("2d") is null only after another context type.
@@ -180,12 +180,12 @@ const near = (/** @type {number[]} */ a, /** @type {number[]} */ b, d = 3) =>
 /**
  * Sets a field of the page, or of its payment frame, as the user's typing would, and scrolls the
  * page to it or back to the top.
- * @param {any} tab @param {string} id @param {string} value @param {{ frame?: boolean, scroll?: boolean }} [o]
+ * @param {MozTabbrowserTab} tab @param {string} id @param {string} value @param {{ frame?: boolean, scroll?: boolean }} [o]
  */
 async function typeInto(tab, id, value, { frame = false, scroll = true } = {}) {
-  const bc = frame
-    ? tab.linkedBrowser.browsingContext.children[0]
-    : tab.linkedBrowser.browsingContext;
+  // A loaded tab's browser has its context.
+  const top = /** @type {CanonicalBrowsingContext} */ (tab.linkedBrowser.browsingContext);
+  const bc = frame ? top.children[0] : top;
   await SpecialPowers.spawn(bc, [id, value], (fid, v) => {
     const el = /** @type {HTMLInputElement} */ (content.document.getElementById(fid));
     el.setUserInput(v);
@@ -222,8 +222,11 @@ add_task(async function test_screenshot_of_a_background_tab_shows_its_page() {
   const { width, height } = tab.linkedBrowser.getBoundingClientRect();
   const scale = Math.min(window.devicePixelRatio, 1280 / width);
   Assert.ok(image.width <= 1280, "at most 1,280 pixels wide");
-  Assert.equal(image.width, Math.round(width * scale), "the whole viewport's width");
-  Assert.equal(image.height, Math.round(height * scale), "and height");
+  // drawSnapshot truncates the scaled size to whole pixels (CrossProcessPaint.cpp, surfaceSize),
+  // and the scaled box need not be whole: with the toolbar hidden, the default, a 747 px high
+  // page at 1280/1366 is 699.97 px and draws 699. The image is the viewport to its last pixel.
+  Assert.less(Math.abs(image.width - width * scale), 1, "the whole viewport's width");
+  Assert.less(Math.abs(image.height - height * scale), 1, "and height");
   Assert.deepEqual(image.at(10, 10), [255, 0, 0], "shows the page as it is now (F18)");
   Assert.deepEqual(image.at(10, 125 * scale + 40), [255, 255, 255], "below the band, the page");
   Assert.deepEqual(
@@ -296,7 +299,7 @@ add_task(async function test_screenshot_is_smaller_unless_asked_full() {
   });
   Assert.ok((await elements(c, tab)).ok, "vimma_elements lists the page");
   const r = await screenshot(c, tab, { labels: true });
-  Assert.ok(r.result.labels > 0, "labels are drawn");
+  Assert.ok((r.result.labels ?? 0) > 0, "labels are drawn");
   const labelled = await decode(r.result);
   const style = getComputedStyle(document.documentElement);
   const hint = rgb(style.getPropertyValue("--vimma-hint-bg").trim() || "#ff4fb8");
@@ -440,13 +443,14 @@ add_task(async function test_screenshot_and_the_agents_own_steps_exclude_each_ot
   const tab = await openAgentTab();
   const c = await agentClient();
   // A grant, so the calls below run unasked; it covers keys too (mcp-grants G1).
+  /** @type {ControlReply<"agent-screenshot" | "agent-keys">} */
   let r = await screenshot(c, tab, {}, { kind: "grant", minutes: 5 });
   Assert.ok(r.ok, "a screenshot grant");
   Assert.ok((await c.call("agent-keys", { tab: idOf(tab), keys: "gg" })).ok, "keys run under it");
   // While a screenshot is taken, the agent's keys on that tab are refused: it could scroll a
   // filled card field into view between the checks and back (F21).
-  /** @type {any} */
-  let during = null;
+  // Set by the hook below, which the type checker does not follow.
+  let during = /** @type {ControlResponse | null} */ (null);
   AgentShot._beforeDraw = async () => {
     during = await c.call("agent-keys", { tab: idOf(tab), keys: "G" });
   };
@@ -455,8 +459,8 @@ add_task(async function test_screenshot_and_the_agents_own_steps_exclude_each_ot
   Assert.ok(r.ok, "the screenshot runs");
   Assert.equal(during?.error?.reason, "in-use", "keys during it are denied as in-use");
   // While the agent's keys run on the tab, a screenshot of it is refused.
-  /** @type {any} */
-  let shot = null;
+  // Set by the hook below, which the type checker does not follow.
+  let shot = /** @type {ControlResponse | null} */ (null);
   AgentDrive._onStep = async () => {
     AgentDrive._onStep = null;
     shot = await c.call("agent-screenshot", { tab: idOf(tab) });
@@ -530,7 +534,7 @@ add_task(async function test_screenshot_under_a_grant_notice_log_and_rate() {
     if (!x.ok) busy = { i, x };
   }
   Assert.equal(busy?.i, 10, "the 13th screenshot in a minute is refused");
-  Assert.equal(busy?.x.error.reason, "busy", "as busy");
+  Assert.equal(busy?.x.error?.reason, "busy", "as busy");
   Assert.equal(AgentGate.log[0].outcome, "busy", "and logged");
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);

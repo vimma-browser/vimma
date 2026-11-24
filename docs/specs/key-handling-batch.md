@@ -147,6 +147,19 @@ Decisions:
   default, so `parseConfig(defaults.toml)` stays the default keymap. `insert_editing = false`
   keeps every binding.)
 
+(Since changed, #1367: while `insert_editing` is on, `[keys] prefix` cannot be one of these
+chords, `ctrl+j` and `ctrl+m` included, and on macOS `ctrl+h` can, since Vimma adds none there.
+`compileKeymap` refuses it at `keys.prefix` with what the key does in a field and the default
+prefix to pick instead (`ctrl+w deletes a word in text fields ([modal] insert_editing), where the
+prefix would not work: pick another chord, such as ctrl+b`), because the text-field rule takes
+the chord from the prefix in insert, command and help mode and the prefix must work in every
+mode (pdf-mode decision 5). The prefix does not win over the field instead, because that takes
+away a common editing key (`ctrl+w` deletes a word, `ctrl+u` the line), and a warning alone
+would leave a prefix that silently works in only some modes. The chords and their wording come
+from `editable.mjs` (`insertEditChords`, `INSERT_EDIT_DOES`), which the setup's prefix step
+uses too ([setup-v2](setup-v2.md) decision 21), so the setup and the config refuse the same keys.
+With `insert_editing = false` the prefix may be any of them.)
+
 ## 3. Option / AltGr characters
 
 `chordFromEvent` folds a character composed with Option or AltGr into the plain character, as
@@ -197,6 +210,7 @@ modifiers. Alt alone with `AltGraph` false (Linux, Windows) is always a genuine 
 
 Vitest: `keys.test.mjs` (Option/AltGr cases), `keys-layouts.test.ts` (non-US letter layouts),
 `firefox-keys.test.mjs` (chords of `<key>` elements, the plan for default, list, "all", enable),
-`config-v2.test.mjs` (`[firefox]`, `insert_editing`), `sidepanel.test.mjs` (`panel.close_tab`).
+`config-v2.test.mjs` (`[firefox]`, `insert_editing`), `config-errors.test.ts` and
+`keymap.test.ts` (a prefix on a text-field key), `sidepanel.test.mjs` (`panel.close_tab`).
 Mochitests:
 `browser_vimma_firefox_keys.js`, `browser_vimma_edit_keys.js`, `browser_vimma_side_panel.js`.

@@ -97,7 +97,7 @@ const hasControl = (s) =>
 function asciiHost(host) {
   try {
     return new URL(`http://${host}/`).hostname;
-  } catch {
+  } /* Stryker disable next-line BlockStatement: callers read undefined as null */ catch {
     return null;
   }
 }
@@ -146,7 +146,7 @@ function parseUrlPrefix(text) {
   try {
     const href = new URL(text.trim()).href;
     return /^javascript:/i.test(href) ? null : href;
-  } catch {
+  } /* Stryker disable next-line BlockStatement: callers read undefined as null */ catch {
     return null;
   }
 }
@@ -215,6 +215,35 @@ export function validateRoutes(value) {
 }
 
 /**
+ * Every problem of a `[routing]` table, paths relative to it, as config.toml's are checked
+ * (config.mjs `validate`), for routes.toml (docs/specs/routes-file.md decision 4).
+ * @param {unknown} value
+ * @returns {RouteProblem[]}
+ */
+export function validateRouting(value) {
+  if (!isTable(value)) return [{ path: [], message: `expected a table, got ${typeName(value)}` }];
+  /** @type {RouteProblem[]} */
+  const problems = [];
+  for (const [key, v] of Object.entries(value)) {
+    if (key !== "default_workspace") {
+      const suggestion = closest(key, ["default_workspace"]);
+      problems.push({
+        path: [key],
+        message: `unknown key "${key}"`,
+        ...(suggestion ? { suggestion } : {}),
+      });
+    } else if (typeof v !== "string") {
+      problems.push({ path: [key], message: `expected a string, got ${typeName(v)}` });
+    } else if ([...v].length < 1 || [...v].length > MAX_NAME) {
+      problems.push({ path: [key], message: `workspace name must be 1 to ${MAX_NAME} characters` });
+    } else if (hasControl(v)) {
+      problems.push({ path: [key], message: "workspace name must not contain control characters" });
+    }
+  }
+  return problems;
+}
+
+/**
  * The rules of a valid `routes` value, as matching uses them.
  * @param {readonly Record<string, string>[]} value  validated by validateRoutes
  * @returns {Route[]}
@@ -222,6 +251,7 @@ export function validateRoutes(value) {
 export function resolveRoutes(value) {
   return value.map((rule, i) => {
     /** @type {Route} */
+    // Stryker disable next-line StringLiteral: validateRoutes lets no rule through without a workspace
     const route = { index: i + 1, workspace: rule.workspace ?? "" };
     if (rule.domain !== undefined)
       route.domain = /** @type {RouteDomain} */ (parseDomain(rule.domain));
@@ -239,6 +269,7 @@ function domainHit(u, d) {
   if (u.protocol !== "http:" && u.protocol !== "https:") return false;
   const host = u.hostname.replace(/\.$/, "").replace(/^\[(.*)\]$/, "$1");
   if (d.ip) return host === d.host;
+  // Stryker disable next-line LogicalOperator: a domain rule's host never ends in a number or holds a colon, so it cannot equal or end an IP host either way
   if (IPV4.test(host) || host.includes(":")) return false;
   return d.sub ? host.endsWith(`.${d.host}`) : host === d.host || host.endsWith(`.${d.host}`);
 }
@@ -271,6 +302,7 @@ function keysHit(r, u) {
  * @param {Route} r
  * @param {{ workspaces?: readonly string[], skip?: readonly string[] }} options
  */
+// Stryker disable next-line ArrayDeclaration: the default stands for no workspace to skip; a name no workspace has skips nothing either
 function usable(r, { workspaces, skip = [] }) {
   return (!workspaces || workspaces.includes(r.workspace)) && !skip.includes(r.workspace);
 }
@@ -288,20 +320,24 @@ function usable(r, { workspaces, skip = [] }) {
  * @param {{ workspaces?: readonly string[], skip?: readonly string[] }} [options]
  * @returns {Route | null}
  */
+// Stryker disable next-line ArrayDeclaration: the default stands for no program known; a name that is not a token is filtered out
 export function matchRoute(routes, { url, apps = [] }, options = {}) {
   if (!routes.length) return null;
   /** @type {URL | null} */
   let u;
   try {
     u = new URL(url);
-  } catch {
+  } /* Stryker disable next-line BlockStatement: keysHit reads undefined as null */ catch {
     u = null;
   }
+  // Stryker disable next-line ArrayDeclaration: the default stands for no workspace to skip; a name no workspace has skips nothing either
   const skip = options.skip ?? [];
+  // Stryker disable next-line MethodExpression: a rule's app is always a token, so a name that is not one matches no rule, and dropping it keeps the order of the rest
   let names = apps.filter((a) => isAppToken(a));
   if (
     routes.some((r) => r.app !== undefined && skip.includes(r.workspace) && names.includes(r.app))
   ) {
+    // Stryker disable next-line ArrayDeclaration: a name that is not a token matches no rule's app
     names = [];
   }
   /** @type {Route | null} */
@@ -343,7 +379,8 @@ function covers(j, i) {
     if (i.url === undefined) return false;
     try {
       return domainHit(new URL(i.url), j.domain);
-    } catch {
+    } /* Stryker disable next-line BlockStatement: i.url is a parsed href, so it parses */ catch {
+      // Stryker disable next-line BooleanLiteral: i.url is an href the URL parser produced, so it always parses again
       return false;
     }
   }
@@ -378,8 +415,25 @@ export function shadowedBy(routes, i, options = {}) {
  * @param {{ workspaces: readonly string[], skip?: readonly string[] }} options
  * @returns {string | null}
  */
+// Stryker disable next-line ArrayDeclaration: the default stands for no workspace to skip; a name no workspace has skips nothing either
 export function defaultWorkspaceFor(name, { workspaces, skip = [] }) {
   return name !== null && workspaces.includes(name) && !skip.includes(name) ? name : null;
+}
+
+/**
+ * The `[[routes]]` table `:route add` appends for a `domain` rule, and what goes before it, in
+ * the line endings of `text` (a file with CRLF keeps CRLF): JSON's quoting is TOML's for these
+ * values, so each stays one string.
+ * @param {string} text  the file as it is ("" for a new one)
+ * @param {{ domain: string, workspace: string }} rule
+ * @returns {string}
+ */
+export function routeBlockFor(text, { domain, workspace }) {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const glue = text === "" ? "" : text.endsWith("\n") ? eol : eol + eol;
+  const lines = ["[[routes]]", `domain = ${JSON.stringify(domain)}`];
+  lines.push(`workspace = ${JSON.stringify(workspace)}`);
+  return `${glue}${lines.join(eol)}${eol}`;
 }
 
 /**

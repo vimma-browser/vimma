@@ -310,6 +310,10 @@ nightly --prerelease`), and its schedule does nothing until the repository varia
 4. **A `.deb` from a GitHub Release is not updated by apt.** There is no Vimma apt repository, so
    the hint says "download the new `.deb`" (decision 20). The AUR package is
    updated by the user's AUR helper.
+   (Since changed: [package-repositories](package-repositories.md) adds an apt repository,
+   published once `PACKAGE_REPOS_ENABLED` is set; a `.deb` whose
+   `/etc/apt/sources.list.d/vimma.sources` exists gets `sudo apt update && sudo apt upgrade`,
+   that spec's decision 18.)
 5. **The MAR download sends GitHub cookies.** The `<patch URL>` is
    `github.com/…/releases/download/…`, which redirects to a signed, expiring asset URL; the
    system-principal download sends the profile's `github.com` cookies on the first hop. Vimma
@@ -403,6 +407,13 @@ download against that SHA-512 before installing it (docs/security/16-update-chec
 (Since changed: the Flatpak's marker, `vimma-package=flatpak`, gives the install type
 `flatpak`, whose hint is `flatpak update dev.vimma.browser`; spec [flatpak](flatpak.md),
 decision 10.)
+
+(Since changed: the package from Vimma's pacman repository has the marker
+`vimma-package=pacman`, which gives the install type `pacman` with the hint `sudo pacman -Syu`.
+A `.deb` whose `/etc/apt/sources.list.d/vimma.sources` exists gets the hint
+`sudo apt update && sudo apt upgrade` in place of the download, and an `.rpm` gets
+`sudo dnf upgrade vimma` or `sudo zypper up vimma` for each repository file that exists; spec
+[package-repositories](package-repositories.md), decisions 18 and 26.)
 
 Firefox only tests that the file exists; the `vimma-package=` line is for Vimma's hint text.
 Detection order in `VimmaUpdates.sys.mjs`: no `omni.ja` in the GRE directory (a build run from
@@ -844,6 +855,10 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     because an apt repository would be a second signing system (a signed `Release` file, a second
     key with its own ceremony and custody, hosting for every `.deb`) for one package format. It is
     revisited when `.deb` users ask for one.
+    (Since changed: [package-repositories](package-repositories.md) adds one signing system for
+    apt, dnf, zypper and pacman together; with the apt repository set up, the hint is
+    `sudo apt update && sudo apt upgrade` (its decision 18), and without it the download command
+    stays.)
 21. **An urgent update shows the red status-bar segment and asks the `(y/N)` restart question once
     per session**, asked again after 24 hours (Behaviour 6, §5), because a security fix that is
     staged but never applied protects nobody, and once a day is rare enough not to train a reflex
@@ -1162,7 +1177,7 @@ checked by the updater against two embedded keys (§6). Each compromise and what
 **Local surface.** `app.restart` and `app.update_check` are ordinary actions: the control
 socket's full role can run them, as it can `app.quit`. The agent role of control protocol 2 (spec
 vimma-mcp) has a closed list of agent commands (`AGENT_COMMANDS` in
-`packages/vimma-core/src/control.mjs`) and reaches no action, so a local AI agent cannot
+`packages/vimma-core/src/control.mjs`) and reaches no action, so an AI agent cannot
 restart Vimma or trigger an update check.
 
 ## Tests
@@ -1177,7 +1192,8 @@ Written first and seen to fail.
   build-ID order; the running Vimma version with a newer build ID); freeze thresholds per channel, and no stale warning with checks off; `updateNotice` for every row of the §5 table;
   the `y/N` prompt once per session and its 24 h re-ask; install-type detection; the version line
   (`Vimma 0.3.1 · Firefox 158.0.1`, `0.3.1-nightly.20261028031500`).
-  `config.test.mjs`: `[updates] check`, wrong type, schema 1 → "is new in schema 2";
+  `config.test.mjs`: `[updates] check`, wrong type, schema 1 → "is new in schema 2" (since
+  changed: a schema-1 file may have `[updates]`, #1379);
   `cmdline.test.mjs`: `:update`, `:restart`; `actions.test.mjs`: both actions have no default key
   and appear in help. Snapshots (`defaults.toml`, help) are re-recorded with a changelog line.
 - **Tools** `tools/update/test/manifest.test.ts`: XML from fixtures (attributes, sizes, hashes,

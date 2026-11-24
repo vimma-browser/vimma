@@ -43,7 +43,7 @@ const labelOf = (conn) =>
 /** The waiting question of `conn`. @param {number} conn */
 const questionOf = (conn) => AgentGate.waiting.find((q) => q.conn === conn);
 /** A write the way any module could try it; false when the object is frozen. */
-const tryWrite = (/** @type {any} */ o, /** @type {string} */ key, /** @type {unknown} */ v) =>
+const tryWrite = (/** @type {object} */ o, /** @type {string} */ key, /** @type {unknown} */ v) =>
   Reflect.set(o, key, v);
 
 // A reader of `connections` or `waiting` that renames a connection, and a caller that changes its
@@ -60,9 +60,9 @@ add_task(async function test_question_and_log_show_what_was_asked() {
     "a reader cannot rename a connection",
   );
 
-  /** @type {any[]} */
+  /** @type {GateQuestionEvent[]} */
   const events = [];
-  const listener = (/** @type {any} */ e) => {
+  const listener = (/** @type {GateEvent | undefined} */ e) => {
     if (e && "question" in e && e.question.conn === CONN) {
       // A listener that changes what it was told, before the others hear it.
       tryWrite(e.question.what, "url", READER);
@@ -87,7 +87,7 @@ add_task(async function test_question_and_log_show_what_was_asked() {
     Assert.ok(Object.isFrozen(AgentGate.waiting), "waiting is a frozen array");
     const again = /** @type {NonNullable<typeof q>} */ (questionOf(CONN));
     Assert.equal(again.label.client, "agent-a", "the waiting question keeps the agent's name");
-    Assert.equal(/** @type {any} */ (again.what).url, ASKED, "and the URL it asked for");
+    Assert.equal(again.what.url, ASKED, "and the URL it asked for");
     Assert.equal(again.tool, "vimma_open", "and its tool");
     Assert.equal(what.url, LATER, "a reader's write never reaches the caller's object");
     Assert.equal(events[0]?.question.what.url, ASKED, "the asked event keeps the URL");
@@ -151,7 +151,10 @@ add_task(async function test_a_here_answer_allows_the_button_the_question_named(
   try {
     // A grant, then a form checkpoint that offers `a` for one button.
     const read = AgentGate.request(CONN, "vimma_read_page", { url: ASKED });
-    AgentGate.answer(/** @type {any} */ (questionOf(CONN)).id, { kind: "grant", minutes: 5 });
+    AgentGate.answer(/** @type {GateQuestion} */ (questionOf(CONN)).id, {
+      kind: "grant",
+      minutes: 5,
+    });
     Assert.ok((await read).allow, "granted");
     const buy = "asked.example|form|buy";
     const other = "asked.example|form|other";
@@ -162,7 +165,7 @@ add_task(async function test_a_here_answer_allows_the_button_the_question_named(
     };
     const click = AgentGate.request(CONN, "vimma_activate", form, { always: true, covered: buy });
     const fq = /** @type {NonNullable<ReturnType<typeof questionOf>>} */ (questionOf(CONN));
-    tryWrite(/** @type {any} */ (fq.what).here, "key", other);
+    tryWrite(/** @type {object} */ (fq.what.here), "key", other);
     form.here.key = other;
     AgentGate.answer(fq.id, { kind: "here" });
     Assert.ok((await click).allow, "a allows the button");
@@ -194,7 +197,10 @@ add_task(async function test_ran_events_and_grant_labels_are_the_gates_own() {
   AgentGate.connect(OTHER, { client: "agent-b" });
   try {
     const read = AgentGate.request(OTHER, "vimma_read_page", { url: ASKED });
-    AgentGate.answer(/** @type {any} */ (questionOf(OTHER)).id, { kind: "grant", minutes: 5 });
+    AgentGate.answer(/** @type {GateQuestion} */ (questionOf(OTHER)).id, {
+      kind: "grant",
+      minutes: 5,
+    });
     Assert.ok((await read).allow, "granted");
     const grants = AgentGate.grants();
     Assert.ok(Object.isFrozen(grants), "grants() is a frozen array");
@@ -203,18 +209,19 @@ add_task(async function test_ran_events_and_grant_labels_are_the_gates_own() {
     Assert.equal(tryWrite(mine, "until", 0), false, "so a reader cannot change its end");
     const label = labelOf(OTHER);
     Assert.equal(label?.client, "agent-b", "the grant names its agent");
-    tryWrite(label, "client", "built-in agent");
+    // Named above: the grant has its label.
+    tryWrite(/** @type {object} */ (label), "client", "built-in agent");
     Assert.equal(labelOf(OTHER)?.client, "agent-b", "a reader cannot rename it through grants()");
 
-    /** @type {any[]} */
+    /** @type {GateRanEvent[]} */
     const seen = [];
-    const first = (/** @type {any} */ e) => {
+    const first = (/** @type {GateEvent | undefined} */ e) => {
       if (e?.kind !== "ran" || e.conn !== OTHER) return;
       tryWrite(e.what, "url", READER);
       tryWrite(e.label, "client", "built-in agent");
       tryWrite(e, "tool", "vimma_close_tab");
     };
-    const second = (/** @type {any} */ e) => {
+    const second = (/** @type {GateEvent | undefined} */ e) => {
       if (e?.kind === "ran" && e.conn === OTHER) seen.push(e);
     };
     AgentGate.addListener(first);
@@ -328,7 +335,7 @@ add_task(async function test_relabel_keeps_a_frozen_copy() {
 add_task(async function test_a_request_too_deep_to_copy_is_never_queued() {
   AgentGate.connect(CONN, { client: "agent-a" });
   try {
-    /** @type {any} */
+    /** @type {Record<string, unknown>} */
     let what = { url: ASKED };
     for (let i = 0; i < 40; i++) what = { what };
     Assert.throws(
@@ -348,7 +355,7 @@ add_task(async function test_a_request_too_deep_to_copy_is_never_queued() {
  * @param {number} levels
  */
 const nested = (levels) => {
-  /** @type {any} */
+  /** @type {Record<string, unknown>} */
   let what = { url: ASKED, title: "Deep" };
   for (let i = 1; i < levels; i++) what = { what };
   return what;
@@ -359,12 +366,14 @@ const nested = (levels) => {
 // event copy never counts the request's levels again.
 add_task(async function test_a_request_at_the_copy_limit_asks_and_is_heard() {
   AgentGate.connect(CONN, { client: "agent-a" });
-  /** @type {any[]} */
+  /** @type {GateQuestionEvent[]} */
   const first = [];
-  /** @type {any[]} */
+  /** @type {GateQuestionEvent[]} */
   const second = [];
-  const one = (/** @type {any} */ e) => e?.question?.conn === CONN && first.push(e);
-  const two = (/** @type {any} */ e) => e?.question?.conn === CONN && second.push(e);
+  const one = (/** @type {GateEvent | undefined} */ e) =>
+    e && "question" in e && e.question.conn === CONN && first.push(e);
+  const two = (/** @type {GateEvent | undefined} */ e) =>
+    e && "question" in e && e.question.conn === CONN && second.push(e);
   AgentGate.addListener(one);
   AgentGate.addListener(two);
   try {
@@ -406,15 +415,19 @@ add_task(async function test_a_request_at_the_copy_limit_asks_and_is_heard() {
 // listener hears it ran; one level deeper is still refused before anything is logged.
 add_task(async function test_a_request_at_the_copy_limit_runs_under_a_grant() {
   AgentGate.connect(OTHER, { client: "agent-b" });
-  /** @type {any[]} */
+  /** @type {GateRanEvent[]} */
   const seen = [];
-  const listener = (/** @type {any} */ e) => e?.kind === "ran" && e.conn === OTHER && seen.push(e);
+  const listener = (/** @type {GateEvent | undefined} */ e) =>
+    e?.kind === "ran" && e.conn === OTHER && seen.push(e);
   try {
     const read = AgentGate.request(OTHER, "vimma_read_page", { url: ASKED });
-    AgentGate.answer(/** @type {any} */ (questionOf(OTHER)).id, { kind: "grant", minutes: 5 });
+    AgentGate.answer(/** @type {GateQuestion} */ (questionOf(OTHER)).id, {
+      kind: "grant",
+      minutes: 5,
+    });
     Assert.ok((await read).allow, "granted");
     AgentGate.addListener(listener);
-    /** @type {Promise<any> | null} */
+    /** @type {ReturnType<AgentGateApi["request"]> | null} */
     let ran = null;
     try {
       ran = AgentGate.request(OTHER, "vimma_read_page", nested(32));
@@ -481,13 +494,22 @@ add_task(async function test_a_label_that_cannot_be_copied_takes_no_session_gran
   AgentGate.connect(CONN, { client: "agent-a" }, SESSION);
   try {
     const read = AgentGate.request(CONN, "vimma_read_page", { url: ASKED });
-    AgentGate.answer(/** @type {any} */ (questionOf(CONN)).id, { kind: "grant", minutes: 5 });
+    AgentGate.answer(/** @type {GateQuestion} */ (questionOf(CONN)).id, {
+      kind: "grant",
+      minutes: 5,
+    });
     Assert.ok((await read).allow, "granted");
     AgentGate.disconnect(CONN);
     Assert.equal(AgentGate.grants().length, 0, "the grant is parked, not in force");
 
     Assert.throws(
-      () => AgentGate.connect(OTHER, { client: nested(32) }, SESSION),
+      // A label nested too deep to copy, which no client name the types allow can be.
+      () =>
+        AgentGate.connect(
+          OTHER,
+          { client: /** @type {string} */ (/** @type {unknown} */ (nested(32))) },
+          SESSION,
+        ),
       /deeper than 32 levels/,
       "a label too deep to copy throws",
     );
@@ -508,7 +530,7 @@ add_task(async function test_a_label_that_cannot_be_copied_takes_no_session_gran
 // The same for a full-control question (decision 29 C): an `onCancel` that throws leaves no
 // question waiting, and the caller is denied.
 add_task(async function test_a_throwing_on_cancel_leaves_no_full_control_question() {
-  /** @type {Promise<any> | null} */
+  /** @type {ReturnType<AgentGateApi["askFull"]> | null} */
   let outcome = null;
   try {
     outcome = AgentGate.askFull(null, () => {

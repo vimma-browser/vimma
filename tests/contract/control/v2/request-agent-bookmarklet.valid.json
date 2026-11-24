@@ -1,0 +1,13 @@
+{
+  "description": "Run one of the user's bookmarklets, by its title, in an agent tab (bookmarklets B12)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 9,
+    "command": "agent-bookmarklet",
+    "args": {
+      "tab": "12",
+      "name": "Readability"
+    }
+  }
+}

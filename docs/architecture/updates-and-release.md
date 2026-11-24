@@ -77,7 +77,15 @@ tag whose commit is on main").
    files say `vimma`, and it embeds Vimma's certificates and none of Mozilla's. With
    `UPDATES_ENABLED`, `tools/update/mar.ts build` makes the complete MAR from the release tarball
    with Mozilla's `make_full_update.sh` and a zeroed signature placeholder
-   (`addSignaturePlaceholder`).
+   (`addSignaturePlaceholder`). With `PACKAGE_REPOS_ENABLED`, it also builds the pacman
+   repository's `vimma-bin` package from the PKGBUILD variant marked `vimma-package=pacman` and
+   installs it with `pacman -U` in the pinned Arch image
+   ([package-repositories](../specs/package-repositories.md), decision 10).
+   **`package-sign`** then calls `update-publish.yml`'s job of that name, which runs only the
+   OpenPGP signer from `main`: it signs the `.rpm` (through `rpmsign`) and the pacman package with
+   the package key in Cloud KMS, in the `package-signing` environment, checks both against the
+   committed certificate and writes `SHA256SUMS` again. **`packages`** checks that with no secret
+   (`tools/package/check-signed-packages.sh`) before `mar`, `sign` and `publish` build on it.
 4. **`mar-sign`** calls `update-publish.yml`'s job of that name. It runs no repository code: it
    checks the file is this caller's MAR for the `vimma` channel with one zeroed SHA-384
    placeholder, signs the bytes around it with the update key in Google Cloud KMS through GitHub's
@@ -128,6 +136,17 @@ also starts `aur.yml` and `homebrew.yml`.
    `public/updates/browser/Linux_x86_64-gcc3/vimma/update.xml` (never forced), and waits until
    `updates.vimma.dev` serves it. Without `UPDATES_ENABLED`, or in a dry run, it signs and checks
    everything and pushes nothing.
+4. **The package repositories** ([package-repositories](../specs/package-repositories.md)),
+   while `PACKAGE_REPOS_ENABLED` is `true` and only in the Linux release's run: `repo-prepare`
+   (no secret) chooses the releases to keep (`tools/package/repos.ts select`), checks their
+   packages against each `SHA256SUMS`, its cosign bundle and the committed certificate
+   (`configs/package-signing/`), and builds the apt, rpm and pacman metadata (`repos.ts build`).
+   `repo-sign` (environment `package-signing`, the signer and `repos.ts` from `main` alone)
+   chooses the releases again, checks the metadata against their `SHA256SUMS` from GitHub
+   (`repos.ts verify`), and signs it with the Cloud KMS package key through
+   `tools/package/openpgp-kms.ts`. `publish` then waits for it, checks the signed tree again
+   and commits it with the manifest in one commit; the host serves only metadata and redirects
+   each package to its GitHub Release file.
 
 `-f offer=nothing` publishes a signed manifest that offers no update, which pulls a bad release
 back. The macOS `.dmg` gets its own manifest under `Darwin_aarch64-gcc3`. Tests:

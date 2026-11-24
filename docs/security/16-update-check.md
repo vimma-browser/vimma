@@ -10,7 +10,7 @@ built with Firefox's updater (UP12), which Firefox's own check and download upda
 Vimma's hook (UP13). Who can reach it: whoever
 controls the update host or the network path (TLS stops the path), _you_ through `about:config`
 and `config.toml`, and the control socket's full role (`app.update_check` and `app.restart`, as
-it can run `app.quit`). The agent role reaches no action, so a local AI agent can neither trigger
+it can run `app.quit`). The agent role reaches no action, so an AI agent can neither trigger
 a check nor restart Vimma.
 _Pages_ and _extensions_ cannot reach it.
 
@@ -70,6 +70,7 @@ _Pages_ and _extensions_ cannot reach it.
   `:update`, an attempt that got no answer is **never** repeated within 10 minutes, so restarts
   send no burst of requests.
   [`off_by_pref_or_config_sends_nothing`](../../tests/browser/browser_vimma_update_check.js),
+  [`updates_step_says_what_the_check_sends`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
   [`nothing_at_all_with_checks_off`](../../tests/browser/browser_vimma_update_notices.js),
   [`checks off or a source build: never due`](../../packages/vimma-core/test/update-notices.test.ts),
   [`a failed attempt does not count as a check, but is not retried within 10 minutes`](../../packages/vimma-core/test/update-notices.test.ts),
@@ -92,7 +93,8 @@ _Pages_ and _extensions_ cannot reach it.
   `<update>`, and nothing but whitespace after a self-closing `<updates/>` (#1185). The commands
   about:vimma shows are built from a SemVer version and shell-quoted paths, never from free text
   in the manifest; a saved result (the pref `vimma.update.last`) is checked the same way when
-  read back.
+  read back, each of its text fields only as a string, never an array whose text would match
+  (#1237).
   [`an_oversized_or_compressed_bomb_response_is_refused`](../../tests/browser/browser_vimma_update_check.js),
   [`an oversized manifest is refused before any crypto`](../../packages/vimma-core/test/updates.test.ts),
   [`anything after a self-closing <updates/> is refused: %s`](../../packages/vimma-core/test/updates-edges.test.ts),
@@ -100,7 +102,9 @@ _Pages_ and _extensions_ cannot reach it.
   [`shellQuote leaves plain paths alone and quotes the rest`](../../packages/vimma-core/test/updates.test.ts),
   [`tarball: quit, download and check it, then unpack over the install's parent, quoted`](../../packages/vimma-core/test/updates.test.ts),
   [`a pinned key that is not a valid SPKI refuses, never throws`](../../packages/vimma-core/test/updates.test.ts),
-  [`a_damaged_saved_result_is_dropped_not_thrown`](../../tests/browser/browser_vimma_update_check.js)
+  [`a_damaged_saved_result_is_dropped_not_thrown`](../../tests/browser/browser_vimma_update_check.js),
+  [`a_saved_array_is_not_read_as_its_text`](../../tests/browser/browser_vimma_update_check.js),
+  [`savedOffer refuses a saved %s of %j`](../../packages/vimma-core/test/updates.test.ts)
 - UP6. A package manager's install (the `.deb`, the `.rpm`, the release `PKGBUILD`, the AUR's
   `vimma-bin`) is **never** told to unpack a tarball over its install directory: every package
   except the tarball carries the `is-packaged-app` marker with its package type, the release
@@ -145,6 +149,31 @@ _Pages_ and _extensions_ cannot reach it.
   [`a Flatpak names flatpak update, for an ordinary and a security release`](../../packages/vimma-core/test/update-notices.test.ts),
   [`not an AppImage install: nothing to replace`](../../packages/vimma-core/test/appimage-update.test.ts),
   [`a_flatpak_is_told_to_run_flatpak_update`](../../tests/browser/browser_vimma_update_notices.js)
+  The package from Vimma's pacman repository ([package-repositories](../specs/package-repositories.md)
+  decision 18; marker `vimma-package=pacman`) gets only `sudo pacman -Syu`. A `.deb` or `.rpm`
+  is the same file from a release and from that spec's apt or rpm repository, so the update
+  check tells them apart by the repository's setup file, at three fixed paths
+  (`/etc/apt/sources.list.d/vimma.sources`, `/etc/yum.repos.d/vimma.repo`,
+  `/etc/zypp/repos.d/vimma.repo`, `REPOSITORY_FILES` in vimma-core): it asks **only** whether
+  each exists, **never** reads one, and sends nothing. With the `.deb`'s file present the hint
+  is `sudo apt update && sudo apt upgrade`; with the `.rpm`'s, `sudo dnf upgrade vimma` and
+  `sudo zypper up vimma` for each one present. These are fixed strings with no part taken from
+  the manifest, the files or the marker, so a file planted in `/etc` (which only root can
+  write) changes which fixed command shows, never what it runs; the package manager then checks
+  the repository's OpenPGP signatures, not Vimma. Without the file the download command of UP8
+  stays, and while `vimma.feature.packageRepos` is on (off by default until the repositories
+  are published, package-repositories decision 25) one line of text points at the guide's
+  repository section. The test-only pref `vimma.update.testRepoRoot`, which moves the three paths
+  under a test directory, is read **only** in automation (the module's `inAutomation()`,
+  `Cu.isInAutomation`), as `vimma.update.installType` is.
+  [`the_update_checks_test_prefs_are_read_only_in_automation`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`install type pacman from vimma-package=pacman`](../../packages/vimma-core/test/updates.test.ts),
+  [`the repository files are the fixed paths each setup writes`](../../packages/vimma-core/test/updates.test.ts),
+  [`a .deb with the repository set up gets apt's upgrade command`](../../packages/vimma-core/test/updates.test.ts),
+  [`a .rpm with the repository set up gets dnf's and zypper's`](../../packages/vimma-core/test/updates.test.ts),
+  [`a .deb without it keeps the download command`](../../packages/vimma-core/test/updates.test.ts),
+  [`without the repository, the download command and, when asked, one line to the guide`](../../packages/vimma-core/test/updates.test.ts),
+  [`package_repositories_get_the_upgrade_command`](../../tests/browser/browser_vimma_update_check.js)
 
 - UP7. A manifest is **only** signed by `update-publish.yml` run from `main`, and **only** for a
   release that is published (not a draft or a pre-release) and whose tag is on `main`, or as an
@@ -290,7 +319,9 @@ _Pages_ and _extensions_ cannot reach it.
   into `tar`. Asset hashes are read only from the signed manifest, only as 128 lower-case hex
   digits, and a saved result keeps only well-formed ones. **⚠ limit:** the release `PKGBUILD`'s
   command still fetches `latest/download/PKGBUILD` without a hash of its own; `makepkg` checks
-  the tarball against the SHA-256 that `PKGBUILD` pins.
+  the tarball against the SHA-256 that `PKGBUILD` pins. A repository install's upgrade command
+  (UP6) has no download of its own: apt, dnf, zypper or pacman fetches the package and checks
+  the repository's OpenPGP signatures and the checksums its signed metadata pins.
   [`every download fails on an HTTP error and refuses anything but https (V-07)`](../../packages/vimma-core/test/updates.test.ts),
   [`rpm: download and check it, then install it with dnf or zypper`](../../packages/vimma-core/test/updates.test.ts),
   [`the checked commands run: a matching file installs, a different one stops before`](../../packages/vimma-core/test/updates.test.ts),

@@ -745,30 +745,6 @@ add_task(async function a_reopened_tab_keeps_its_place_during_a_split() {
   await reset();
 });
 
-// docs/specs/multiple-splits.md behaviour 4 and decision 4: the refusal to split a tab shown
-// alone stays until the next key, and says how to get back.
-add_task(async function splitting_the_lone_tab_is_refused_until_the_next_key() {
-  await reset();
-  await split(["a", "b"], "a");
-  gBrowser.selectedTab = tab("d");
-  await until(() => hiddenView(), "d alone, the split hidden");
-  await focusContent(tab("d").linkedBrowser);
-  const want =
-    "split S1 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b for a new split";
-  for (const key of ["v", "-", "KEY_Enter"]) {
-    prefix(key);
-    await until(() => notice() === want, `ctrl+b ${key} is refused, naming the way back`);
-  }
-  // Longer than a plain notice stays (NOTICE_MS, 1500 ms in ui/notice.mjs).
-  await new Promise((r) => setTimeout(r, 2000));
-  Assert.equal(notice(), want, "still shown after 2 s");
-  Assert.ok(hiddenView(), "nothing changed: the split is still hidden");
-  Assert.equal(gBrowser.selectedTab, tab("d"), "and d still shows alone");
-  EventUtils.synthesizeKey("j", {});
-  await until(() => notice() === null, "the next key hides it");
-  await reset();
-});
-
 // Decision 25: Enter keeps the marked tabs as a hidden view and shows the highlighted tab
 // alone. When that tab closed before the command ran, it is refused like any other closed tab,
 // not run as a plain show-together that would put the split on screen.

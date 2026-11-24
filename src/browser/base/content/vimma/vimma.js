@@ -107,6 +107,10 @@
     agentKeys: AgentKeys,
     configRefused: ConfigHost.refused,
     addAgentProvider: ConfigHost.addAgentProvider,
+    editSiteUnbind: ConfigHost.editSiteUnbind,
+    bookmarksFileForget: ConfigHost.bookmarksForget,
+    bookmarksFileExport: ConfigHost.bookmarksExport,
+    bookmarksFileWords: ConfigHost.bookmarksWords,
   });
   VimmaHost.init(win);
 
@@ -134,6 +138,26 @@
   // config.toml (spec m5-config-load), once its users exist: the keymap, [panes] max, hints,
   // [sites] and [theme]. Read asynchronously; until then the built-in defaults apply.
   ConfigHost.init(win);
+
+  // Tabs unseen for `[tabs] sleep_after` minutes go to sleep (docs/specs/tab-sleep.md), once per
+  // process. What it needs of higher folders is handed over here (ADR-026).
+  const { TabSleep } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/services/TabSleep.sys.mjs",
+  );
+  const { McpHost } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/mcp-ops.mjs");
+  const { CONFIG_READ_TOPIC } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
+  );
+  // Module singletons, not functions of this window's scope, which would keep the first window's
+  // global alive and stop working once it closes.
+  TabSleep.init({
+    configHost: ConfigHost,
+    configTopic: CONFIG_READ_TOPIC,
+    mcp: McpHost,
+    workspaces: WorkspaceStore,
+    panes: PaneViews,
+  });
+  TabSleep.watch(win);
 
   // The first-run setup (docs/specs/first-run-setup.md): about:vimma-setup once per process, and
   // the welcome screen in front on a profile's first start, after the window's own first tab.

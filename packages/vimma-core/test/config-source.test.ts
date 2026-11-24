@@ -74,39 +74,44 @@ describe("formatConfigTemplate", () => {
   test("says what it is and how to use it, and lists every default binding", () => {
     expect(text.startsWith("# Vimma config")).toBe(true);
     expect(text).toContain(":source");
-    expect(text).toMatch(/^schema = 2$/m);
+    expect(text).not.toMatch(/^schema\b/m);
     expect(text).toMatch(/^# new_tab = \["prefix\+c", "ctrl\+t"\]$/m);
     expect(text).toMatch(/^\[keys\]$/m);
     expect(text).not.toMatch(/^new_tab =/m);
   });
 
   test("its header, all comments, says how to edit it, that saves reload, :config and ctrl+b ?", () => {
-    const header = text.slice(0, text.indexOf("\nschema = 2")).split("\n");
+    const header = text.slice(0, text.indexOf("\n\n[keys]")).split("\n");
     expect(header.every((line) => line.startsWith("#"))).toBe(true);
     const said = header.join("\n");
     expect(said).toMatch(/uncomment/i);
     expect(said).toMatch(/save/i);
     expect(said).toMatch(/:config\b.*opens this file/);
     expect(said).toContain("ctrl+b ?");
-    expect(said).toMatch(/remove the `# `/);
+    expect(said).toMatch(/remove the first `# `/);
   });
 });
 
 describe("formatConfigTemplate, line by line", () => {
   test("defaults.toml after its header, each setting commented out, blank lines and headers kept", () => {
     const template = formatConfigTemplate().split("\n");
-    const header = 6;
+    const header = 5;
     expect(template[0]).toBe(
-      "# Vimma config. Every line below is a default, commented out, so this file changes nothing.",
+      "# Vimma config. Every setting is commented out: its default, or an example where it has none.",
     );
-    expect(template[header - 1]).toBe(
-      "# Reference: the user guide's config.toml section (docs/guide.md).",
-    );
+    expect(template[header - 1]).toBe("# Reference: https://vimma.dev/docs/config/");
     const defaults = formatDefaultsToml().split("\n").slice(3);
     expect(template.slice(header)).toHaveLength(defaults.length);
     defaults.forEach((line, i) => {
-      const kept = line === "" || /^(#|\[|schema = )/.test(line);
-      expect(template[header + i], line).toBe(kept ? line : `# ${line}`);
+      const kept = line === "" || /^(\s*#|\[)/.test(line);
+      const t = template[header + i] ?? "";
+      // A setting with a note (#1443) keeps the note where it was: `# ` takes two of its spaces.
+      const noted = / {4,}# /.test(line);
+      if (kept || !noted) expect(t, line).toBe(kept ? line : `# ${line}`);
+      else {
+        expect(t, line).toBe(`# ${line.replace(/ {2}( {2,}# )/, "$1")}`);
+        expect(t.indexOf(" # "), line).toBe(line.indexOf(" # "));
+      }
     });
     expect(defaults).toContain("");
     expect(defaults.some((l) => l.startsWith("["))).toBe(true);

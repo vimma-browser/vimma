@@ -16,6 +16,10 @@ import { LOAD_ERRORS, NOT_LOADED, errorPageText } from "./load-errors.mjs";
 /**
  * @typedef {import("./agent-providers.mjs").ToolContent} ToolContent
  * @typedef {{ content: ToolContent[], isError?: boolean }} CallToolResult
+ * @typedef {Readonly<Record<string, unknown>>} AgentResult
+ *   An agent command's result as Vimma sent it: every value is checked where it is read, and a
+ *   result of another shape is refused as a broken control protocol (mcp/render.rs does the
+ *   same).
  * @typedef {{ kind: "denied", reason: string, waitedS?: number, message?: string,
  *   retryAfterMs?: number }
  *   | { kind: "refused", code: string, message: string }} Failure
@@ -34,6 +38,7 @@ export const TOOL_COMMANDS = Object.freeze({
   vimma_fill: "agent-fill",
   vimma_screenshot: "agent-screenshot",
   vimma_console: "agent-console",
+  vimma_bookmarklet: "agent-bookmarklet",
 });
 
 /** Flags left out of the command when false, as mcp/command.rs's `flag_into` does. */
@@ -42,8 +47,8 @@ const FLAGS = new Set(["elements", "labels", "full"]);
 /**
  * The agent command for a tool call, or null for a tool that is not an agent tool. The
  * arguments keep their names; the command's validator checks them as it checks a socket's.
- * @param {string} name @param {Record<string, any>} args
- * @returns {{ command: string, args: Record<string, any> } | null}
+ * @param {string} name @param {Record<string, unknown>} args
+ * @returns {{ command: string, args: Record<string, unknown> } | null}
  */
 export function toolCommand(name, args) {
   // Own keys only: a model's "toString" is no tool, and its "__proto__" argument stays a key
@@ -66,16 +71,24 @@ const toolError = (message) => ({ content: [item(message)], isError: true });
 
 class Broken extends Error {}
 
-/** @param {any} v @param {string} key @returns {string} */
+/**
+ * A part of a result that may be anything: reading a key of a value that is not an object gives
+ * undefined (or a string's own property, which no check below takes), never a throw.
+ * @typedef {AgentResult | null | undefined} Part
+ */
+
+/** @param {unknown} v @param {string} key @returns {string} */
 function field(v, key) {
-  if (typeof v?.[key] !== "string") throw new Broken(`Vimma's result has no string ${key}`);
-  return v[key];
+  const value = /** @type {Part} */ (v)?.[key];
+  if (typeof value !== "string") throw new Broken(`Vimma's result has no string ${key}`);
+  return value;
 }
 
-/** @param {any} v @param {string} key @returns {boolean} */
+/** @param {unknown} v @param {string} key @returns {boolean} */
 function flag(v, key) {
-  if (typeof v?.[key] !== "boolean") throw new Broken(`Vimma's result has no boolean ${key}`);
-  return v[key];
+  const value = /** @type {Part} */ (v)?.[key];
+  if (typeof value !== "boolean") throw new Broken(`Vimma's result has no boolean ${key}`);
+  return value;
 }
 
 /** One string inside the untrusted-content delimiters, each exactly once (security.md M7). */
@@ -100,7 +113,7 @@ function wrappedList(list, dropped) {
 /**
  * An element list as items (agent-speed S3, S4): the intro, the list as Vimma wrapped it, and
  * the labels it left out as in the conversation's last list of the site, which are Vimma's words.
- * @param {string} tab @param {boolean} filtered @param {any} result
+ * @param {string} tab @param {boolean} filtered @param {AgentResult} result
  * @returns {ToolContent[]}
  */
 function listItems(tab, filtered, result) {
@@ -108,7 +121,13 @@ function listItems(tab, filtered, result) {
   if (!list) {
     throw new Broken("Vimma's element list is not inside the untrusted-content delimiters");
   }
-  const items = [item(elementsIntro(tab, list.dropped, filtered)), item(list.wrapped)];
+  // A filtered list that gave no element, written or left out as unchanged, matched nothing on
+  // screen: said so, since an empty list read as matches left out or a broken page (#1328).
+  const none =
+    filtered &&
+    result.repeated === undefined &&
+    list.wrapped === `${UNTRUSTED_OPEN}\n\n${UNTRUSTED_CLOSE}`;
+  const items = [item(elementsIntro(tab, list.dropped, filtered, none)), item(list.wrapped)];
   if (result.repeated !== undefined) {
     const r = result.repeated;
     const labels =
@@ -133,14 +152,16 @@ const quoted = (/** @type {string} */ s) => JSON.stringify(s);
 /**
  * The model's view of a command's result (mcp/render.rs, `success`); a result Vimma should never send
  * becomes the protocol failure mcp/render.rs reports.
- * @param {string} name  the tool @param {Record<string, any>} args  as the model sent them
- * @param {any} result  the agent command's
+ * @param {string} name  the tool @param {Record<string, unknown>} args  as the model sent them
+ * @param {unknown} result  the agent command's
  * @returns {CallToolResult}
  */
 export function toolResult(name, args, result) {
   try {
-    const content = success(name, args, result);
-    const failed = loadFailed(args, result);
+    // Each tool's result is checked as an object (a field or a flag of it read through `?.`)
+    // before anything else of it is read, so one that is not refuses as Broken.
+    const content = success(name, args, /** @type {AgentResult} */ (result));
+    const failed = loadFailed(args, /** @type {AgentResult} */ (result));
     return failed ? { content: [item(failed), ...content], isError: true } : { content };
   } catch (e) {
     if (!(e instanceof Broken)) throw e;
@@ -148,7 +169,7 @@ export function toolResult(name, args, result) {
   }
 }
 
-/** @param {string} name @param {Record<string, any>} args @param {any} result */
+/** @param {string} name @param {Record<string, unknown>} args @param {AgentResult} result */
 function success(name, args, result) {
   const tab = String(args.tab ?? "");
   const elements = args.elements === true;
@@ -222,6 +243,14 @@ function success(name, args, result) {
             "workspace with ctrl+^.",
         ),
       ];
+    case "vimma_bookmarklet":
+      if (result?.ran !== true) throw new Broken("Vimma's result does not say ran");
+      return [
+        item(
+          `Ran the bookmarklet "${args.name}" in tab ${tab} of Vimma's agent workspace, in the ` +
+            "background. Read the page with vimma_read_page to see what it did.",
+        ),
+      ];
     default:
       throw new Broken(`no agent tool is named ${name}`);
   }
@@ -249,13 +278,13 @@ function stopText(/** @type {string} */ stopped) {
   }
 }
 
-/** @param {string} tab @param {any} result */
+/** @param {string} tab @param {AgentResult} result */
 function keysText(tab, result) {
   const url = field(result, "url");
   const title = field(result, "title");
   const loading = flag(result, "loading");
   if (!Array.isArray(result.steps)) throw new Broken("Vimma's result has no steps list");
-  const y = result.scroll?.y;
+  const y = /** @type {Part} */ (result.scroll)?.y;
   if (typeof y !== "number" || !(y >= 0 && y <= 1)) {
     throw new Broken("Vimma's result has no scroll position");
   }
@@ -303,10 +332,28 @@ function keysText(tab, result) {
 
 /**
  * What an element list is (agent-speed S3): how to read it is in vimma_elements' description,
- * sent once; each result still says that its text is the page's.
- * @param {string} tab @param {number} dropped @param {boolean} filtered
+ * sent once; each result still says that its text is the page's. A filtered list that gave no
+ * element (`none`) says that nothing on screen matched instead (issue #1328).
+ * @param {string} tab @param {number} dropped @param {boolean} filtered @param {boolean} none
  */
-function elementsIntro(tab, dropped, filtered) {
+function elementsIntro(tab, dropped, filtered, none) {
+  const again =
+    "scroll with vimma_keys, or list again with other words or without a query and kinds.";
+  // Elements past the 200 are left out before the filter, so with any left out, a match may be
+  // among them: "nothing matches" would be false.
+  if (none && dropped > 0) {
+    return (
+      `None of the elements listed on screen in tab ${tab} of Vimma's agent workspace matches ` +
+      `your query and kinds, but ${dropped} more on screen were left out (at most 200 are ` +
+      `listed) and may match: ${again}`
+    );
+  }
+  if (none) {
+    return (
+      `No element on screen in tab ${tab} of Vimma's agent workspace matches your query and ` +
+      `kinds (only what is on screen is listed and matched): ${again}`
+    );
+  }
   const said =
     `The elements on screen in tab ${tab} of Vimma's agent workspace` +
     (filtered ? " that match your query and kinds" : "") +
@@ -327,7 +374,7 @@ const LOAD_FAILED_REFUSAL = `Vimma could not do it: ${NOT_LOADED}`;
  * null for a page that loaded: the step ran, but its page is Firefox's error page, so the same
  * step meets it again. A model that read only that its elements were not listed opened the same
  * address in tab after tab (issue #643).
- * @param {Record<string, any>} args @param {any} result
+ * @param {Record<string, unknown>} args @param {AgentResult} result
  * @returns {string | null}
  */
 function loadFailed(args, result) {
@@ -362,7 +409,7 @@ const UNLISTED = Object.freeze({
 
 /**
  * A step's element list as items, or why there is none (mcp/render.rs, `step_list`).
- * @param {string} tab @param {boolean} asked @param {boolean} filtered @param {any} result
+ * @param {string} tab @param {boolean} asked @param {boolean} filtered @param {AgentResult} result
  * @returns {{ list: ToolContent[], unlisted: string | null }}
  */
 function stepList(tab, asked, filtered, result) {
@@ -395,7 +442,7 @@ function stepList(tab, asked, filtered, result) {
 
 /**
  * @param {string} url @param {string} tab @param {boolean} elements @param {boolean} filtered
- * @param {any} result
+ * @param {AgentResult} result
  */
 function openItems(url, tab, elements, filtered, result) {
   const opened = `Opened ${url} in tab ${tab} of Vimma's agent workspace, in the background.`;
@@ -403,7 +450,13 @@ function openItems(url, tab, elements, filtered, result) {
     if (result.url !== undefined || result.title !== undefined) {
       throw new Broken("Vimma's result has a page other than asked");
     }
-    stepList(tab, false, false, result);
+    stepList(
+      tab,
+      false,
+      // Stryker disable next-line BooleanLiteral: not asked, stepList never reads filtered
+      false,
+      result,
+    );
     return [item(`${opened} Read it with vimma_read_page.`)];
   }
   const page = field(result, "url");
@@ -413,12 +466,13 @@ function openItems(url, tab, elements, filtered, result) {
   return [item(untrustedHeader(page, title)), item(lines.join("\n")), ...list];
 }
 
-/** @param {string} tab @param {any} result */
+/** @param {string} tab @param {AgentResult} result */
 function consoleText(tab, result) {
   const url = field(result, "url");
   const title = field(result, "title");
   const time = result.time;
-  if (!Number.isInteger(time) || time < 0) throw new Broken("Vimma's result has no time");
+  if (!Number.isInteger(time) || /** @type {number} */ (time) < 0)
+    throw new Broken("Vimma's result has no time");
   const errors = wrappedList(result.errors, result.dropped);
   if (!errors) throw new Broken("Vimma's errors are not inside the untrusted-content delimiters");
   const requests = wrappedText(result.requests);
@@ -442,7 +496,7 @@ function consoleText(tab, result) {
 /** vimma-core's AGENT_SCREENSHOT bounds, as mcp/render.rs checks them (mcp-forms F18, F19). */
 const SCREENSHOT = Object.freeze({ width: 1280, height: 16384, base64: 700 * 1024 });
 
-/** @param {string} tab @param {boolean} asked @param {any} result @returns {ToolContent[]} */
+/** @param {string} tab @param {boolean} asked @param {AgentResult} result @returns {ToolContent[]} */
 function screenshotItems(tab, asked, result) {
   const url = field(result, "url");
   const title = field(result, "title");
@@ -458,15 +512,15 @@ function screenshotItems(tab, asked, result) {
   }
   const px = (/** @type {string} */ key, /** @type {number} */ max) => {
     const n = result[key];
-    if (!Number.isInteger(n) || n < 1 || n > max) {
+    if (!Number.isInteger(n) || /** @type {number} */ (n) < 1 || /** @type {number} */ (n) > max) {
       throw new Broken(`Vimma's result has no ${key} from 1 to ${max}`);
     }
-    return n;
+    return /** @type {number} */ (n);
   };
   const width = px("width", SCREENSHOT.width);
   const height = px("height", SCREENSHOT.height);
   const count = result.labels;
-  if (count !== undefined && !(Number.isInteger(count) && count >= 0)) {
+  if (count !== undefined && !(Number.isInteger(count) && /** @type {number} */ (count) >= 0)) {
     throw new Broken("Vimma's result has a malformed labels count");
   }
   if (result.stale !== undefined && result.stale !== true) {
@@ -500,11 +554,15 @@ const LABEL = /^[asdfghjkl]{1,3}$/;
 
 /**
  * @param {string} tab @param {number} asked @param {boolean} elements @param {boolean} filtered
- * @param {any} result
+ * @param {AgentResult} result
  */
 function fillText(tab, asked, elements, filtered, result) {
   const filled = result?.filled;
-  if (!Number.isInteger(filled) || filled < 0 || filled > asked) {
+  if (
+    !Number.isInteger(filled) ||
+    /** @type {number} */ (filled) < 0 ||
+    /** @type {number} */ (filled) > asked
+  ) {
     throw new Broken("Vimma's result has no count of filled fields");
   }
   /** @type {string[]} */
@@ -521,7 +579,8 @@ function fillText(tab, asked, elements, filtered, result) {
   const lines = [
     `Filled ${filled} of ${asked} fields in tab ${tab} of Vimma's agent workspace, in the background.`,
   ];
-  if (filled < asked) lines.push(`The fields after the first ${filled} were not filled.`);
+  if (/** @type {number} */ (filled) < asked)
+    lines.push(`The fields after the first ${filled} were not filled.`);
   if (reset.length) {
     lines.push(
       `The page put back the value of ${reset.join(", ")}: it may react to key presses only, ` +
@@ -568,7 +627,7 @@ const HOST = /^[A-Za-z0-9.\-[\]:]{1,253}$/;
 
 /**
  * The page after a click or a fill (mcp/render.rs, `after_step`).
- * @param {string} tab @param {boolean} elements @param {boolean} filtered @param {any} result
+ * @param {string} tab @param {boolean} elements @param {boolean} filtered @param {AgentResult} result
  * @param {string[]} lines
  * @returns {ToolContent[]}
  */
@@ -608,11 +667,12 @@ function afterStep(tab, elements, filtered, result, lines) {
   /** @type {string | null} */
   let dialog = null;
   if (result.dialog !== undefined) {
-    const kind = result.dialog?.type;
-    if (!["alert", "confirm", "prompt"].includes(kind)) {
+    const kind = /** @type {Part} */ (result.dialog)?.type;
+    if (!["alert", "confirm", "prompt"].includes(/** @type {string} */ (kind))) {
       throw new Broken("Vimma's result has an unknown dialog type");
     }
-    dialog = wrappedText(result.dialog.text);
+    // A dialog with one of those types is an object.
+    dialog = wrappedText(/** @type {AgentResult} */ (result.dialog).text);
     if (dialog === null) {
       throw new Broken("Vimma's dialog text is not inside the untrusted-content delimiters");
     }
@@ -644,7 +704,8 @@ export const USER_DENIED = "The user denied this request in Vimma.";
 export function isFinalRefusal(result) {
   if (!result.isError) return false;
   const first = result.content[0];
-  const text = first?.type === "text" ? first.text : "";
+  if (first?.type !== "text") return false;
+  const { text } = first;
   return (
     text.startsWith(REFUSED_ARGS) ||
     text === USER_DENIED ||
@@ -671,10 +732,9 @@ export function failureResult(failure) {
  */
 export function rateWaitMs(failure) {
   if (failure.kind !== "denied" || failure.reason !== "busy") return null;
-  const ms = failure.retryAfterMs;
-  return typeof ms === "number" && Number.isInteger(ms) && ms > 0 && ms <= MAX_RETRY_AFTER
-    ? ms
-    : null;
+  // No wait at all is 0, which is no wait to take.
+  const ms = failure.retryAfterMs ?? 0;
+  return Number.isInteger(ms) && ms > 0 && ms <= MAX_RETRY_AFTER ? ms : null;
 }
 
 /** @param {Failure} failure */

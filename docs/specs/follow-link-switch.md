@@ -50,6 +50,9 @@ what a reader wants when a link is worth reading now but the current page is wor
 go there` beside the `HINT` badge, where `<label>` is the first label still on screen and
    `<LABEL>` is the same label with its last character in upper case (`sd background · sD go
 there`). It follows what is typed: after `s`, it names the first label that starts with `s`.
+   (Since changed: `gF`'s labels are drawn in lower case, the background form, so that typing a
+   label as drawn opens it in the background; the other hint modes still draw upper case;
+   [#1276](https://github.com/vimma-browser/vimma/issues/1276).)
 4. As a Vimma user who binds `follow_link_new_tab_fg` (for example
    `[modal.normal] "<leader>F" = "hint.follow_new_tab_fg"`), its hint mode labels links as `gF`
    does, and every label opens its link in a new tab and selects it, whatever the case typed. The

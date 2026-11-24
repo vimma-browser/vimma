@@ -193,6 +193,21 @@ describe("Firefox's keys in the overlay", () => {
     expect(row("select_last_tab")).toMatchObject({ group: "Tabs", bindings: ["alt+9"] });
   });
 
+  test("tab 9's row says how to reach tab 10 and above, with the live count key (#1302)", () => {
+    expect(row("select_tab_9")?.description).toBe(
+      "Jump to tab 9 in this workspace; tab 10 and above: {N}gt or :tab N",
+    );
+    const remapped = (config: Parameters<typeof compileKeymap>[0]) =>
+      bindingTable(compileKeymap(config)).find((r) => r.name === "select_tab_9")?.description;
+    expect(remapped({ modal: { normal: { "]t": "tab.next" } }, unbind: { normal: ["gt"] } })).toBe(
+      "Jump to tab 9 in this workspace; tab 10 and above: {N}]t or :tab N",
+    );
+    expect(remapped({ unbind: { normal: ["gt"] } })).toBe(
+      "Jump to tab 9 in this workspace; tab 10 and above: :tab N",
+    );
+    expect(row("select_tab_8")?.description).toBe("Jump to tab 8 in this workspace");
+  });
+
   test("the developer tools keys are Firefox's own", () => {
     expect(row("devtools")).toMatchObject({
       group: "Developer tools",

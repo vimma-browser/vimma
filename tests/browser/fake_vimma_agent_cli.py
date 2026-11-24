@@ -132,12 +132,10 @@ def call(name, arguments):
     r = rpc("tools/call", {"name": name, "arguments": arguments})
     result = (r or {}).get("result", {})
     text = " ".join(c.get("text", "") for c in result.get("content", []) if c.get("type") == "text")
-    tab = re.search(r"\btab (\d+)\b", text)
+    # The tab id is in the text only (#1336): "in tab N of Vimma's agent workspace".
+    tab = re.search(r"\bin tab (\d+) of Vimma's agent workspace", text)
     if tab:
         last_tab[0] = tab.group(1)
-    structured = result.get("structuredContent")
-    if isinstance(structured, dict) and structured.get("tab") is not None:
-        last_tab[0] = structured["tab"]
     report["calls"].append({"name": name, "isError": bool(result.get("isError")),
                             "text": text[:500], "at": time.time()})
     save()

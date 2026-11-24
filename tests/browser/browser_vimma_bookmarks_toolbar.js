@@ -19,7 +19,7 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const { ConfigHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
 );
-const { BookmarksToolbar, MIGRATED_PREF } = ChromeUtils.importESModule(
+const { BookmarksToolbar, MIGRATED_PREF, TOOLBAR_NOTICED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/bookmarks-toolbar.mjs",
 );
 const { MigrationUtils } = ChromeUtils.importESModule(
@@ -34,6 +34,10 @@ const VISIBLE = { visibilityProperty: true };
 const MIGRATION_NOTICE =
   "bookmarks toolbar hidden: ctrl+b shift+b opens your bookmarks; " +
   ":bookmarkstoolbar show brings it back";
+
+const TOOLBAR_NOTICE =
+  "bookmarks toolbar hidden with the toolbar: :toolbar show shows both; " +
+  '[ui] toolbar = "shown" in config.toml keeps them';
 
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-bookmarks-toolbar-${Date.now()}`);
 const configFile = PathUtils.join(dir, "config.toml");
@@ -104,8 +108,13 @@ async function reset() {
 
 add_task(async function setup() {
   await IOUtils.makeDirectory(dir, { createAncestors: true });
+  // Firefox's toolbar is hidden by default (toolbar-toggle decision 3), and the bookmarks toolbar
+  // hides with it (decision 8): the tasks show it, and hidden_with_the_nav_bar hides it again.
+  Services.prefs.setBoolPref(TOOLBAR_PREF, false);
   registerCleanupFunction(async () => {
+    Services.prefs.clearUserPref(TOOLBAR_PREF);
     Services.prefs.clearUserPref(PREF);
+    Services.prefs.clearUserPref(TOOLBAR_NOTICED_PREF);
     CustomizableUI.setToolbarVisibility("PersonalToolbar", "never");
     while (gBrowser.tabs.length > 1) {
       gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
@@ -309,7 +318,7 @@ add_task(async function config_sets_it_in_every_window() {
   });
   let n = 0;
   const write = (/** @type {string} */ text) =>
-    IOUtils.writeUTF8(configFile, `schema = 2\n${text}\n${"#".repeat(++n)}\n`);
+    IOUtils.writeUTF8(configFile, `${text}\n${"#".repeat(++n)}\n`);
   const win2 = await BrowserTestUtils.openNewBrowserWindow();
   await SimpleTest.promiseFocus(window);
   const tab = await openPage();
@@ -381,6 +390,13 @@ add_task(async function hidden_with_the_nav_bar() {
     "the nav bar is hidden",
   );
   Assert.ok(!shown(), "the bookmarks toolbar hides with it");
+  // Decision 8, changed 19 Nov 2026: showing it then says how to see it.
+  runCommand("bookmarkstoolbar show");
+  await until(
+    () => noticeText() === "bookmarks toolbar shown; the toolbar is hidden: :toolbar show",
+    "the notice names :toolbar show",
+  );
+  Assert.ok(!shown(), "still hidden with the nav bar");
   // VimmaHost started this window and made its toolbar; without one, `.hold` throws, as before.
   const toolbar = /** @type {NonNullable<HostState["toolbar"]>} */ (
     /** @type {HostState} */ (VimmaHost._state(window)).toolbar
@@ -397,7 +413,68 @@ add_task(async function hidden_with_the_nav_bar() {
   await new Promise((r) => requestAnimationFrame(r));
   Assert.ok(!shown(), "then the full reveal does not show it");
   toolbar.release("test");
-  Services.prefs.clearUserPref(TOOLBAR_PREF);
+  Services.prefs.setBoolPref(TOOLBAR_PREF, false);
+  BrowserTestUtils.removeTab(tab);
+  await reset();
+});
+
+// 12 (decision 8, issue #1399): config.toml shows it but leaves [ui] toolbar out, so the hidden
+// default hides it too: a notice says so, once; never with [ui] toolbar set.
+add_task(async function a_config_that_shows_it_under_the_hidden_toolbar_says_so_once() {
+  Services.prefs.clearUserPref(TOOLBAR_NOTICED_PREF);
+  // The hidden default, which setup turned off for the tasks above.
+  Services.prefs.setBoolPref(TOOLBAR_PREF, true);
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.config.path", configFile],
+      ["vimma.config.pollMs", 100],
+    ],
+  });
+  let n = 0;
+  const write = (/** @type {string} */ text) =>
+    IOUtils.writeUTF8(configFile, `${text}\n${"#".repeat(++n)}\n`);
+  const tab = await openPage();
+
+  // [ui] toolbar set, even to the default, is a choice: nothing to say.
+  await write(`[ui]\ntoolbar = "hidden"\nbookmarks_toolbar = "shown"`);
+  await until(() => ConfigHost.config?.ui.toolbarSet === true, "the poll reads it");
+  Assert.notEqual(noticeText(), TOOLBAR_NOTICE, "toolbar set: no notice");
+  Assert.ok(!Services.prefs.getBoolPref(TOOLBAR_NOTICED_PREF, false), "and nothing recorded");
+
+  await write(`[ui]\nbookmarks_toolbar = "shown"`);
+  await until(() => noticeText() === TOOLBAR_NOTICE, "toolbar unset: the notice");
+  Assert.ok(Services.prefs.getBoolPref(TOOLBAR_NOTICED_PREF), "recorded");
+  Assert.ok(!shown(), "the bookmarks toolbar is hidden with the toolbar");
+  // Said once, at a busy startup: it stays past the usual 1.5 s, until the next key.
+  const toast = () => !!$("vimma-notice")?.matches(":popover-open");
+  // VimmaHost started this window and made its notice; without one this throws, as before.
+  const notice = /** @type {HostState} */ (VimmaHost._state(window)).notice;
+  Assert.ok(toast(), "shown");
+  Assert.ok(notice.untilKey && notice.timer === null, "with no timer: until the next key");
+  EventUtils.synthesizeKey("KEY_Escape", {}, window);
+  await until(() => !toast(), "the next key hides it");
+
+  // The next start, or a later edit: said once only.
+  /** @type {string[]} */
+  const said = [];
+  const sayIt = (/** @type {string} */ text) => !!said.push(text);
+  const unset = { toolbarSet: false, toolbarHidden: true };
+  BookmarksToolbar.noticeHiddenToolbar("shown", unset, sayIt);
+  BookmarksToolbar.noticeHiddenToolbar("newtab", unset, sayIt);
+  Assert.deepEqual(said, [], "not again");
+  // A notice that did not show (no window state yet) is not recorded, so a later read says it.
+  Services.prefs.clearUserPref(TOOLBAR_NOTICED_PREF);
+  BookmarksToolbar.noticeHiddenToolbar("shown", unset, () => false);
+  Assert.ok(!Services.prefs.getBoolPref(TOOLBAR_NOTICED_PREF, false), "not shown: not recorded");
+  // The toolbar shown (:toolbar show earlier): both show, so nothing to say.
+  BookmarksToolbar.noticeHiddenToolbar("shown", { ...unset, toolbarHidden: false }, sayIt);
+  Assert.deepEqual(said, [], "toolbar shown: no notice");
+
+  await IOUtils.remove(configFile);
+  await SpecialPowers.popPrefEnv();
+  await ConfigHost.reload();
+  Services.prefs.clearUserPref(TOOLBAR_NOTICED_PREF);
+  Services.prefs.setBoolPref(TOOLBAR_PREF, false);
   BrowserTestUtils.removeTab(tab);
   await reset();
 });

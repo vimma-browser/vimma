@@ -4,7 +4,8 @@
 
 // The commands of higher folders that the host runs (ADR-026, decision 4): the built-in agent's
 // conversations (agent/), the agent-download test (ctl/) and `:route add`'s write to config.toml
-// (config/), and what the agent chat window the host builds uses of them: the agent CLIs and the
+// (config/), `:siteunbind --save`'s and `:sitebind --delete`'s edit of it (config/), and what
+// the agent chat window the host builds uses of them: the agent CLIs and the
 // API keys (agent/), config.toml's refusal and setup's write to it (config/). The host may not
 // import those folders, so vimma.js, the window script, which imports every folder, hands them
 // over here before the first window's host starts, and the host calls them through here or
@@ -42,9 +43,11 @@
  *   target: { path?: string, partFilePath?: string | null } }) => boolean} isAgentDownload
  *   ctl/AgentDownloads.sys.mjs's test (docs/security/12-agents-mcp.md M11): the downloads picker
  *   opens, retries, unblocks and follows none
- * @property {(rule: { domain: string, workspace: string }) => Promise<string | null>} addRoute
- *   config/ConfigHost.sys.mjs's: appends a `[[routes]]` rule and reads the file again; why not,
- *   or null
+ * @property {(rule: { domain: string, workspace: string }) =>
+ *   Promise<{ error: string } | { added: string }>} addRoute
+ *   config/ConfigHost.sys.mjs's: appends a `[[routes]]` rule to the routes file (routes.toml,
+ *   else config.toml) and reads the files again; why not, or where it went
+ *   (docs/specs/routes-file.md)
  * @property {ChatClis} agentCli  agent/AgentCli.sys.mjs's `AgentCli`, served as its `enabled`,
  *   `find`, `noneFound` and `use` only, for the chat window
  * @property {ChatKeys} agentKeys  agent/AgentKeys.sys.mjs's `AgentKeys`, served as its `hint`,
@@ -55,6 +58,19 @@
  * @property {AgentChatServices["addAgentProvider"]} addAgentProvider
  *   config/ConfigHost.sys.mjs's: setup's write of a provider to config.toml, for the chat
  *   window (B12)
+ * @property {(table: string, change: { add?: string[], remove?: string[] }) =>
+ *   Promise<{ added: string[], already: string[], removed: string[] } | { error: string }>}
+ *   editSiteUnbind  config/ConfigHost.sys.mjs's: `:siteunbind --save` and `:sitebind --delete`
+ *   edit `[sites."<host>"] unbind` (docs/specs/site-unbind-command.md decision 10)
+ * @property {() => Promise<string>} bookmarksFileForget  config/ConfigHost.sys.mjs's:
+ *   `:bookmarks forget` drops the bookmarks.toml mirror's base (docs/specs/bookmarks-file.md
+ *   Behaviour 19); what to say
+ * @property {(win: BrowserWindow | null, replace: boolean) => Promise<string>}
+ *   bookmarksFileExport  config/ConfigHost.sys.mjs's: `:bookmarks export` and `export!` write
+ *   Places' workspace folders to bookmarks.toml (docs/specs/bookmarks-file.md Behaviour 17);
+ *   what to say
+ * @property {() => string[]} bookmarksFileWords  config/ConfigHost.sys.mjs's: the words
+ *   `:bookmarks` takes, `export`, `export!` and `forget` while the bookmarks.toml mirror runs
  */
 
 /** @typedef {keyof Services} ServiceName */
@@ -74,6 +90,10 @@ const NAMES = Object.freeze([
   "agentKeys",
   "configRefused",
   "addAgentProvider",
+  "editSiteUnbind",
+  "bookmarksFileForget",
+  "bookmarksFileExport",
+  "bookmarksFileWords",
 ]);
 
 const NOT_STARTED = "the built-in agent is not started";
@@ -128,7 +148,7 @@ const UNPROVIDED = Object.freeze({
     placeLocal: async () => null,
   }),
   isAgentDownload: () => true,
-  addRoute: async () => "config.toml cannot be written before Vimma has started",
+  addRoute: async () => ({ error: "the routes file cannot be written before Vimma has started" }),
   agentCli: Object.freeze({
     enabled: false,
     find: async () => [],
@@ -146,6 +166,12 @@ const UNPROVIDED = Object.freeze({
   addAgentProvider: async () => ({
     error: "config.toml cannot be written before Vimma has started",
   }),
+  editSiteUnbind: async () => ({
+    error: "config.toml cannot be written before Vimma has started",
+  }),
+  bookmarksFileForget: async () => "bookmarks.toml is not read before Vimma has started",
+  bookmarksFileExport: async () => "bookmarks.toml is not written before Vimma has started",
+  bookmarksFileWords: () => [],
 });
 
 /** @typedef {"agentChat" | "agentCli" | "agentKeys"} ObjectServiceName */
@@ -306,6 +332,18 @@ export function createHostServices(provider = PROVIDER) {
     },
     get addAgentProvider() {
       return get("addAgentProvider");
+    },
+    get editSiteUnbind() {
+      return get("editSiteUnbind");
+    },
+    get bookmarksFileForget() {
+      return get("bookmarksFileForget");
+    },
+    get bookmarksFileExport() {
+      return get("bookmarksFileExport");
+    },
+    get bookmarksFileWords() {
+      return get("bookmarksFileWords");
     },
   });
 }

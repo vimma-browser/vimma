@@ -4,7 +4,7 @@
 
 //! Client for Vimma's control socket, protocols 1 and 2
 //! (docs/specs/m0-control-protocol-and-vimma-ctl.md), and `vimma-ctl mcp`, the MCP server over
-//! stdio for local AI agents (docs/specs/vimma-mcp.md).
+//! stdio for AI agents (docs/specs/vimma-mcp.md).
 
 pub mod cli;
 pub mod client;

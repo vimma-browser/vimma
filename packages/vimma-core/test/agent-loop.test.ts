@@ -15,10 +15,10 @@ import {
 import { toolResult } from "../src/agent/agent-results.mjs";
 import { untrustedHeader } from "../src/agent/agent.mjs";
 import { AGENT_DEFAULTS } from "../src/config/config.mjs";
-import type { ChatMessage, Provider } from "../src/agent/agent-providers.mjs";
+import type { ChatMessage, Provider, ToolDef } from "../src/agent/agent-providers.mjs";
 
 const provider = { kind: "openai", endpoint: "http://127.0.0.1:11434/v1", model: "m" };
-const TOOLS = [
+const TOOLS: ToolDef[] = [
   {
     name: "vimma_open",
     description: "Open a URL.",
@@ -1236,5 +1236,54 @@ describe("older results leave the context in blocks", () => {
     }).done;
     // 7 results leave 3 out from the start; the task's second result makes 9, which leaves 6.
     expect(before).toEqual([2]);
+  });
+});
+
+// Issue #1119: the edges the weekly mutation run left unpinned.
+describe("the loop at its edges", () => {
+  test("a stop during the call refused the third time ends the task as stopped", async () => {
+    const same = { content: "", tool_calls: [call("vimma_open", { url: "https://a.example/" })] };
+    const s = server([same, same, same, same]);
+    let n = 0;
+    let task: ReturnType<typeof start> | undefined;
+    const r = runner({
+      vimma_open: () => {
+        if (++n === 3) task?.stop();
+        return {
+          isError: true,
+          content: [{ type: "text", text: "The user denied this request in Vimma." }],
+        };
+      },
+    });
+    task = start({ fetch: s.fetch, runTool: r.runTool });
+    const res = await task.done;
+    expect(r.calls).toHaveLength(3);
+    expect(res.outcome).toBe("stopped");
+    expect(res.after?.name).toBe("vimma_open");
+  });
+
+  test("a tool message is never sent as the agent's reply, whatever text it carries", () => {
+    const odd = { role: "tool", text: "page text", results: [] } as unknown as ChatMessage;
+    expect(clearContext([odd, { role: "user", text: "Buy milk" }])).toEqual([
+      { role: "user", text: "Buy milk" },
+    ]);
+  });
+
+  test("the messages after the left-out block go as they are, the same objects", () => {
+    const page = (i: number) => ({
+      id: `c${i}`,
+      name: "vimma_read_page",
+      isError: false,
+      content: [{ type: "text", text: `page ${i}\n${"text ".repeat(50)}` }],
+    });
+    const messages: ChatMessage[] = [{ role: "user", text: "Buy milk" }];
+    for (let i = 0; i < 4; i++) {
+      messages.push({ role: "assistant", text: "", toolCalls: [] });
+      messages.push({ role: "tool", results: [page(i)] } as ChatMessage);
+    }
+    // keep 2 of 4: results 0 and 1 (messages 2 and 4) are left out, from message 5 on all stay.
+    const out = pruneResults(messages, 2);
+    expect(out[4]).not.toBe(messages[4]);
+    for (let i = 5; i < messages.length; i++) expect(out[i], `message ${i}`).toBe(messages[i]);
   });
 });

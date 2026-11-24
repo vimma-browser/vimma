@@ -9,7 +9,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { isCaseSensitive } from "../core/find.mjs";
-import { openPrompt, watchFindBars } from "./find-bar.mjs";
+import { markPrompt, openPrompt, watchFindBars } from "./find-bar.mjs";
 import { PdfOps } from "./pdf-ops.mjs";
 
 /** @import { FindStatus } from "../core/find.mjs" */
@@ -18,6 +18,8 @@ import { PdfOps } from "./pdf-ops.mjs";
 const FIND_NOTFOUND = 1;
 /** How long Enter waits for the incremental find's result before closing anyway. */
 const ACCEPT_WAIT_MS = 1000;
+/** The longest `/` waits for the anchor on a page in the parent process (`start`). */
+const ANCHOR_WAIT_MS = 250;
 
 /**
  * @typedef {MozFinder} Finder
@@ -30,7 +32,8 @@ const ACCEPT_WAIT_MS = 1000;
  * @typedef {object} Session  a `/` or `?` being typed
  * @property {Browser} browser
  * @property {boolean} backward
- * @property {FindBar | null} findbar   null while Firefox creates it (one frame)
+ * @property {FindBar | null} findbar   null until the prompt opens: while Firefox creates the
+ *   bar (one frame, on first use per tab) and, on a page in the parent process, the anchor is set
  * @property {string} buffer   keys typed before the find bar had focus
  * @property {"accept" | null} queued   Enter pressed before the find bar had focus
  * @property {string | null} accepting   Enter pressed: the query whose result we wait for
@@ -61,7 +64,7 @@ export class Find {
     this.last = null;
     /** @type {WeakMap<Browser, Entry>} the status per tab */
     this.entries = new WeakMap();
-    /** @type {WeakMap<Browser, object>} our finder result listener per tab */
+    /** @type {WeakMap<Browser, FinderResultListener>} our finder result listener per tab */
     this.listeners = new WeakMap();
     /** @type {WeakSet<Browser>} tabs whose finder results we show */
     this.active = new WeakSet();
@@ -135,6 +138,10 @@ export class Find {
     if (!tab) return;
     this.#watch(browser);
     this.active.add(browser);
+    // A new search counts its own matches (#1307). The last search's count is carried over to a
+    // result for the same text so that n and N keep it until theirs is in (#onResult); here it
+    // would stay, as #finish asks for a count only when it has none.
+    this.entries.delete(browser);
     /** @type {Session} */
     const session = {
       browser,
@@ -149,10 +156,24 @@ export class Find {
     };
     // Before the first search: it starts where Vim's would, not at the document's first match.
     VimmaActors.findStep(browser);
-    VimmaActors.findAnchor(browser);
+    // On a page in the parent process (about:vimma, the start page) the find bar waits for the
+    // anchor (#1307): Firefox's in-process Finder searches as the bar's input event runs, and with
+    // the bar cached it would search before the anchor's message arrives; the anchor would then
+    // collapse the match. That actor runs in this process, so its answer is a task away; the cap
+    // only keeps `/` from ever hanging on it. A remote page's finder messages queue behind the
+    // anchor's on the same channel, so its prompt does not wait on a page that may be busy.
+    const anchoring = VimmaActors.findAnchor(browser);
+    const anchored = browser.isRemoteBrowser
+      ? null
+      : Promise.race([anchoring, new Promise((r) => this.win.setTimeout(r, ANCHOR_WAIT_MS))]);
     this.session = session;
     this.onChange();
-    gBrowser.getFindBar(tab).then((findbar) => {
+    const created = gBrowser.getFindBar(tab).then((findbar) => {
+      // The prompt's style while it waits for the anchor (markPrompt).
+      if (findbar && this.session === session && findbar.hidden) markPrompt(findbar);
+      return findbar;
+    });
+    Promise.all([created, anchored]).then(([findbar]) => {
       if (this.session !== session) return;
       if (!findbar) {
         this.session = null;
@@ -194,7 +215,19 @@ export class Find {
   }
 
   /**
-   * Enter, Esc and the keys typed while the find bar is being created. Returns whether the key
+   * The selected tab changed. A search whose prompt has not opened yet is cancelled: keys typed
+   * from now on are the new tab's, and the prompt would open in a tab no longer shown. An open
+   * prompt stays with its tab, as Firefox's find bar does.
+   */
+  onTabSelect() {
+    const s = this.session;
+    if (s && !s.findbar && s.browser !== this.#gBrowser().selectedBrowser) {
+      this.cancel({ scrollBack: false });
+    }
+  }
+
+  /**
+   * Enter, Esc and the keys typed before the prompt opens. Returns whether the key
    * was ours (consumed).
    * @param {KeyboardEvent} e
    */
@@ -202,7 +235,7 @@ export class Find {
     const s = this.session;
     if (!s) return false;
     if (!s.findbar) {
-      // One frame while Firefox creates the find bar: the keys belong to the search, as in Vim.
+      // Until the prompt opens (Session.findbar): the keys belong to the search, as in Vim.
       if (e.key === "Escape") this.cancel();
       else if (e.key === "Enter") s.queued = "accept";
       else if (e.key === "Backspace") s.buffer = s.buffer.slice(0, -1);
@@ -425,7 +458,9 @@ export class Find {
   async #restore(browser, mark) {
     const at = await mark;
     if (at) VimmaActors.scrollTo(browser, at);
-    // n after Esc searches from where the page is again.
+    // n after Esc searches from where the page is again. Not awaited, unlike `/`'s (#1307): on a
+    // page in the parent process an n could search before the anchor is set, but n comes at
+    // human speed after Esc, and the anchor's message is a task away.
     VimmaActors.findAnchor(browser);
   }
 

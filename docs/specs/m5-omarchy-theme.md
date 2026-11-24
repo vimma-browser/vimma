@@ -18,7 +18,7 @@ force it.
 
 - **One theme host per app:** `ui/theme-host.mjs`, imported with `ChromeUtils.importESModule`
   (one module instance for all windows) and started from `vimma.js` with `ThemeHost.init(window)`
-  before `VimmaHost.init`. It replaces the status bar's one-off Tokyo Night sheet (the only
+  before `VimmaHost.init`. It replaces the status bar's one-off built-in sheet (the only
   injection point): each window gets ONE author sheet (`windowUtils.loadSheetUsingURIString`, a
   `data:text/css` URI of `tokensToCss(tokens, ":root")`); on a change the new sheet is loaded and
   then the old one removed, so no frame lacks tokens. The status bar still loads `statusbar.css`.
@@ -38,7 +38,10 @@ colors: {} }, omarchy, omarchyLightMode })` and `tokensToCss` (strict validation
   describes the file the path resolves to now, so `omarchy-theme-set`'s swap of `current/theme`
   (Omarchy 4 replaces the directory with `mv`; older setups use a symlink) changes it: no sync
   `realpath` on the main thread. One check at a time; a tick during a check is skipped. The
-  timer stops when the last window closes.
+  timer stops when the last window closes. (Since changed: the signature also carries a SHA-256
+  digest of `colors.toml` from `IOUtils.computeHexDigest`, off the main thread, because Linux
+  reports no `creationTime` and a swap between two themes of the same size and mtime left the
+  stat unchanged and was missed, #1432.)
 - **Errors:** a file `resolveTheme` rejects keeps the last good theme; one `console.warn` listing
   each error with its line, and `vimma-theme-error` is notified. The signature is kept, so the
   same broken file is not re-read or re-logged. Contrast warnings go to `console.info`.
@@ -67,8 +70,8 @@ colors: {} }, omarchy, omarchyLightMode })` and `tokensToCss` (strict validation
   polls;
 - `ln -sfn` of `current/theme` to another theme dir updates;
 - a theme without a `mode` key and with `light.mode` gives `--vimma-color-scheme: light`;
-- a path with no Omarchy theme gives the built-in palette (now Vimma's, `#070b0d`; Tokyo Night's
-  `#13141c` when this was written), and back; `builtin` forces it.
+- a path with no Omarchy theme gives the built-in palette (now Vimma's, `#070b0d`; the earlier
+  palette's `#13141c` when this was written), and back; `builtin` forces it.
 
 Red (before the host existed): 4 of 5 tasks failed (`timed out` waiting for the fixture's
 colours). Green: 11/11. Mutation check: dropping the `return` after a rejected file made
@@ -85,7 +88,7 @@ computed background and text with `--vimma-bg-dark` and `--vimma-fg`. Red: 8 fai
 overlay's (`rgb(255, 255, 255)` instead of `rgb(48, 16, 48)`; the picker, line and prompt already
 passed). Green: 37/37. Mutation: the overlay's `color` back to `CanvasText` failed both text
 assertions (`rgb(251, 251, 254)` vs `rgb(169, 177, 214)`); reverted. The e2e help baseline is
-re-recorded from CI's image (the overlay is now Tokyo Night).
+re-recorded from CI's image (the overlay now takes the theme's colours).
 
 ## Instant reload (2026-10-10)
 

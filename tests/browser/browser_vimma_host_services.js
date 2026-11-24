@@ -48,6 +48,10 @@ const ALL = [
   "agentKeys",
   "configRefused",
   "addAgentProvider",
+  "editSiteUnbind",
+  "bookmarksFileForget",
+  "bookmarksFileExport",
+  "bookmarksFileWords",
 ];
 
 /** Keys of the services' fakes, shaped as the registry asks. */
@@ -60,6 +64,10 @@ const FAKES = {
   },
   configRefused: () => ({ errors: [], file: "config.toml" }),
   addAgentProvider: async () => ({ name: "fake" }),
+  editSiteUnbind: async () => ({ added: [], already: [], removed: [] }),
+  bookmarksFileForget: async () => "",
+  bookmarksFileExport: async () => "",
+  bookmarksFileWords: () => [],
 };
 
 /**
@@ -95,6 +103,26 @@ add_task(async function test_vimma_js_provided_every_service_before_the_window_s
     ConfigHost.addAgentProvider,
     "setup writes [[agent.providers]] through ConfigHost",
   );
+  Assert.equal(
+    HostServices.editSiteUnbind,
+    ConfigHost.editSiteUnbind,
+    ":siteunbind --save and :sitebind --delete write through ConfigHost",
+  );
+  Assert.equal(
+    HostServices.bookmarksFileForget,
+    ConfigHost.bookmarksForget,
+    ":bookmarks forget goes through ConfigHost",
+  );
+  Assert.equal(
+    HostServices.bookmarksFileExport,
+    ConfigHost.bookmarksExport,
+    ":bookmarks export goes through ConfigHost",
+  );
+  Assert.equal(
+    HostServices.bookmarksFileWords,
+    ConfigHost.bookmarksWords,
+    ":bookmarks completes from ConfigHost",
+  );
   // Each window runs vimma.js, which hands over the same services again.
   const second = await BrowserTestUtils.openNewBrowserWindow();
   Assert.deepEqual(HostServices.missing(), [], "a second window changes nothing");
@@ -111,7 +139,7 @@ add_task(function test_only_vimma_js_provides_and_nothing_swaps_a_service() {
   );
   Assert.throws(
     () => {
-      /** @type {any} */ (HostServices).isAgentDownload = mine;
+      /** @type {Record<string, unknown>} */ (HostServices).isAgentDownload = mine;
     },
     TypeError,
     "nor assign one",
@@ -289,9 +317,9 @@ add_task(async function test_before_it_is_provided_each_service_does_the_least()
     "no tab is given",
   );
 
-  Assert.equal(
+  Assert.deepEqual(
     await services.addRoute({ domain: "example.org", workspace: "main" }),
-    "config.toml cannot be written before Vimma has started",
+    { error: "the routes file cannot be written before Vimma has started" },
     ":route add writes nothing and says why",
   );
 
@@ -389,10 +417,21 @@ add_task(async function test_before_it_is_provided_each_service_does_the_least()
     { error: "config.toml cannot be written before Vimma has started" },
     "setup writes nothing to config.toml",
   );
+  Assert.deepEqual(
+    await services.editSiteUnbind("example.org", { add: ["t"] }),
+    { error: "config.toml cannot be written before Vimma has started" },
+    ":siteunbind --save writes nothing to config.toml",
+  );
 });
 
 add_task(function test_each_service_is_provided_once() {
   const services = createHostServices(HERE);
+  /**
+   * Lets a test pass `provide` a shape its type refuses, as an unchecked caller could, so the
+   * run-time check is what refuses it.
+   * @param {unknown} value
+   */
+  const wrongShape = (value) => /** @type {Parameters<typeof services.provide>[0]} */ (value);
   const first = () => true;
   const second = () => false;
   services.provide({ isAgentDownload: first });
@@ -405,7 +444,11 @@ add_task(function test_each_service_is_provided_once() {
   );
   Assert.equal(services.isAgentDownload, first, "and the first stays");
   Assert.throws(
-    () => services.provide({ addRoute: async () => null, isAgentDownload: second }),
+    () =>
+      services.provide({
+        addRoute: async () => ({ added: "routes.toml" }),
+        isAgentDownload: second,
+      }),
     /already provided/,
     "a call with one refused service",
   );
@@ -415,28 +458,27 @@ add_task(function test_each_service_is_provided_once() {
     "provides none of them",
   );
   Assert.throws(
-    () => services.provide(/** @type {any} */ ({ openTab: first })),
+    () => services.provide(wrongShape({ openTab: first })),
     /no service openTab/,
     "a service the host does not run is refused",
   );
   Assert.throws(
-    () => services.provide(/** @type {any} */ ({ addRoute: "config.toml" })),
+    () => services.provide(wrongShape({ addRoute: "config.toml" })),
     /addRoute must be a function/,
     "so is a value of the wrong shape",
   );
   Assert.throws(
-    () => services.provide(/** @type {any} */ ({ agentChat: { list: () => [] } })),
+    () => services.provide(wrongShape({ agentChat: { list: () => [] } })),
     /agentChat must have addListener/,
     "a part of the conversations is not enough",
   );
   Assert.throws(
-    () => services.provide(/** @type {any} */ ({ agentKeys: { hint: FAKES.agentKeys.hint } })),
+    () => services.provide(wrongShape({ agentKeys: { hint: FAKES.agentKeys.hint } })),
     /agentKeys must have set, delete/,
     "nor a part of the keys",
   );
   Assert.throws(
-    () =>
-      services.provide(/** @type {any} */ ({ agentCli: { find() {}, noneFound() {}, use() {} } })),
+    () => services.provide(wrongShape({ agentCli: { find() {}, noneFound() {}, use() {} } })),
     /agentCli must have enabled/,
     "and the agent CLIs need their switch",
   );
@@ -453,7 +495,7 @@ add_task(function test_each_service_is_provided_once() {
       const rest = { ...whole };
       delete rest[member];
       Assert.throws(
-        () => services.provide(/** @type {any} */ ({ [name]: rest })),
+        () => services.provide(wrongShape({ [name]: rest })),
         new RegExp(`${name} must have ${member}$`),
         `${name} without ${member} is refused`,
       );

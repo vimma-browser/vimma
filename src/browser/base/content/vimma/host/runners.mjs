@@ -11,6 +11,7 @@
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { describeAction } from "../core/actions.mjs";
 import {
+  noTabText,
   parseBookmarksToolbarCommand,
   parseCommandLine,
   parseSettingsCommand,
@@ -19,16 +20,19 @@ import {
 import { parsePrivateCommand } from "../core/privatews.mjs";
 import { findWorkspace } from "../core/workspaces.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
+import { TabLine } from "../ui/tabline.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { sayAddon, openAddonByName } from "./addon-ops.mjs";
 import { runAgentCommand } from "./agent-chat-ops.mjs";
 import { AgentUi } from "./agent-ui.mjs";
-import { bookmarkContext, quickAdd } from "./bookmark-actions.mjs";
+import { bookmarkContext, openBookmarkByTitle, quickAdd } from "./bookmark-actions.mjs";
 import { browserRunners, openSettings, xulElementById } from "./browser-ops.mjs";
 import { ControlHost } from "./control-ops.mjs";
+import { HostServices } from "./host-services.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 import { openOutline } from "./outline-ops.mjs";
+import { tabById } from "./goto.mjs";
 import { goHistory, pageRunners } from "./page-ops.mjs";
 import {
   closePane,
@@ -57,7 +61,16 @@ import {
 } from "./private-ops.mjs";
 import { restartAsking } from "./restart.mjs";
 import { runRoute } from "./route-ops.mjs";
-import { closeTab, newTab, openOrSay, renameTab, restoreTab, selectTab } from "./tab-ops.mjs";
+import { runSiteKeys } from "./site-keys-ops.mjs";
+import {
+  closeTab,
+  newTab,
+  openOrSay,
+  renameTab,
+  restoreTab,
+  selectTab,
+  selectableTabs,
+} from "./tab-ops.mjs";
 import { setBookmarksToolbar, setToolbar } from "./toolbar-ops.mjs";
 import { checkUpdates } from "./update-ui.mjs";
 import {
@@ -133,7 +146,8 @@ function switchWorkspace(s, text) {
 /**
  * A workspace operation (workspace-ops.mjs) that takes the rest of a command line; without one
  * (its key) it asks on the command line, starting with `prompt`.
- * @param {(win: BrowserWindow, text: string) => string | null} op
+ * @param {(win: BrowserWindow, text: string, say: (text: string) => void) => string | null} op
+ *   `say`: the notice, for what the operation says once it is done
  * @param {(win: BrowserWindow) => string} prompt
  * @param {(s: WindowState) => void} emit  the host's redraw
  * @returns {(state: WindowState, action: Action, text?: string) => void}
@@ -144,7 +158,7 @@ function workspaceRunner(op, prompt, emit) {
       s.cmdline.open(prompt(s.win));
       return;
     }
-    const said = op(s.win, text);
+    const said = op(s.win, text, (/** @type {string} */ t) => s.notice.show(t));
     if (said) s.notice.show(said);
     emit(s);
   };
@@ -223,6 +237,27 @@ function bookmarksAction(s, a) {
 }
 
 /**
+ * `:bookmarkopen [title]` and `:bookmarktab [title]` (docs/specs/bookmark-open.md).
+ * @param {WindowState} s
+ * @param {string | undefined} text
+ * @param {"current" | "tab"} where
+ */
+function openByTitle(s, text, where) {
+  s.notice.hide();
+  const say = (/** @type {string} */ t) => s.notice.show(t, { error: true });
+  openBookmarkByTitle({ ...bookmarkContext(s), say }, text, where, (items, query, page) => {
+    // Read while the bookmarks loaded: another picker, the help or a prompt opened since keeps
+    // the keys, so this one stays shut rather than show over it.
+    const busy =
+      s.cmdline.isOpen || s.rename.isOpen || !!s.win.document.querySelector("dialog[open]");
+    if (!busy) s.bookmarkPicker.openWith(items, query, where, page);
+  }).catch((e) => {
+    console.error("vimma: bookmark failed", e);
+    say(`bookmark: ${e?.message ?? e}`);
+  });
+}
+
+/**
  * `I` (focus_urlbar): Firefox's ctrl+l, the Browser:OpenLocation command (browser.js
  * openLocation: select the URL bar's text, open its results as a click would). The URL bar is
  * the selected tab's, so in a split the focused pane's. An open side or bookmarks panel closes
@@ -273,7 +308,19 @@ export function hostRunners(host, page) {
     "hint.cancel": (/** @type {WindowState} */ s) => host._cancelHints(s),
     "tab.new": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
       text ? openOrSay(s, text, "tab") : newTab(s.win),
-    "tab.next": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
+    // `:tab N` passes N as typed: a typed command that does nothing reads as a typo, so it says
+    // there is no such tab; `{N}gt` stays silent, as in Vim (m1-cmdline, issue #1302).
+    "tab.next": (
+      /** @type {WindowState} */ s,
+      /** @type {Action} */ a,
+      /** @type {string | undefined} */ text,
+    ) => {
+      if (selectTab(s.win, a) || !text) return;
+      // Only a number past the last tab is "no tab N"; anything else that selected nothing (no
+      // tabs at all) is not the user's typo.
+      const length = selectableTabs(s.win).length;
+      if (length > 0 && (a.count ?? 0) > length) s.notice.show(noTabText(text, length));
+    },
     "tab.previous": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
     "tab.goto": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
     // Firefox's alt+9: the workspace's last visible tab (docs/specs/firefox-keys.md).
@@ -444,6 +491,11 @@ export function hostRunners(host, page) {
     "toolbar.toggle": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
       setToolbar(s, parseToolbarCommand(text)),
     "toolbar.show": (/** @type {WindowState} */ s) => setToolbar(s, { kind: "show" }),
+    // docs/specs/tab-line.md: gb's labels, or with a count that tab; `:tabline` in every window.
+    "tabline.hint": (/** @type {WindowState} */ s, /** @type {Action} */ a) =>
+      host._tabLineHint(s, a),
+    "tabline.toggle": (/** @type {WindowState} */ s) =>
+      s.notice.show(TabLine.toggle(s.win) ? "tab line shown" : "tab line hidden"),
     "toolbar.hide": (/** @type {WindowState} */ s) => setToolbar(s, { kind: "hide" }),
     "panel.down": panelAction,
     "panel.up": panelAction,
@@ -458,6 +510,17 @@ export function hostRunners(host, page) {
     // there).
     "panel.close_tab": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
       if (!s.bookmarks.isOpen) s.panel.action(a);
+    },
+    // docs/specs/close-active-tab.md decision 2: the tab the window shows, the panel kept open.
+    // Without the side panel (the bookmarks panel lists no tabs, or a global binding in another
+    // mode) it is tab.close (decision 3).
+    // The shown tab is named by its row: a pinned tab has none, and the model's active row is
+    // then another tab (pinned tabs are in no workspace), which must not close.
+    "panel.close_active_tab": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
+      if (!s.panel.isOpen) return closeTab(s.win);
+      const shown = s.win.gBrowser.selectedTab;
+      const row = s.panel.state?.rows.find((r) => tabById(s.win, r.tabId) === shown);
+      s.panel.action({ ...a, shown: row?.tabId ?? null });
     },
     // m4-side-panel-multiselect: marks in the side panel; nothing in the bookmarks panel.
     "panel.mark": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
@@ -501,8 +564,38 @@ export function hostRunners(host, page) {
       });
     },
     // docs/specs/bookmarks.md: the bookmarks panel, in the side panel's slot and mode.
-    "bookmarks.toggle": (/** @type {WindowState} */ s) => {
+    "bookmarks.toggle": (
+      /** @type {WindowState} */ s,
+      _a,
+      /** @type {string | undefined} */ text,
+    ) => {
       s.notice.hide();
+      const word = text?.trim() ?? "";
+      if (word) {
+        // docs/specs/bookmarks-file.md Behaviour 17 and 19, while the feature is on.
+        const words = HostServices.bookmarksFileWords();
+        if (!words.includes(word)) {
+          s.notice.show(
+            words.length
+              ? `:bookmarks takes ${words.join(", ")} or nothing`
+              : ":bookmarks takes no argument",
+            { error: true },
+          );
+          return;
+        }
+        const done =
+          word === "forget"
+            ? HostServices.bookmarksFileForget()
+            : HostServices.bookmarksFileExport(s.win, word === "export!");
+        // An export's notice says what it wrote and left out, or what `!` replaces: it stays
+        // until the next key, since the file's tab opens over it.
+        done.then(
+          (/** @type {string} */ said) => s.notice.show(said, { untilKey: word !== "forget" }),
+          (/** @type {Thrown} */ e) =>
+            s.notice.show(`:bookmarks ${word}: ${e?.message ?? e}`, { error: true }),
+        );
+        return;
+      }
       if (s.bookmarks.isOpen) s.bookmarks.close();
       else {
         s.panel.close();
@@ -517,6 +610,14 @@ export function hostRunners(host, page) {
         s.notice.show(`bookmark: ${e?.message ?? e}`, { error: true });
       });
     },
+    // docs/specs/bookmark-open.md: by title; several matches or none typed open the picker.
+    "bookmark.open": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
+      openByTitle(s, text, "current"),
+    "bookmark.open_tab": (
+      /** @type {WindowState} */ s,
+      _a,
+      /** @type {string | undefined} */ text,
+    ) => openByTitle(s, text, "tab"),
     "bookmarks.collapse": bookmarksAction,
     "bookmarks.expand": bookmarksAction,
     "bookmarks.open_tab": bookmarksAction,
@@ -571,6 +672,15 @@ export function hostRunners(host, page) {
       s.downloads.clearEnd();
       s.downloadPicker.open();
     },
+    // docs/specs/site-unbind-command.md: the selected tab's site gets keys, or gives them back.
+    "site.unbind": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
+      s.notice.hide();
+      runSiteKeys(host, s, "siteunbind", t, (text, error) => s.notice.show(text, { error }));
+    },
+    "site.bind": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
+      s.notice.hide();
+      runSiteKeys(host, s, "sitebind", t, (text, error) => s.notice.show(text, { error }));
+    },
     // `:settings [pane]` (m1-cmdline, Since changed): an unknown pane is refused as a notice.
     "browser.settings": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
       const settings = parseSettingsCommand(t);
@@ -583,8 +693,9 @@ export function hostRunners(host, page) {
     },
     // `:source` (m5-config-load): ConfigHost reads config.toml now instead of at the next poll;
     // `:source <path>` passes the path as typed, which ConfigHost expands.
-    "config.reload": (_s, _a, /** @type {string | undefined} */ text) =>
-      Services.obs.notifyObservers(null, CONFIG_RELOAD_TOPIC, text ?? ""),
+    // The window goes along, for ConfigHost's word that the file was read.
+    "config.reload": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
+      Services.obs.notifyObservers(s.win, CONFIG_RELOAD_TOPIC, text ?? ""),
     // `:setup` (first-run-setup decision 14): the setup page in a new tab, at the welcome screen.
     "setup.open": (/** @type {WindowState} */ s) => openOrSay(s, "about:vimma-setup", "tab"),
     // `:config`: ConfigHost opens config.toml in a tab of this window (creating it if missing).

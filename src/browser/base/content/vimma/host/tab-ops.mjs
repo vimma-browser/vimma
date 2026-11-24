@@ -8,11 +8,18 @@
 
 import { refusedScheme } from "../core/pageurl.mjs";
 import { tabTarget } from "../core/tabs.mjs";
+import { PaneViews } from "../split/PaneView.mjs";
 import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
 import { xulElementById } from "./browser-ops.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */
+
+/**
+ * The parts of openTrustedLinkIn's parameters Vimma passes (browser/base/content/utilityOverlay.js).
+ * @typedef {{ postData?: unknown, inBackground?: boolean, allowThirdPartyFixup?: boolean,
+ *   targetBrowser?: MozBrowser, userContextId?: number }} OpenLinkParams
+ */
 
 const lazy = /** @type {Lazy<"UrlbarUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -72,11 +79,7 @@ export function closeTab(win) {
     }
     return;
   }
-  const { TabMetrics } = gBrowser;
-  gBrowser.removeCurrentTab({
-    animate: true,
-    metricsContext: TabMetrics.userTriggeredContext(TabMetrics.METRIC_SOURCE.KEYBOARD),
-  });
+  removeTab(win, gBrowser.selectedTab);
 }
 
 /**
@@ -87,12 +90,30 @@ export function closeTab(win) {
  */
 export function closeTabById(win, tab) {
   if (tab.pinned) return;
+  removeTab(win, tab);
+}
+
+/**
+ * Closes `tab` as the keyboard would. The selected tab of a shown split's pane is succeeded by
+ * the pane core focuses next, so the split stays on screen (docs/specs/m4-split-panes.md, "Close
+ * tab in a pane"; issue #1426): Firefox would select the next tab in the strip, which may be a
+ * lone tab beside the split. A successor is read when the tab starts closing
+ * (`_beginRemoveTab`), before any TabClose a listener could act on.
+ * @param {BrowserWindow} win
+ * @param {MozTabbrowserTab} tab
+ */
+function removeTab(win, tab) {
   const gBrowser = gBrowserOf(win);
   const { TabMetrics } = gBrowser;
+  const next = PaneViews.get(win)?.successorOf(tab);
+  const before = next ? gBrowser.getSuccessor(tab) : null;
+  if (next) gBrowser.setSuccessor(tab, next);
   gBrowser.removeTab(tab, {
     animate: true,
     metricsContext: TabMetrics.userTriggeredContext(TabMetrics.METRIC_SOURCE.KEYBOARD),
   });
+  // A beforeunload prompt answered "stay" keeps the tab: its successor goes back as it was.
+  if (next && !tab.closing) gBrowser.setSuccessor(tab, before);
 }
 
 /**
@@ -108,13 +129,22 @@ export function restoreTab(win) {
  * tab.next, tab.previous, tab.goto.
  * @param {BrowserWindow} win
  * @param {Action} action
+ * @returns {boolean} false when there is no such tab (`12gt` with fewer tabs)
  */
 export function selectTab(win, action) {
   const gBrowser = gBrowserOf(win);
   const tabs = selectableTabs(win);
-  const index = tabTarget(action, tabs.indexOf(gBrowser.selectedTab), tabs.length);
+  const current = tabs.indexOf(gBrowser.selectedTab);
+  // A tab number does not depend on where you are: from a tab outside the list (a hidden one),
+  // `:tab 3` and `3gt` still go to tab 3, where tabTarget refuses for an unknown current tab.
+  const absolute =
+    action.id === "tab.goto" ||
+    action.id === "tab.goto_last" ||
+    (action.id === "tab.next" && action.count !== undefined);
+  const index = tabTarget(action, current < 0 && absolute ? 0 : current, tabs.length);
   const tab = index === null ? undefined : tabs[index];
   if (tab && tab !== gBrowser.selectedTab) gBrowser.selectedTab = tab;
+  return !!tab;
 }
 
 /**
@@ -130,7 +160,7 @@ export function selectTab(win, action) {
  */
 export function openUrl(win, text, where) {
   if (refusedScheme(text)) return false;
-  /** @type {{ openTrustedLinkIn: (url: string, where: string, params: object) => void }} */ (
+  /** @type {{ openTrustedLinkIn: (url: string, where: string, params: OpenLinkParams) => void }} */ (
     /** @type {unknown} */ (win)
   ).openTrustedLinkIn(text, where, { allowThirdPartyFixup: true, inBackground: false });
   return true;
@@ -162,7 +192,7 @@ export async function openTyped(win, text, where) {
     if (!moved) return openUrl(win, text, where);
     r.url = text;
   } else if (refusedScheme(r.url)) return false;
-  /** @type {Record<string, unknown>} */
+  /** @type {OpenLinkParams} */
   const params = { postData: r.postData, inBackground: false };
   if (r.url === text) params.allowThirdPartyFixup = true;
   if (moved) {
@@ -173,7 +203,7 @@ export async function openTyped(win, text, where) {
       params.inBackground = true;
     }
   }
-  /** @type {{ openTrustedLinkIn: (url: string, where: string, params: object) => void }} */ (
+  /** @type {{ openTrustedLinkIn: (url: string, where: string, params: OpenLinkParams) => void }} */ (
     /** @type {unknown} */ (win)
   ).openTrustedLinkIn(r.url, where, params);
   return true;

@@ -15,6 +15,7 @@ import {
   UPDATE_STAGES,
   CHAT_VIEWS,
   DOWNLOAD_SEGMENTS,
+  SETUP_SCREENS,
   controlUpdateState,
 } from "../src/control/control.mjs";
 import type { ValidateOptions } from "../src/control/control.mjs";
@@ -239,6 +240,15 @@ describe("validateMessage: send-keys", () => {
       "result.sent must be an integer >= 0",
     ]);
   });
+
+  test("dialog, when present, is true: a key opened a dialog that waits for its answer", () => {
+    expect(errorsOf(ok({ sent: 1, dialog: true }), { command: "send-keys" })).toEqual([]);
+    for (const dialog of [false, "yes", 1, null]) {
+      expect(errorsOf(ok({ sent: 1, dialog }), { command: "send-keys" })).toEqual([
+        "result.dialog must be true when present",
+      ]);
+    }
+  });
 });
 
 describe("validateMessage: open", () => {
@@ -308,6 +318,21 @@ describe("validateMessage: state", () => {
     expect(errorsOf(ok({ ...state, workspace: "work", panes: {} }), { command: "state" })).toEqual(
       [],
     );
+  });
+
+  test("a sleeping tab is listed asleep: true; the field is true or left out (tab-sleep, 15)", () => {
+    const tab = { id: "{uuid}", url: "https://example.com/", title: "Example", selected: false };
+    const with_ = (extra: Record<string, unknown>) => ({
+      ...state,
+      tabs: [...state.tabs, { ...tab, ...extra }],
+    });
+    expect(errorsOf(ok(with_({})), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok(with_({ asleep: true })), { command: "state" })).toEqual([]);
+    for (const asleep of [false, "yes", 1, null]) {
+      expect(errorsOf(ok(with_({ asleep })), { command: "state" })).toEqual([
+        "result.tabs[1].asleep must be true when present",
+      ]);
+    }
   });
 
   test("reports each broken field", () => {
@@ -548,6 +573,51 @@ describe("validateMessage: state", () => {
     expect(errorsOf(ok({ ...hidden, pdf: { drawn: true } }), { command: "state" })).toEqual([
       "result.pdf must be null in a private window",
     ]);
+  });
+
+  // #1298: the setup page's screen as drawn (welcome, a step's id, stop), a word from a closed
+  // list, so an e2e scenario waits for the screen it photographs; never a choice, a search or a
+  // line the step writes (security.md S9).
+  test("setup is the screen drawn, as a fixed word, or null", () => {
+    for (const setup of [
+      null,
+      { screen: "welcome" },
+      { screen: "address_bar" },
+      { screen: "stop" },
+      { screen: "loading" },
+    ]) {
+      expect(errorsOf(ok({ ...state, setup }), { command: "state" })).toEqual([]);
+    }
+    for (const setup of ["welcome", 3, true, [], {}, { screen: 1 }, { screen: "ublock origin" }]) {
+      expect(errorsOf(ok({ ...state, setup }), { command: "state" })).not.toEqual([]);
+    }
+    expect(
+      errorsOf(ok({ ...state, setup: { screen: "stop", saved: 2 } }), { command: "state" }),
+    ).toEqual(['unknown field "result.setup.saved"']);
+    const hidden = {
+      ...state,
+      private: true,
+      tabs: [{ id: "1", url: null, title: null, selected: true }],
+    };
+    expect(errorsOf(ok({ ...hidden, setup: null }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...hidden, setup: { screen: "welcome" } }), { command: "state" })).toEqual(
+      ["result.setup must be null in a private window"],
+    );
+  });
+
+  // A client reads the error to see what it sent wrong: a setup that is no object says so, rather
+  // than an unknown field for each of a string's characters, and a screen not in the list names
+  // the screens there are.
+  test("a setup that is no object, or names no screen, says what it must be", () => {
+    for (const setup of ["welcome", 3, true, []]) {
+      expect(errorsOf(ok({ ...state, setup }), { command: "state" })).toEqual([
+        "result.setup must be an object or null",
+      ]);
+    }
+    const screens = `result.setup.screen must be one of ${SETUP_SCREENS.join(", ")}`;
+    for (const setup of [{}, { screen: 1 }, { screen: "ublock origin" }]) {
+      expect(errorsOf(ok({ ...state, setup }), { command: "state" })).toEqual([screens]);
+    }
   });
 
   test("controlUpdateState keeps only the fields the protocol names (m6a-updater 41)", () => {

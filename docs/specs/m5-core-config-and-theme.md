@@ -2,6 +2,23 @@
 
 Status: implemented (core); host wiring in [m5-config-load](m5-config-load.md) · Milestone: M5 · Area: `packages/vimma-core`
 
+Since changed (2026-11-19, #1379): config.toml has no schema. Every key is valid in every file,
+whatever its `schema` line says. A `schema` line, which files written for schema 1 or 2 carry, is
+accepted with any value (`1`, `2`, `3`, a string, a table) and ignored, so no existing file
+breaks and nothing is refused for a line that carries no meaning any more. `CONFIG_SCHEMA_VERSION`,
+`MIGRATIONS`, `migrate`, `ParseResult.migratedFrom` and `ResolvedConfig.schema` are gone,
+`defaults.toml` and the `:config` template no longer write the line, and about:vimma no longer
+shows it. The reasons: schema 2 was an identity migration that only added keys, and its one
+effect was to refuse a newer key in a file without `schema = 2`. That tripped hand-edited files
+and kept a writer such as setup from adding a key to a file with no `schema` line. Keys only
+ever grow, so an older Vimma meeting a newer key names it as an unknown key, which is a clear
+enough message. The one compatibility cost: Vimma 0.1.21 and older still enforce the rule, so a
+file without `schema = 2` that uses a newer key is refused when an older build opens it. That
+build keeps running on its defaults, and its error names the fix (`put schema = 2 at the top of
+the file`). Only a downgrade, mainly by nightly testers, meets it. Every other check stays as it
+was. Tests: `config-schema-line.test.ts`; the contract fixtures of `tests/contract/config/v1/`
+and `v2/` still load, `v2/valid-old-schema.toml` with newer keys under `schema = 1`.
+
 ## User stories
 
 - As a user, I write `~/.config/vimma/config.toml` in Herdr syntax; a mistake on line 12 shows
@@ -16,20 +33,39 @@ Status: implemented (core); host wiring in [m5-config-load](m5-config-load.md) �
 
 `packages/vimma-core/src/`:
 
-| Module                   | Exports                                                                                                                                                                     |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vendor/smol-toml/`      | smol-toml 1.9.0 parse path, vendored as one module (see Settled)                                                                                                            |
-| `toml.mjs`               | `parseToml(text)` → `{ ok, value }` / `{ ok: false, error: { line, column, message } }`; `locateKeys(text)` → `lineOf(path)`; `formatPath`, `parsePath`                     |
-| `config.mjs`             | `CONFIG_SCHEMA_VERSION`, `MIGRATIONS`, `migrate`, `parseConfig`, `mergeWithDefaults`, `reloadConfig`, `formatConfigError`                                                   |
-| `theme.mjs`              | `THEME_TOKENS`, `PALETTE_KEYS`, `BADGES`, `TOKYO_NIGHT`, `MIN_CONTRAST`, `isHexColor`, `normalizeHex`, `parseOmarchyColors`, `resolveTheme`, `contrastRatio`, `tokensToCss` |
-| `defaults.mjs` (changed) | `DEFAULT_CONFIG` gains `workspaces` and `theme`; `formatDefaultsToml` writes them                                                                                           |
-| `keymap.mjs` (changed)   | `KeymapError` gains `detail` (the message without path and suggestion)                                                                                                      |
-| `actions.mjs` (changed)  | `closest(text, pool)`: the edit-distance suggestion `suggestAction` already used, now shared                                                                                |
+| Module                   | Exports                                                                                                                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vendor/smol-toml/`      | smol-toml 1.9.0 parse path, vendored as one module (see Settled)                                                                                                                          |
+| `toml.mjs`               | `parseToml(text)` → `{ ok, value }` / `{ ok: false, error: { line, column, message } }`; `locateKeys(text)` → `lineOf(path)`; `formatPath`, `parsePath`                                   |
+| `config.mjs`             | `CONFIG_SCHEMA_VERSION`, `MIGRATIONS`, `migrate`, `parseConfig`, `mergeWithDefaults`, `reloadConfig`, `formatConfigError`                                                                 |
+| `theme.mjs`              | `THEME_TOKENS`, `PALETTE_KEYS`, `BADGES`, `VIMMA_DARK`, `VIMMA_LIGHT`, `MIN_CONTRAST`, `isHexColor`, `normalizeHex`, `parseOmarchyColors`, `resolveTheme`, `contrastRatio`, `tokensToCss` |
+| `defaults.mjs` (changed) | `DEFAULT_CONFIG` gains `workspaces` and `theme`; `formatDefaultsToml` writes them                                                                                                         |
+| `keymap.mjs` (changed)   | `KeymapError` gains `detail` (the message without path and suggestion)                                                                                                                    |
+| `actions.mjs` (changed)  | `closest(text, pool)`: the edit-distance suggestion `suggestAction` already used, now shared                                                                                              |
 
 Contract fixtures: `tests/contract/config/v1/` and `tests/contract/theme/`, run by
 `packages/vimma-core/test/contract.test.mjs`.
 
 ## Schema v1
+
+Since changed (#1474): an unknown key with no close match is a warning, `unknown key "<key>";
+skipped`, and only that key is left out; the rest of the file applies. The #1379 note above says
+an older Vimma names a newer key as an unknown key; it also refused the whole file for it, so a
+file shared between machines or synced dotfiles kept an older build on its previous config or the
+defaults for one new line. A key that has a close match among the keys of its table stays an
+error with the suggestion, because it is far more likely a typo than a key from a newer build.
+Three more cases stay errors: a top-level table's name under another table (a misplaced line,
+#1270); any unknown key in `[updates]`, and a boolean `check` in any other table, because the
+file may mean an opt-out of update checks and so fails closed (m6a-updater decision 31); and the
+program, command and secret keys of an agent CLI provider (M60), with any credential-looking name
+in `[agent]`, a provider or `[mcp]`, which keeps pointing a secret to login storage. Type errors
+and bad values stay errors. The rule covers the settings tables that `validate` checks; an unknown
+action in `[keys]` (compileKeymap), an unknown mode in `[unbind]`, an unknown colour in
+`[theme.colors]` (resolveTheme) and an unknown key in a `[[routes]]` rule (routes.mjs) are still
+errors, as each names something this build cannot act on. `rawUpdatesCheck` follows the same
+line: only a top-level table that is a near miss of one may be a misspelt `[updates]`. The writers (`:route add`, the setup's steps, the built-in agent's setup,
+`:siteunbind --save`) refuse only a file with errors, so a file with a skipped key is written to
+like any other. Tests: `config-unknown-keys.test.ts`.
 
 Schema 2 (identity migration, adds `[panes]`, `[sites."<host>"]` and `[modal] hint_chars`) is
 specified in [m3-m4-core-prep](m3-m4-core-prep.md).
@@ -39,7 +75,7 @@ Unknown keys anywhere in the schema are errors with the closest known key as sug
 
 | Key                             | Type                      | Default                                     | Validation                                                                                                                                              |
 | ------------------------------- | ------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schema`                        | integer                   | absent = version 0                          | `0 ≤ schema ≤ 1`; higher: "from a newer vimma"                                                                                                          |
+| `schema`                        | integer                   | absent = version 0                          | `0 ≤ schema ≤ 1`; higher: "from a newer vimma" (Since changed: any value, ignored; see above)                                                           |
 | `[keys] prefix`                 | key string                | `"ctrl+b"`                                  | `compileKeymap` (key notation)                                                                                                                          |
 | `[keys] <action>`               | string or list of strings | `defaults.mjs`                              | `compileKeymap`: action name from `actions.mjs` (suggestion), notation, no sequence bound twice in a mode                                               |
 | `[modal] leader`                | key string                | `" "`                                       | string; notation via `compileKeymap`                                                                                                                    |
@@ -52,7 +88,7 @@ Unknown keys anywhere in the schema are errors with the closest known key as sug
 | `[workspaces.<name>] home`      | string                    | none                                        | `http://…`, `https://…` or `about:…`, no whitespace                                                                                                     |
 | `[workspaces.<name>] autofill`  | boolean                   | `true`                                      | boolean                                                                                                                                                 |
 | `[theme] source`                | string                    | `"omarchy"`                                 | `"omarchy"` (follow Omarchy's `colors.toml`, the built-in `name` when absent) or `"file"` (the built-in `name`)                                         |
-| `[theme] name` (schema 2)       | string                    | `"vimma"`                                   | `"vimma"` (vimma.dev's colours, dark and light) or `"tokyo-night"` (suggestion); added after M5, see `BUILTIN_THEMES`                                   |
+| `[theme] name` (schema 2)       | string                    | `"vimma"`                                   | `"vimma"` (vimma.dev's colours, dark and light), the only one (#1383); added after M5, see `BUILTIN_THEMES`                                             |
 | `[theme] appearance` (schema 2) | string                    | absent (the pref `:theme` sets; `"system"`) | `"system"`, `"dark"` or `"light"` (suggestion): the built-in palette's variant; `[theme.colors] mode` wins; see [theme-appearance](theme-appearance.md) |
 | `[theme] font`                  | string                    | `"monospace"`                               | 1–200 characters, none of `" ; { } \ < >` or control characters (it goes into CSS)                                                                      |
 | `[theme.colors] <key>`          | hex colour string         | from the source palette                     | key ∈ `PALETTE_KEYS` (Omarchy's `colors.toml` keys; suggestion); `#rgb` or `#rrggbb`, stored as `#rrggbb` lowercase                                     |
@@ -100,6 +136,7 @@ the order of the names' lines in the text.
 - `migrate(raw, from, to = CONFIG_SCHEMA_VERSION, registry = MIGRATIONS)` applies each step in
   order and returns `{ config, applied: ["0→1", …] }`; a missing step throws. `from > to` throws.
 - v0 (no `schema` key: configs written before M5) → v1 is the identity plus `schema = 1`.
+  (Since changed: no migrations and no schema; see the note under the status line.)
 - Every new version adds a fixture pair under `tests/contract/config/v<n>/` and a migration test
   (plan §5).
 
@@ -144,9 +181,10 @@ Magenta hints stand apart from the accent that marks the normal badge and focus.
 `--green` is a shade of the aqua, so the palette's `green`, the insert badge, stays a true green
 that does not read as the normal badge's aqua.)
 
-- `TOKYO_NIGHT`: identical to Omarchy's stock tokyo-night `colors.toml`; the built-in palette
-  until `VIMMA_DARK` / `VIMMA_LIGHT` (vimma.dev's colours) replaced it as the default.
-  `BUILTIN_THEMES` maps `[theme] name` to `{ dark, light? }`.
+- `VIMMA_DARK` / `VIMMA_LIGHT`: vimma.dev's colours, the built-in palette. `BUILTIN_THEMES` maps
+  `[theme] name` to `{ dark, light }`; `"vimma"` is its only name. (The palette this section
+  first described was removed in #1383; a config.toml that still names it applies, with
+  `"vimma"` and a warning.)
 - `resolveTheme({ theme, omarchy?, omarchyLightMode?, scheme? })` →
   `{ tokens, mode, errors, warnings, adaptive }`. Base: Omarchy text when `source = "omarchy"`
   and the host found the file, else the built-in `name`, its light variant when `scheme` is
@@ -200,8 +238,8 @@ warnings }`: what the host injects; an adaptive built-in adds its light tokens u
   `from > to` throws; v0 → v1 adds `schema = 1` and keeps everything else.
 - Contract: `tests/contract/config/v1/valid.toml` parses clean; each `invalid-*.toml` yields
   exactly the errors in `expected-errors.json` (line, path).
-- Theme: Tokyo Night fixture → `--vimma-bg = #1a1b26`, `--vimma-accent = #7aa2f7`, no warnings;
-  a light fixture → `--vimma-color-scheme = light` and badge text dark; missing `orange` falls back
+- Theme: the sample Omarchy fixture (`sample.colors.toml`) → `--vimma-bg = #1a1b26`,
+  `--vimma-accent = #7aa2f7`, no warnings; a light fixture → `--vimma-color-scheme = light` and badge text dark; missing `orange` falls back
   to `yellow`; `#xyz`, `#12345`, `rgba(…)` are not hex; `#FFF` normalises to `#ffffff`;
   `contrastRatio("#000", "#fff") = 21`, `("#777", "#fff") < 4.5` gives a warning naming both tokens;
   an Omarchy file with an invalid colour gives an error at its line and the built-in palette's
@@ -267,6 +305,6 @@ injecting CSS, creating containers from `[workspaces]`, the Omarchy `theme-set.d
   checked first.
 - Omarchy fixture: `/usr/share/omarchy` ships no licence file (the upstream repo is MIT, but the
   installed copy does not say so), so `tests/contract/theme/*.toml` are written by hand in the same
-  format. The Tokyo Night values are the public Tokyo Night palette.
+  format. The dark sample's values are those of a public palette.
 - Firefox container colours and icons from
   `toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs` (157.0.1).

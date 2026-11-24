@@ -72,8 +72,9 @@ export const PDFJS_CONTRACT = Object.freeze({
   // Delivery PR 4: the outline, read and followed as pdf.js's own outline view does.
   pdfDocument: "object",
   "pdfDocument.getOutline": "function",
-  "pdfDocument.getDestinations": "function",
   "pdfDocument.cachedPageNumber": "function",
+  // Settles once pdf.js has fetched every page, so that cachedPageNumber knows them all (#1424).
+  "pdfViewer.pagesPromise": "object",
   "pdfLinkService.goToDestination": "function",
   "pdfLinkService.executeNamedAction": "function",
   "pdfLinkService.executeSetOCGState": "function",
@@ -100,6 +101,9 @@ export const PDFJS_CONTRACT = Object.freeze({
 export const PDFJS_DOM = Object.freeze({
   container: "#viewerContainer",
   page: '#viewer .page[data-page-number="{n}"]',
+  // Any page, and its text layer, which pdf.js adds to the page once its text has rendered.
+  anyPage: "#viewer .page",
+  textLayer: "#viewer .page > .textLayer",
   drawn: "[data-loaded]:not(.loadingIcon)",
 });
 
@@ -131,6 +135,18 @@ const OUTLINE_ACTIONS = new Set([
 
 /** A read the viewer never answers is given up after this long, so Tab works again. */
 const OUTLINE_READ_MS = 5000;
+
+/**
+ * How long Tab's outline read waits for pdf.js to fetch every page: under the 2 s the parent
+ * gives the reply (OUTLINE_WAIT_MS), so that a long PDF still opens its outline on Tab.
+ */
+const OUTLINE_PAGES_MS = 1000;
+
+/**
+ * How long the outline read waits for its named destinations' pages, after the outline: with
+ * OUTLINE_PAGES_MS, still under the parent's 2 s (OUTLINE_WAIT_MS).
+ */
+const OUTLINE_NAMES_MS = 500;
 
 /** A link's page the viewer does not resolve in this long is shown as its URL. */
 const LINK_PAGE_MS = 2000;
@@ -206,6 +222,16 @@ function str(read) {
  * @typedef {{ title: string, level: number, page: number, kind: string, collapsed: boolean, url?: string }} OutlineEntry
  */
 
+/**
+ * The outline message for the parent (`Vimma:PdfOutline`): primitives only, bounded (V8).
+ * @typedef {{ entries: OutlineEntry[], truncated: boolean }} PdfOutlineMessage
+ */
+
+/**
+ * The state message for the parent (`Vimma:PdfState`): primitives only (parsePdfState).
+ * @typedef {ReturnType<PdfView["read"]>} PdfStateMessage
+ */
+
 export class PdfView {
   /** @type {PdfJs.App} the viewer's PDFViewerApplication, waived */
   #app;
@@ -216,29 +242,33 @@ export class PdfView {
   #lastSpread = PDF_SPREAD.EVEN;
   /** @type {number} */
   #previousScroll = PDF_SCROLL.VERTICAL;
-  /** @type {(state: object) => void} */
+  /** @type {(state: PdfStateMessage) => void} */
   #send;
-  /** @type {(outline: object) => void} */
+  /** @type {(outline: PdfOutlineMessage) => void} */
   #sendOutline;
   /** @type {() => number} how many operations the actor has received from the parent */
   #ops;
   /** @type {(() => void) | null} the window's resize listener */
   #onResize = null;
+  /** @type {MutationObserver | null} gives each text layer pdf.js adds a focus that keeps the view */
+  #textLayers = null;
   /** @type {Window} the viewer's window, through Xrays: exported functions belong to it */
   #win;
   /**
    * The outline as last read: the message for the parent, and each entry's target, which stays
    * here (V7, V8). null until the user's first Tab.
-   * @type {{ message: { entries: OutlineEntry[], truncated: boolean }, targets: unknown[] } | null}
+   * @type {{ message: PdfOutlineMessage, targets: unknown[] } | null}
    */
   #outline = null;
   #readingOutline = false;
+  /** @type {(() => void) | null} the read waiting for pdf.js's pages, which a Tab hurries */
+  #waitingRead = null;
   /** Counts the documents pdf.js opens in this viewer, so the parent drops an old outline. */
   #generation = 0;
   /** @type {number | null} */
   #timer = null;
   #find = { current: 0, total: 0 };
-  /** @type {[string, Function][]} */
+  /** @type {[string, (event: unknown) => void][]} made with Cu.exportFunction */
   #listeners = [];
   /** The token sheet loaded into the viewer, as a data: URI; "" before the first. */
   #themeUri = "";
@@ -254,8 +284,8 @@ export class PdfView {
   /**
    * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer.
    * @param {JSWindowActorChild} actor   the VimmaChild
-   * @param {(state: object) => void} send
-   * @param {(outline: object) => void} [sendOutline]
+   * @param {(state: PdfStateMessage) => void} send
+   * @param {(outline: PdfOutlineMessage) => void} [sendOutline]
    * @param {() => number} [ops]  how many operations the actor has received
    * @returns {PdfView | null}
    */
@@ -282,8 +312,8 @@ export class PdfView {
   /**
    * @param {Window} win  the viewer's window, through Xrays
    * @param {PdfJs.App} app  waived
-   * @param {(state: object) => void} send
-   * @param {(outline: object) => void} sendOutline
+   * @param {(state: PdfStateMessage) => void} send
+   * @param {(outline: PdfOutlineMessage) => void} sendOutline
    * @param {() => number} ops
    */
   constructor(win, app, send, sendOutline, ops) {
@@ -302,6 +332,7 @@ export class PdfView {
       this.schedule();
     };
     win.addEventListener("resize", this.#onResize);
+    this.#keepViewOnTextLayerFocus();
     // pdf.js calls these with its own event objects; Cu.exportFunction keeps the arguments
     // behind Xrays (V3, V4).
     const onState = Cu.exportFunction(() => this.schedule(), win);
@@ -330,6 +361,63 @@ export class PdfView {
       }
     }
     this.schedule();
+  }
+
+  /**
+   * pdf.js's goToDestination (a link, an outline entry, `ctrl+o` back to a link's entry) focuses
+   * the page's text layer once the page has rendered, and a focus scrolls an element out of view
+   * into it. On a busy viewer that render comes after the next key (a link, then `2G`), which the
+   * focus undid: the view went back to the link's page, and the jump list's walk back (decision 9)
+   * left from there. Each text layer gets its own `focus`, an exported function (V3) that focuses
+   * it as pdf.js asks without scrolling: while the page is in view a focus scrolls nothing anyway.
+   * pdf.js adds a text layer to its page when its text has rendered, a microtask before it
+   * dispatches `textlayerrendered`, so the observer sees it first. Only the viewer's DOM is read,
+   * through Xrays.
+   */
+  #keepViewOnTextLayerFocus() {
+    const win = this.#win;
+    const keep = (/** @type {Element} */ layer) => {
+      const focus = Cu.exportFunction(() => {
+        try {
+          /** @type {HTMLElement} */ (layer).focus({ preventScroll: true });
+        } catch {
+          // the layer went with its page
+        }
+      }, win);
+      // An own property of the element, seen by the viewer's script only: Xrays keep the
+      // element's own focus for Vimma. Defined, not assigned: an assignment would run a `focus`
+      // setter the viewer put on the prototype, inside this observer (V3).
+      try {
+        Object.defineProperty(Cu.waiveXrays(layer), "focus", {
+          value: focus,
+          configurable: true,
+          writable: true,
+        });
+      } catch {
+        // a layer the viewer made refuse the property keeps its own focus; the others, in the
+        // first scan or in the same batch of records, still get theirs
+      }
+    };
+    try {
+      const container = this.#doc.querySelector(PDFJS_DOM.container);
+      if (!container) return;
+      for (const layer of container.querySelectorAll(PDFJS_DOM.textLayer)) keep(layer);
+      this.#textLayers = new win.MutationObserver((records) => {
+        for (const record of records) {
+          // A text layer is a page's child; a zoom refills one with its text, which needs no look.
+          const parent = /** @type {Element} */ (record.target);
+          if (parent.nodeType !== 1 || !parent.matches(PDFJS_DOM.anyPage)) continue;
+          for (const node of record.addedNodes) {
+            if (node.nodeType !== 1) continue;
+            const el = /** @type {Element} */ (node);
+            if (el.matches(PDFJS_DOM.textLayer)) keep(el);
+          }
+        }
+      });
+      this.#textLayers.observe(container, { childList: true, subtree: true });
+    } catch {
+      // a viewer without its container: its focus stays pdf.js's
+    }
   }
 
   /**
@@ -466,8 +554,9 @@ export class PdfView {
           return true;
         }
         case "outline":
-          // Only for the user's Tab in the PDF viewer (V8): the parent sends it for that key.
-          this.#readOutline();
+          // Only for the user's Tab in the PDF viewer, or once as the PDF opens (V8); n is 1 for
+          // the read that waits for every page.
+          this.#readOutline(n === 1);
           return true;
         case "follow":
           return this.#follow(n);
@@ -526,13 +615,25 @@ export class PdfView {
    * Reads the outline and sends it to the parent (decision 10, V8). pdf.js's promises come back
    * only through exported callbacks passed to their `then` through Xrays, never awaited (V4); a
    * second Tab sends the outline already read.
+   *
+   * pdf.js gives a destination's page (cachedPageNumber) only for a page it has fetched, and it
+   * fetches the pages after the first one draws: read before that, every entry past the first
+   * page has no page, and the selection of an outline shown beside the document cannot follow
+   * the page (#1424). The read waits for pdf.js's `pagesPromise`, all the way with `allPages`,
+   * else at most OUTLINE_PAGES_MS.
+   * @param {boolean} allPages
    */
-  #readOutline() {
+  #readOutline(allPages) {
     if (this.#outline) {
       this.#sendOutline(this.#outline.message);
       return;
     }
-    if (this.#readingOutline) return;
+    if (this.#readingOutline) {
+      // Tab while the read as the PDF opens waits for every page: Tab's own bound applies.
+      const waiting = this.#waitingRead;
+      if (!allPages && waiting) lazy.setTimeout(waiting, OUTLINE_PAGES_MS);
+      return;
+    }
     this.#readingOutline = true;
     lazy.setTimeout(() => {
       this.#readingOutline = false;
@@ -546,9 +647,24 @@ export class PdfView {
     const failed = Cu.exportFunction(() => {
       this.#readingOutline = false;
     }, this.#win);
-    if (!this.#then(() => invoke(this.#part("pdfDocument"), "getOutline"), done, failed)) {
-      this.#readingOutline = false;
-    }
+    let started = false;
+    const read = () => {
+      if (started) return;
+      started = true;
+      if (this.#waitingRead === read) this.#waitingRead = null;
+      if (generation !== this.#generation) {
+        this.#readingOutline = false;
+      } else if (this.#outline) {
+        // Another read, begun after OUTLINE_READ_MS gave this one up, has finished.
+        this.#sendOutline(this.#outline.message);
+      } else if (!this.#then(() => invoke(this.#part("pdfDocument"), "getOutline"), done, failed)) {
+        this.#readingOutline = false;
+      }
+    };
+    const loaded = Cu.exportFunction(read, this.#win);
+    this.#waitingRead = read;
+    if (!this.#then(() => this.#part("pdfViewer").pagesPromise, loaded, loaded)) read();
+    else if (!allPages) lazy.setTimeout(read, OUTLINE_PAGES_MS);
   }
 
   /**
@@ -556,8 +672,8 @@ export class PdfView {
    * promise's own `then`, seen through Xrays: a viewer's object with a `then` of its own is a
    * plain object there, whose functions Xrays do not show.
    * @param {() => unknown} read
-   * @param {Function} done  made with Cu.exportFunction
-   * @param {Function} failed
+   * @param {(value: unknown) => void} done  made with Cu.exportFunction
+   * @param {() => void} failed  made with Cu.exportFunction
    * @returns {boolean} whether the callbacks were passed on
    */
   #then(read, done, failed) {
@@ -641,23 +757,46 @@ export class PdfView {
       finish();
       return;
     }
-    // Named destinations resolve to pages through the document's table, in one call.
-    const resolved = Cu.exportFunction((/** @type {unknown} */ value) => {
-      const dests = /** @type {{ readonly [name: string]: unknown } | null} */ (objectOr(value));
-      for (const [index, name] of named) {
-        try {
-          const dest = dests && Object.hasOwn(dests, name) ? dests[name] : null;
-          const entry = entries[index];
-          if (entry) entry.page = this.#pageOf(dest, pages);
-        } catch {
-          // stays 0: not resolved
-        }
-      }
+    // Each name resolves through getDestination, as linkPage resolves a link's and pdf.js's own
+    // viewer resolves a name (#1433): getDestinations gives a Map, which no own-key lookup
+    // matches. Names are asked once each, all at once; one not answered within
+    // OUTLINE_NAMES_MS stays 0.
+    /** @type {Map<string, number[]>} */
+    const byName = new Map();
+    for (const [index, name] of named) {
+      const indexes = byName.get(name);
+      if (indexes) indexes.push(index);
+      else byName.set(name, [index]);
+    }
+    let pending = byName.size;
+    let finished = false;
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let timer = null;
+    const settle = () => {
+      if (finished) return;
+      finished = true;
+      if (timer !== null) lazy.clearTimeout(timer);
       finish();
-    }, this.#win);
-    const failed = Cu.exportFunction(finish, this.#win);
-    const read = () => invoke(this.#part("pdfDocument"), "getDestinations");
-    if (!this.#then(read, resolved, failed)) finish();
+    };
+    const answered = () => {
+      if (--pending <= 0) settle();
+    };
+    timer = lazy.setTimeout(settle, OUTLINE_NAMES_MS);
+    for (const [name, indexes] of byName) {
+      const resolved = Cu.exportFunction((/** @type {unknown} */ dest) => {
+        if (!finished) {
+          const page = this.#pageOf(dest, pages);
+          for (const index of indexes) {
+            const entry = entries[index];
+            if (entry) entry.page = page;
+          }
+        }
+        answered();
+      }, this.#win);
+      const failed = Cu.exportFunction(answered, this.#win);
+      const read = () => invoke(this.#part("pdfDocument"), "getDestination", name);
+      if (!this.#then(read, resolved, failed)) answered();
+    }
   }
 
   /**
@@ -1054,6 +1193,8 @@ export class PdfView {
   destroy() {
     if (this.#timer) lazy.clearTimeout(this.#timer);
     this.#timer = null;
+    this.#textLayers?.disconnect();
+    this.#textLayers = null;
     if (this.#onResize) {
       try {
         this.#win.removeEventListener("resize", this.#onResize);

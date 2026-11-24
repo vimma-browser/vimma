@@ -53,8 +53,8 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  * @property {{ patches: { path: string, hunks: number }[], hunks: number } | null} patches
  * @property {{ window: number, current: boolean, mode: string }[]} modes
  * @property {import("../host/key-log.mjs").KeyEvent[]} keys
- * @property {{ path: string, file: "pending" | "missing" | "read", schema: number | null,
- *   errors: string[], warnings: string[] }} config  `warnings`: what a loaded file left out
+ * @property {{ path: string, file: "pending" | "missing" | "read", errors: string[],
+ *   warnings: string[] }} config  `warnings`: what a loaded file left out
  * @property {{ name: string, group: string, bindings: string[], overridden: boolean }[]} bindings
  * @property {{ default: string | null, fromConfig: boolean, template: string | null,
  *   aliases: { alias: string, engine: string, unencrypted: boolean }[], errors: string[] }} search
@@ -72,7 +72,7 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  *   without workspaces), beside the model's; the rest from WindowWorkspaces.health
  * @property {{ enabled: boolean, port: number | null, status: string }} control  `status`:
  *   full control's state with the minutes `:control on` left (docs/specs/vimma-mcp.md 29 D)
- * @property {{ enabled: boolean, from: "config" | "pref", workspace: string | null,
+ * @property {{ enabled: boolean, from: "session" | "config" | "pref", workspace: string | null,
  *   adopted: boolean, tabs: number }} mcp  agents (docs/specs/vimma-mcp.md): the switch and the
  *   agent workspace, with its tab count; never its URLs or titles
  * @property {string} windowManager  Hyprland, or none needed on macOS, and the private placement
@@ -89,7 +89,9 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  * the page's `?tab=`): its host only, never its URL.
  * @typedef {object} RoutesData
  * @property {{ index: number, match: string, workspace: string, skipped: string | null,
- *   shadowedBy: number | null, agent: boolean }[]} rules
+ *   shadowedBy: number | null, agent: boolean, line: number }[]} rules  `line`: in `file`, 0
+ *   when not known
+ * @property {string} file  the routes file the rules came from (docs/specs/routes-file.md)
  * @property {{ host: string, workspace: string, rule: number | null, target: string | null }
  *   | null} tab
  * @property {{ names: readonly string[], rule: number | null, workspace: string | null,
@@ -181,8 +183,10 @@ async function omarchyThemeName(dir) {
 function routesOf(win, tabId) {
   const names = WorkspaceStore.definitions.workspaces.map((d) => d.name);
   const marks = WorkspaceRouter.ruleMarks();
+  const { file, lines } = WorkspaceRouter.routesSource;
   const rules = WorkspaceRouter.routes.map((r, i) => ({
     index: r.index,
+    line: lines[i] ?? 0,
     match: describeRoute(r),
     workspace: r.workspace,
     skipped: names.includes(r.workspace) ? null : "no such workspace",
@@ -193,7 +197,7 @@ function routesOf(win, tabId) {
   const defaultWorkspace = WorkspaceRouter.defaultWorkspaceState();
   const ww = WindowWorkspaces.get(win);
   const tab = tabId && ww?.model ? ww.tabOf(tabId) : null;
-  if (!tab) return { rules, tab: null, last, defaultWorkspace };
+  if (!tab) return { rules, file, tab: null, last, defaultWorkspace };
   const uri = tab.linkedBrowser.currentURI;
   /** @type {string} */
   let host;
@@ -208,6 +212,7 @@ function routesOf(win, tabId) {
   );
   return {
     rules,
+    file,
     last,
     defaultWorkspace,
     tab: {
@@ -224,12 +229,19 @@ function routesOf(win, tabId) {
  * @param {BrowserWindow} win
  */
 function workspacesOf(win) {
-  const model = WindowWorkspaces.get(win)?.model;
+  const ww = WindowWorkspaces.get(win);
+  const model = ww?.model;
   if (!model) return [];
   const view = PaneViews.get(win);
+  /** A workspace not shown since a restore: its saved split, the one it will show. */
+  const unvisited = (/** @type {string} */ id) => {
+    const s = ww.unvisitedSplits(id);
+    const n = s && (s.shown ?? s.last);
+    return s ? (s.splits.find((x) => x.number === n) ?? s.splits[0] ?? null) : null;
+  };
   return model.workspaces.map((w) => {
     const active = w.id === model.active;
-    const panes = active ? (view?.panes ?? null) : (view?.parked(w.id) ?? null);
+    const panes = active ? (view?.panes ?? null) : (view?.parked(w.id) ?? unvisited(w.id));
     return {
       name: w.name,
       active,
@@ -315,7 +327,6 @@ export const AboutVimma = {
       config: {
         path: configPath,
         file: ConfigHost.file,
-        schema: ConfigHost.config?.schema ?? null,
         errors: ConfigHost.errors.map((e) => formatConfigError(e, ConfigHost.errorsPath)),
         warnings: ConfigHost.warnings.map((e) => formatConfigError(e, ConfigHost.errorsPath)),
       },
@@ -379,7 +390,7 @@ export const AboutVimma = {
       ...(data.patches?.patches ?? []).map((p) => `  ${p.path} (${p.hunks})`),
       `Modes: ${data.modes.map((m) => `window ${m.window} ${m.mode}`).join(", ")}`,
       `Last keys: ${data.keys.map((k) => `${k.key}→${k.outcome}`).join(" ") || "none"}`,
-      `Config: ${data.config.path} (${data.config.file}, schema ${data.config.schema ?? "-"})`,
+      `Config: ${data.config.path} (${data.config.file})`,
       ...data.config.errors.map((e) => `  error: ${e}`),
       ...data.config.warnings.map((e) => `  warning: ${e}`),
       `Overrides: ${

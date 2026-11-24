@@ -30,7 +30,7 @@ paths are relative to `engine/` (Firefox 157.0.1). Vimma paths are under
 
 ## Summary
 
-Local AI tools (Claude Code, Codex, opencode, Copilot) use Vimma through `vimma-ctl mcp`, an MCP
+AI coding tools (Claude Code, Codex, opencode, Copilot) use Vimma through `vimma-ctl mcp`, an MCP
 server over stdio inside the `vimma-ctl` binary. Its tools list, read, open and close tabs of one
 workspace only, **agent**, which has its own container and so its own cookies and logins. Vimma
 asks the user in the browser before every request: `y` allows it once, a count and `a` allow
@@ -40,7 +40,7 @@ stop nothing.
 
 ## Problem
 
-Local AI agents can read files and run commands, but they cannot see or use a web page in the
+AI agents can read files and run commands, but they cannot see or use a web page in the
 user's browser. Vimma's control socket (protocol 1) treats whoever holds its token as the user:
 `send-keys` presses keys wherever focus is, `state` lists the focused window's tabs and URLs,
 and `open` loads into the active workspace. Handing that to an agent would hand it the user's
@@ -53,7 +53,9 @@ answer for the user, and that never disturbs what the user is doing.
 1. Every profile has an empty `agent` workspace from the start. It loads nothing and is not in
    the `ctrl+b (` / `ctrl+b )` cycle; the user reaches it from the picker or with `:ws agent`.
 2. The user runs `:mcp on` once and answers `y` to
-   `Let local AI agents ask to use the "agent" workspace? Every request asks you first. y/N`.
+   `Let AI agents ask to use the "agent" workspace? Every request asks you first. y/N`.
+   (Since changed: the question ends `Nothing runs until you allow it. y/N`, since a bare `a`
+   lets an agent work until it quits; [mcp-session-grants](mcp-session-grants.md).)
    Vimma then serves the control socket's `agent` role, and `vimma-ctl mcp` works from Claude
    Code, Codex, opencode and Copilot, set up with one line in each (Research).
 3. The user keeps working in `work` while an agent reads and opens pages in `agent`. Nothing
@@ -293,7 +295,9 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
      client's self-reported name (from MCP `clientInfo`, at most 64 printable characters) and
      `vimma-ctl`'s parent process name (`/proc/<ppid>/comm` on Linux, the last component of
      `ps -o comm=` on macOS, at most 32 printable characters). Both are labels for the question, never proof of anything.
-   - `tab` is an id from `agent-tabs` (`browserId`, as in `state`): digits. `url` is http or
+   - `tab` is an id from `agent-tabs` (`browserId`, as in `state`): digits. (Since changed:
+     `agent-tabs` ids are always browser ids; `state` names an unloaded tab by its workspace
+     uuid instead until it loads, #1332.) `url` is http or
      https, at most 65,536 characters, with no spaces or control characters. `file:`,
      `about:`, `javascript:` and `data:` are `invalid-args`: an agent has no reason to load
      local files or privileged pages through the browser.
@@ -792,8 +796,12 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     escaped) and a first line saying titles and URLs are untrusted web content; it has no
     `structuredContent`, because Claude Code (2.1.287) shows the model `structuredContent`
     instead of the text when both are present, which would drop that note. `vimma_close_tab`
-    returns a sentence. A result of the wrong shape becomes a tool error ("Vimma's answer broke
-    the control protocol").
+    returns a sentence. (Since changed: `vimma_open` returns text only too, the tab id in its
+    sentence, because in Claude Code its `structuredContent` reached the model as only
+    `{"tab": …}`, without the sentence, the page's untrusted header or the element list asked
+    with `elements`, while that list still counted as the site's last list for the next one;
+    no tool sets `structuredContent`; see #1336.) A result of the wrong shape becomes a tool
+    error ("Vimma's answer broke the control protocol").
 38. **Arguments are checked before anything reaches Vimma.** Bad arguments are tool errors
     (`isError`, "Invalid arguments for <tool>: <why>.") the model can correct, and nothing is
     asked: `tab` is 1 to 20 digits, as a string or a non-negative integer; `url` is http or https
@@ -836,7 +844,7 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     connection with no grants; a write that fails on a connection that died unnoticed is retried
     once on a fresh one. (Since changed: `agent-hello` carries the process's session id, and a
     reconnect within 2 minutes keeps the grant; [mcp-session-grants](mcp-session-grants.md) S3, S4.) Each call has its own deadline of 310 s (the longest `ask_timeout` plus
-    10 s); past it the call fails and its question is withdrawn with `agent-cancel`. At most 16
+    10 s; since changed: 390 s, with a lazy tab's load and the longest `vimma_keys` run added); past it the call fails and its question is withdrawn with `agent-cancel`. At most 16
     calls wait here at once. (Since changed: at most 4 of them are sent to Vimma at once, as
     many as it takes in flight per connection, and the rest wait here, oldest first, because a
     fifth was refused as `busy`, which a model read as questions waiting for the user;
@@ -1063,7 +1071,7 @@ m7-a11y.
   tool calls become agent commands; unknown tools and malformed calls are protocol errors; bad
   arguments are tool errors that never reach Vimma; client labels are cleaned; a read is a
   header then the wrapped text, says when it was cut or read in the background and adds the
-  selection; tabs, opens and closes say what happened (tabs without `structuredContent`); a
+  selection; tabs, opens and closes say what happened (tabs and opens without `structuredContent`); a
   result of the wrong shape is a tool error; modern results carry `resultType` and serverInfo;
   each failure's text; every reply is one line; `agent_command_fixtures_match_what_mcp_sends_and_decodes`
   (the v2 fixtures' requests are what the tools send, their valid results decode and their
@@ -1148,7 +1156,7 @@ m7-a11y.
 - `docs/guide.md`: "Agents (MCP)" (the agent workspace, the question line and its keys, grants,
   full control, downloads, `[mcp]`, the status bar's segments, how to set up each agent tool);
   "Scripting with vimma-ctl" names `vimma-ctl mcp`.
-- `README.md` feature list: local AI agents through MCP, confined to an agent workspace, every
+- `README.md` feature list: AI agents through MCP, confined to an agent workspace, every
   request confirmed.
 - `docs/bindings.md` and `defaults.toml` via `npm run gen-docs` (`agent_prompt`,
   `mcp_command`, `control_command`); `docs/limits.md` (sub-PR 4): no keys, clicks or

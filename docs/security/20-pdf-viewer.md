@@ -34,17 +34,31 @@ bindings, so it is accepted here.
   objects of primitives made with `Cu.cloneInto` into the viewer's window as `PdfJsChild` does (a
   mark's `XYZ` destination and the history and scroll arguments that go with it, an internal
   link's explicit destination read from its fragment), or an outline entry's target
-  that pdf.js itself gave it (V8); no chrome object **may** be passed in.
-  [`a_hostile_viewer_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_status.js)
+  that pdf.js itself gave it (V8); no chrome object **may** be passed in. A text layer pdf.js adds
+  to a page gets an own `focus` property, an exported function that takes no arguments and only
+  focuses that element without scrolling (pdf-mode decision 9); the adapter finds the element in
+  the viewer's DOM through Xrays, never from a pdf.js object. The property is defined, never
+  assigned, so no setter of the viewer's runs in the adapter, and a layer that refuses it leaves
+  the others theirs. Its focus runs as a system caller, which skips Gecko's check against stealing
+  keystrokes from another frame (`nsFocusManager::SetFocusInner`); that gives no more than the
+  viewer's own `focus` here, because the call never raises a window and the viewer's CSP
+  (`default-src 'none'`) allows it no subframe of another origin.
+  [`a_hostile_viewer_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_status.js),
+  [`a_hostile_viewer_cannot_turn_the_text_layers_focus`](../../tests/browser/browser_vimma_pdf_marks.js)
 - V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
   fields they need; the child **must** keep only values whose `typeof` is `number`, `boolean` or
   `string` before `sendAsyncMessage`, and **must not** `await` a value returned by pdf.js. An
   asynchronous result (the outline, the named destinations, the page of a link's named
-  destination) **must** come back only through a
-  `Cu.exportFunction` callback passed to the promise's own `then` seen through Xrays, so that a
-  viewer's object with a `then` of its own is never called; the result is read by the same rules.
+  destination, and pdf.js's `pagesPromise`, which the outline read waits for so that every
+  entry's page reference resolves: as the PDF opens until it settles, for `Tab` at most 1 s, inside
+  the 2 s `Tab` waits for the reply; an outline's named destinations, one `getDestination` per
+  distinct name, at most 5000, answered within 500 ms or left at page 0) **must** come back only
+  through a `Cu.exportFunction` callback passed to the promise's own `then` seen through Xrays, so
+  that a viewer's object with a `then` of its own is never called; the result is read by the same
+  rules.
   [`a_hostile_viewer_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_status.js),
-  [`a_hostile_outline_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_outline.js)
+  [`a_hostile_outline_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_outline.js),
+  [`hostile_named_destinations_are_bounded`](../../tests/browser/browser_vimma_pdf_outline.js)
 - V5. Bursts of pdf.js callbacks and of chrome-only events (`pagesloaded`, which the viewer can
   fire at will through `FirefoxCom.request("dispatchGlobalEvent")`) **must** be coalesced to at
   most one state message per 100 ms per document.
@@ -119,6 +133,9 @@ bindings, so it is accepted here.
   characters, and never followed.
   [`the_outline_is_read_only_on_the_users_key`](../../tests/browser/browser_vimma_pdf_outline.js),
   [`the_outline_is_shown_when_a_pdf_with_one_opens`](../../tests/browser/browser_vimma_pdf_outline.js),
+  [`the_outline_read_as_a_pdf_opens_waits_for_its_pages`](../../tests/browser/browser_vimma_pdf_outline.js),
+  [`tab_does_not_wait_for_every_page`](../../tests/browser/browser_vimma_pdf_outline.js),
+  [`tab_while_the_opening_read_waits`](../../tests/browser/browser_vimma_pdf_outline.js),
   [`pdf_outline_hidden_keeps_it_closed`](../../tests/browser/browser_vimma_pdf_outline.js),
   [`an outline outside its bounds is dropped`](../../packages/vimma-core/test/pdfoutline.test.ts),
   [`each_kind_of_entry`](../../tests/browser/browser_vimma_pdf_outline.js),

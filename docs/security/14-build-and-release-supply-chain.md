@@ -275,7 +275,41 @@ of the same commit read it too, so a tree without it could not be released anywa
   bundled library names and a maintainer line without `%`, the values it places in a shell
   command or in text rpm expands as macros. It is built by `rpmbuild`
   from Ubuntu's archive on the hosted runner and installed with dnf and zypper in Fedora and
-  openSUSE containers pinned by digest, before anything is signed. **⚠ setting:**
+  openSUSE containers pinned by digest, before anything is signed. While the repository
+  variable `PACKAGE_REPOS_ENABLED` is `true` (spec
+  [package-repositories](../specs/package-repositories.md), decisions 9 and 10), the `.rpm` does
+  carry an OpenPGP signature, and the release adds the pacman package
+  `vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst` and its detached signature: `package` builds the
+  package from the `PKGBUILD` variant whose marker is `vimma-package=pacman`, in the pinned Arch
+  image, with every `makepkg` download agent replaced by `false`, so the bytes are the release
+  tarball's under its pinned SHA-256, and installs it with `pacman -U`. The package goes into
+  the `packages-unsigned` artifact, never the `release` artifact, which a step checks just before
+  its upload, so a re-run with the variable unset cannot ship it unsigned; `package-sign`, a job of
+  `update-publish.yml` that `release.yml` calls, holding only `id-token: write` in the
+  `package-signing` environment, checks that the files are the caller's tag's `.rpm` and pacman
+  package before it signs (the package as libarchive, pacman's reader, and GNU tar both list it,
+  the same list, with only files, directories and symlinks, no name twice and makepkg's metadata
+  entries first, so a crafted pax header cannot hide an `.INSTALL` from the check), signs them
+  with the Cloud KMS package key through
+  `tools/package/openpgp-kms.ts` (the only repository file it runs, checked out alone from
+  `main` with the certificate and `.nvmrc`), checks both signatures against the committed
+  certificate and writes `SHA256SUMS` again; and `packages`, with no secret, checks that result
+  again (`tools/package/check-signed-packages.sh`: the `.rpm`'s payload, name and main header
+  digest unchanged, both signatures under the committed certificate, `SHA256SUMS` exactly
+  package's with the signed files) and only then adds the pacman package to the release, before
+  `mar`, `sign` and `publish` use it. Both jobs run their steps with `pipefail`, so a failed read
+  inside a pipeline stops them. A skipped or failed `package-sign` stops the
+  release. `package-sign` trusts what the secret-free `package` job built, which runs `npm ci`
+  and the tag's own code: its checks catch a malformed file or a wrong name, not a package a
+  compromised build made on purpose, which the package key then signs and dnf, zypper and
+  pacman trust as root. That is the same accepted risk as a compromised build signing what it
+  builds anyway (B14), only with a stronger signal at the user's end. The
+  `package-signing` environment, with a `main`-only deployment branch policy, and the KMS
+  binding's `job_workflow_ref` condition are what bind the key to this job: GitHub creates an
+  unprotected environment the first time a job names it, so `PACKAGE_REPOS_ENABLED` is set only
+  after both exist (spec Delivery, and the runbook's one-time setup). Without the variable,
+  none of these jobs runs, a step checks that no pacman package is in `dist/`, and the release
+  is as described above. **⚠ setting:**
   signatures exist only while the repository variable `SIGNING_ENABLED` is `true`; without it
   `publish` uploads the assets and `SHA256SUMS` unsigned. The macOS `.dmg` and its Homebrew cask
   `vimma.rb` are listed in their own `SHA256SUMS-macos`, so `SHA256SUMS`, which `aur.yml` and the
@@ -316,7 +350,24 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`an output dir rpm's macro expander would change, before rpmbuild runs`](../../tools/package/test/package.test.ts),
   [`needs nothing but itself: the tarball is its only source`](../../tools/package/test/package.test.ts),
   [`refuses repo %j`](../../tools/package/test/package.test.ts),
-  [`refuses desktop id %j`](../../tools/package/test/package.test.ts)
+  [`refuses desktop id %j`](../../tools/package/test/package.test.ts),
+  [`release.yml calls update-publish.yml's package-sign`](../../tools/package/test/release-workflow.test.ts),
+  [`signs the .rpm and the pacman package before mar and sign`](../../tools/package/test/release-workflow.test.ts),
+  [`the pacman package is in SHA256SUMS and gets a cosign bundle`](../../tools/package/test/release-workflow.test.ts),
+  [`nothing is signed while PACKAGE_REPOS_ENABLED is not true`](../../tools/package/test/release-workflow.test.ts),
+  [`package builds the pacman package from pacman/PKGBUILD and installs it with pacman -U`](../../tools/package/test/release-workflow.test.ts),
+  [`package-sign uses the package-signing environment and runs only the signer`](../../tools/update/test/update-workflow.test.ts),
+  [`no job in update-signing names the package key, and no job in package-signing names the update key`](../../tools/update/test/update-workflow.test.ts),
+  [`package-sign signs only the caller's tag's .rpm and pacman package`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses a pacman package signed by another key`](../../tools/package/test/check-signed-packages.test.ts),
+  [`refuses an unsigned .rpm, and one whose payload changed`](../../tools/package/test/check-signed-packages.test.ts),
+  [`refuses a SHA256SUMS that is not package's with the signed packages`](../../tools/package/test/check-signed-packages.test.ts),
+  [`refuses an .rpm whose main header changed`](../../tools/package/test/check-signed-packages.test.ts),
+  [`refuses a release artifact that already holds a pacman package`](../../tools/package/test/check-signed-packages.test.ts),
+  [`accepts a real .rpm signed by the key, and refuses one signed by another`](../../tools/package/test/check-signed-packages.test.ts),
+  [`the release artifact never holds a pacman package`](../../tools/package/test/release-workflow.test.ts),
+  [`package-sign's check stops on an unreadable payload or a changed header, with pipefail`](../../tools/update/test/update-workflow.test.ts),
+  [`package-sign refuses a pacman package whose tar readers could disagree`](../../tools/update/test/update-workflow.test.ts)
 
 - B10. A release **must** be signed only by `release.yml` run from `main` through
   `workflow_dispatch`: `release-please.yml`'s `release-build` job dispatches it with
@@ -742,9 +793,9 @@ of the same commit read it too, so a tree without it could not be released anywa
   command a workflow runs passes `--locked`. Every `uses:` of a workflow or composite action is a
   file of this repository, an action at a full 40-character commit or a Docker image by digest,
   and so is every job's container and service image. `package-lock.json` is version 3 and every
-  entry is resolved from `registry.npmjs.org` with a `sha512` integrity, but one: Surfer's
-  dependency `is-apple-silicon`, a git dependency pinned to commit `5f75501` without a hash (spec,
-  R5), which nothing in Surfer's `dist/` loads; the test fails if it moves off that commit. No
+  entry is resolved from `registry.npmjs.org` with a `sha512` integrity, with no exception:
+  Surfer's dependency `is-apple-silicon`, which Surfer names by git, is taken from the registry by
+  a root `overrides` entry, so npm fetches no package from git (spec, R5). No
   `package.json` names a dependency by git, URL, path, tag or a range wider than a caret, and the
   repository holds one lockfile and one `.npmrc`, which sets nothing but `ignore-scripts`. The
   test reads every file git tracks, so a new file is held to this without being listed. Its
@@ -765,8 +816,142 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`every cargo command a workflow runs keeps to Cargo.lock`](../../tools/test/supply-chain.test.ts),
   [`every action, reusable workflow and composite action step is pinned by full commit`](../../tools/test/supply-chain.test.ts),
   [`every job's container and service image is pinned by digest`](../../tools/test/supply-chain.test.ts),
-  [`every package comes from registry.npmjs.org with a sha512 integrity, but the one listed`](../../tools/test/supply-chain.test.ts),
+  [`every package comes from registry.npmjs.org with a sha512 integrity`](../../tools/test/supply-chain.test.ts),
   [`refuses an entry with %s`](../../tools/test/supply-chain.test.ts),
-  [`the git exception holds only while it stays at its commit`](../../tools/test/supply-chain.test.ts),
   [`no package.json names a dependency by git, URL, path, tag or bundle`](../../tools/test/supply-chain.test.ts),
   [`one lockfile and one .npmrc, which sets no other registry`](../../tools/test/supply-chain.test.ts)
+- B21. The package repositories' signing key (spec
+  [package-repositories](../specs/package-repositories.md), decisions 3 to 6 and 11 to 16)
+  **must** sign only metadata that a job of `update-publish.yml` on `main` has checked against
+  the published releases, and only while the repository variable `PACKAGE_REPOS_ENABLED` is
+  `true`. The key is the Cloud KMS key `vimma-packages/package-signing`, RSA-4096 with
+  PKCS#1 v1.5 and SHA-256 at the `HSM` level, whose private half never leaves KMS; its IAM
+  binding admits only GitHub OIDC tokens whose subject is the `package-signing` environment of
+  `vimma-browser/vimma` (by the owner's and repository's numeric IDs), and `update-primary`'s
+  binding admits only `update-signing`, so neither environment can sign with the other's key.
+  `package-signing` admits `main` alone, and the Workload Identity provider admits only tokens
+  from `update-publish.yml` at `refs/heads/main` (docs/runbook/ci-update-keys-and-update-host.md,
+  steps 7b and 9). The jobs in `package-signing` hold `id-token: write` and nothing else, take
+  the key version from `GCP_PACKAGE_KEY_VERSION` and refuse one that does not name
+  `vimma-packages/package-signing`, never name the update key or `update-signing` (and the
+  update key's jobs never name this key or this environment), and run from the repository only
+  `tools/package/openpgp-kms.ts`, `tools/package/repos.ts` (whose `select` and `verify` start no
+  other program) and the committed certificate `configs/package-signing/vimma-packages.asc`,
+  checked out alone from `main`. No job sets `KMS_ENDPOINT`, so the signer talks only to Cloud
+  KMS; it refuses a key version that is not `RSA_SIGN_PKCS1_4096_SHA256` at the `HSM` level, a
+  reply whose CRC32Cs or key name do not match, and a public key or signature that is not the
+  certificate's. Every step of these jobs runs with `pipefail`. `repo-prepare`, with no secret,
+  chooses the releases (the newest published releases that carry the pacman package, at most
+  five; the newest published release must be one of them, so the repositories never stop at
+  an older version), checks each release's `SHA256SUMS` against `release.yml`'s cosign
+  signature (B10), each downloaded package against it and each `.rpm` and pacman package
+  against the committed certificate, builds the metadata and stops while the certificate is
+  not committed. Before KMS signs anything, `repo-sign` chooses the releases again from
+  GitHub's list, reads their `SHA256SUMS` from GitHub, never from the job before, checks each
+  against `release.yml`'s cosign signature (anyone who can write the repository's contents could
+  replace a release file, but not sign it as `release.yml` on `main`), and refuses metadata
+  that is not exactly `repos.ts`'s for them: a file more or less, a symlink, a package under
+  another SHA-256, size or under a second hash, an index whose checksum in `Release` or
+  `repomd.xml` does not match, other releases than the chosen ones, a `Release` whose `Date` is
+  not within the last hour (a later one would make apt refuse every later `Release`), or a
+  setup file, key, `_redirects` or `_headers` that differs. It reads each file in the shape the
+  build writes and no other, and refuses it unless writing back what it read gives the same
+  bytes, so no client can read in it something the check did not: `Packages` and `Release`
+  only with the fields Vimma's packages have, each once, compared without case as apt compares
+  them, LF only, no control character, BOM or U+FFFD, and `Release`'s `Date` in
+  apt-ftparchive's own form, a real day with its weekday; the rpm XML without comments, CDATA, DOCTYPE, processing
+  instructions, other entities, `xml:` attributes, characters XML forbids or `]]>`, each
+  package's elements and `<format>`'s children in createrepo_c's order, and each index file
+  named after its own checksum and type with the sizes `repomd.xml` gives; every gzip file one
+  member and nothing after it; and pacman's databases only as `repos.ts` writes them itself
+  from repo-add's entries (ustar directory and files, no pax header, nothing after the end),
+  compared decompressed, after which `repo-sign` writes their gzip itself, so it signs its own
+  output. The relations are pinned to the ones `tools/package/package.ts` gives Vimma's
+  packages, and to those a kept release built by an earlier package.ts still declares, recorded
+  from its own packages in `tools/package/test/fixtures/relations-<tag>.json` (`RELATIONS` in
+  `repos.ts`; a test checks package.ts ⊆ `RELATIONS` ⊆ package.ts ∪ the recorded releases):
+  apt's `Depends`, `Recommends` and `Provides`; the `.rpm`'s requires (its declared ones and
+  the exact sonames and symbol versions rpmbuild's ELF scan found in 0.1.22), its one
+  recommends (`libpulse.so.0()(64bit)`) and its provides (the desktop file's `mimehandler()`
+  ones among them); and pacman's `%DEPENDS%`, `%OPTDEPENDS%`, `%PROVIDES%` and `%CONFLICTS%`.
+  An rpm relation carries no flags or version, but `vimma` and `vimma(x86-64)` provided at
+  exactly the release's own version, since a version Vimma's `.rpm` does not declare can make
+  an upgrade unsatisfiable, which dnf skips silently and so keeps users on the old release.
+  Anything else, such as `Conflicts`, `Breaks`, `Replaces`, `Pre-Depends`, `rpm:obsoletes`,
+  `rpm:conflicts`, `rpm:suggests`, `rpm:supplements`, `%REPLACES%`, or a dependency on any
+  other package, is refused, and the file lists may name only Vimma's own paths: for the
+  `.rpm`, `/usr/lib/vimma`, `/usr/bin/vimma*`, its desktop file, icons and documentation; for
+  `vimma.files`, `opt/vimma`, its launchers in `usr/bin`, its desktop file and icons. It then checks each signature with `gpgv` against
+  the committed certificate, and `publish` checks all of it again, the cosign signatures too,
+  before it commits the tree in the manifest's commit to `vimma-updates`. The commit replaces
+  the old repodata, whose file names change with their content, so a dnf or zypper that read
+  the old `repomd.xml` a moment before the deploy can get a 404 for an index file once; its next
+  refresh reads the new one. The public key's three copies, `vimma-packages.asc`
+  and `repomd.xml.key` on the host and the key inline in `apt/vimma.sources`, must equal the
+  committed certificate byte for byte before anything is pushed, and `publish` checks the copy
+  `updates.vimma.dev` serves after it deploys, with a 302 to the release for the newest `.deb`,
+  `.rpm`, pacman package and its `.sig`. The host serves metadata only: `_redirects` sends
+  each package that the metadata lists to
+  `https://github.com/vimma-browser/vimma/releases/download/<tag>/<file>` with one static rule
+  per file, built from names in `[A-Za-z0-9._~+-]`, and no placeholder. `publish` replaces the
+  host's `_redirects` and `_headers` only when each is absent, one `repos.ts` writes, or (for
+  `_headers`) the manifest's rule alone, so a rule added there by hand stops the push instead of
+  being dropped in silence. The homepage each package manager shows (apt's `Homepage`, the
+  rpm entry's `url`, pacman's `%URL%`) must be absent or Vimma's own GitHub page, so metadata
+  from a compromised `repo-prepare` cannot get a link of its choosing signed; the other free text
+  (the packager line, the summary and the description) is not pinned, changes nothing that is installed, and is
+  left to that risk. While the repositories are on, a failed `repo-prepare` or
+  `repo-sign` (a KMS outage, a lagging release list, a repository tool whose output changed)
+  holds back the release's update manifest too, because the two announce a release together
+  (decision 15); for a security release that cannot wait, the runbook's step 9 ships the
+  manifest alone by unsetting `PACKAGE_REPOS_ENABLED` and running the manifest again. apt's `Release` has no
+  `Valid-Until`, so the host can keep a user on older signed metadata (a freeze); Vimma's own
+  update check still reports the newer release. Disabling the key version or removing its IAM
+  binding stops every signature at once; KMS's Data Access audit log records each one.
+  [`repo-prepare and repo-sign run in the Linux release's run on main, only with PACKAGE_REPOS_ENABLED`](../../tools/update/test/update-workflow.test.ts),
+  [`nothing is signed while PACKAGE_REPOS_ENABLED is not true`](../../tools/update/test/update-workflow.test.ts),
+  [`repo-prepare stops with what to do while the certificate is not committed`](../../tools/update/test/update-workflow.test.ts),
+  [`repo-prepare checks each kept release against its cosign-signed SHA256SUMS and the packages' signatures`](../../tools/update/test/update-workflow.test.ts),
+  [`repo-sign uses the package-signing environment and runs only the signer and repos.ts's checks`](../../tools/update/test/update-workflow.test.ts),
+  [`repo-sign checks the metadata against the releases it chooses itself before KMS signs`](../../tools/update/test/update-workflow.test.ts),
+  [`repo-sign takes only a version of the vimma-packages/package-signing key`](../../tools/update/test/update-workflow.test.ts),
+  [`no job sets KMS_ENDPOINT`](../../tools/update/test/update-workflow.test.ts),
+  [`the repositories' jobs, and publish's steps for them, run with pipefail`](../../tools/update/test/update-workflow.test.ts),
+  [`publish waits for repo-sign while the repositories are on, and runs without it otherwise`](../../tools/update/test/update-workflow.test.ts),
+  [`the host's key equals the committed key`](../../tools/update/test/update-workflow.test.ts),
+  [`publish pushes the metadata in the manifest's commit`](../../tools/update/test/update-workflow.test.ts),
+  [`publish refuses to replace a _headers or _redirects it did not write`](../../tools/update/test/update-workflow.test.ts),
+  [`replaces only host files it wrote, or the manifest's rule alone`](../../tools/package/test/repos.test.ts),
+  [`accepts each _headers an earlier repos.ts wrote, as recorded`](../../tools/package/test/repos.test.ts),
+  [`takes no homepage but Vimma's own, in each format`](../../tools/package/test/repos.test.ts),
+  [`keeps the newest published releases that carry the repository packages, newest first`](../../tools/package/test/repos.test.ts),
+  [`refuses a newest release without the pacman package, and a tag it does not keep`](../../tools/package/test/repos.test.ts),
+  [`refuses an answer that is not a list of releases`](../../tools/package/test/repos.test.ts),
+  [`accepts the metadata build wrote for the releases' own files, and SHA-256 alone in apt's`](../../tools/package/test/repos.test.ts),
+  [`refuses metadata whose %s checksum is not the one the release's SHA256SUMS lists`](../../tools/package/test/repos.test.ts),
+  [`refuses metadata for other releases than the ones chosen, such as an older set`](../../tools/package/test/repos.test.ts),
+  [`refuses an extra file, a symlink, and a setup file, key, _redirects or _headers that is not repos.ts's`](../../tools/package/test/repos.test.ts),
+  [`refuses a second hash in Packages, and Packages.gz or Release that does not match Packages`](../../tools/package/test/repos.test.ts),
+  [`refuses repodata whose repomd.xml does not match its files`](../../tools/package/test/repos.test.ts),
+  [`signed: wants the four signatures, and an InRelease whose text is Release's`](../../tools/package/test/repos.test.ts),
+  [`writes one static redirect per kept package file, and no placeholder`](../../tools/package/test/repos.test.ts),
+  [`refuses a tag or file name outside [A-Za-z0-9._~+-]`](../../tools/package/test/repos.test.ts),
+  [`no job in update-signing names the package key, and no job in package-signing names the update key`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses %s`](../../tools/package/test/repos.test.ts),
+  [`RELATIONS holds what package.ts declares and what recorded releases declare, nothing more`](../../tools/package/test/repos.test.ts),
+  [`refuses an entry that %s`](../../tools/package/test/repos.test.ts),
+  [`refuses an attribute on a text element`](../../tools/package/test/repos.test.ts),
+  [`refuses a Packages that %s`](../../tools/package/test/repos.test.ts),
+  [`refuses a primary.xml that %s`](../../tools/package/test/repos.test.ts),
+  [`refuses a pacman database that %s`](../../tools/package/test/repos.test.ts),
+  [`refuses %s in primary.xml`](../../tools/package/test/repos.test.ts),
+  [`refuses a pacman database whose gzip member is followed by %s`](../../tools/package/test/repos.test.ts),
+  [`refuses a Release Date in another form: %s`](../../tools/package/test/repos.test.ts),
+  [`refuses repodata whose file name is not its checksum and type, or whose sizes differ`](../../tools/package/test/repos.test.ts),
+  [`compares pacman's databases decompressed, and re-gzips them itself when asked`](../../tools/package/test/repos.test.ts),
+  [`refuses a pax size that hides entries behind desc`](../../tools/package/test/repos.test.ts),
+  [`refuses a Release whose Date is not within the last hour, before signing`](../../tools/package/test/repos.test.ts),
+  [`refuses package sizes that are not the release assets' sizes`](../../tools/package/test/repos.test.ts),
+  [`writes pacman's database itself: no MD5SUM, and the same bytes from the same desc`](../../tools/package/test/repos.test.ts),
+  [`talks only to Cloud KMS, or to a fake on a literal loopback address`](../../tools/package/test/openpgp-kms.test.ts),
+  [`refuses a key that is not the certificate's`](../../tools/package/test/openpgp-kms.test.ts)

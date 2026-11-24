@@ -376,7 +376,7 @@ describe("the header (Behaviour 6)", () => {
     const { errors } = reloadConfig(null, toml);
     const refused = noModelReason(errors, "config.toml");
     expect(refused).toBe(
-      "config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file",
+      'config.toml:4: agent.providers[0]: a provider needs "kind", "endpoint" and "model"',
     );
     expect(chatHeader({ provider: null, granted: false, refused })[0]).toBe(`no model: ${refused}`);
     expect(noModelNotice(refused)).toBe(`agent: no model: ${refused}`);
@@ -395,7 +395,7 @@ describe("the header (Behaviour 6)", () => {
 
   test("the window's body names the refused file's error in place of the setup steps", () => {
     const refused =
-      "config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file";
+      'config.toml:4: agent.providers[0]: a provider needs "kind", "endpoint" and "model"';
     expect(noModelLines(refused, "config.toml")).toEqual([
       "No model: config.toml has errors, so none of it applies, [agent] included.",
       refused,
@@ -794,5 +794,28 @@ describe(":agent's words: edges", () => {
       kind: "refuse",
       text: ':agent takes "stop", "new", "model", "list", "clear", "give", "forget all" or nothing',
     });
+  });
+});
+
+// Issue #1119: the edges the weekly mutation run left unpinned.
+describe("the transcript at its edges", () => {
+  test("a refused own tool is looked for among own tools only, whatever id it names", () => {
+    const t = new Transcript();
+    t.user("Buy milk");
+    t.notice("granted");
+    const version = t.version;
+    t.ownToolRefused(undefined as unknown as string);
+    expect(t.version).toBe(version);
+    expect(texts(t)).toEqual(["user: Buy milk", "notice: granted"]);
+  });
+
+  test("an agent CLI's step whose gate event cannot be shown is withdrawn when the task ends", () => {
+    const t = new Transcript();
+    const odd = { kind: "asked", tool: Symbol("tool"), what: {} } as unknown as Parameters<
+      Transcript["cliGate"]
+    >[0];
+    expect(() => t.cliGate(odd)).toThrow(TypeError);
+    t.end({ outcome: "stopped" } as Parameters<Transcript["end"]>[0]);
+    expect(t.entries[0]?.outcome).toBe("withdrawn");
   });
 });

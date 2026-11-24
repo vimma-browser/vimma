@@ -156,7 +156,8 @@ changes.
   by `tools/branding/test/branding-prefs.test.mjs` (Since changed: `branding-prefs.test.ts`,
   ADR-025) (Vitest). They are defaults, never locked, so the user's own value wins.
 - **Config.** [toolbar-toggle](toolbar-toggle.md) (implemented) added the `[ui]` table with
-  `[ui] toolbar = "shown" | "hidden"` (decision 3, schema 2, `config.mjs:220–224`), held in
+  `[ui] toolbar = "shown" | "hidden"` (decision 3, schema 2, `config.mjs:220–224`; default
+  `"hidden"` since 19 Nov 2026, issue #1387), held in
   `vimma.ui.toolbar.hidden`, written by `ConfigHost` at startup and on a reload only when that
   value changed; a toggle lasts until the next restart or edit of that line (decision 4). Its
   decision 5 hides `#PersonalToolbar` with `#nav-bar`; its minimal bar never shows the bookmarks
@@ -266,6 +267,25 @@ import's forced reveal.
    independent: neither writes the other's pref, because each is its own config key and command
    and a user can want either without the other. This spec, built second, adds the combined
    mochitest (Tests, mochitest 10).
+   (Changed 19 Nov 2026, issue #1387: the nav bar is hidden by default (toolbar-toggle decision
+   3), so showing the bookmarks toolbar alone shows nothing until the nav bar is shown. A notice
+   that shows it (`shown` or `shown on new tabs`) while the nav bar is hidden adds
+   `; the toolbar is hidden: :toolbar show`; the two settings still never write each other.)
+   (Since changed, issue #1399: a config.toml that shows it (`"shown"` or `"newtab"`) and has no
+   `[ui] toolbar` line lost it on the upgrade to the hidden default, silently, so the first
+   config applied that way while the toolbar is hidden says once, in the polite region,
+   "bookmarks toolbar hidden with the toolbar: :toolbar show shows both; [ui] toolbar = "shown"
+   in config.toml keeps them". It stays until the next key rather than the usual 1.5 s, because
+   it comes at startup and is said once only; a later notice may replace it, as any notice is.
+   The bool pref `vimma.ui.bookmarksToolbar.toolbarNoticed` records that it showed, as decision
+   7's pref does, so no later start or edit repeats it. While the toolbar is shown
+   (`:toolbar show` earlier in the session) both bars show, so there is nothing to say yet. A `[ui] toolbar` line, either value, is a choice
+   made knowing both, so it gets no notice. A notice was chosen over keeping the bookmarks
+   toolbar visible on its own, because that would show a row above the page in a window whose
+   toolbar is hidden, and would make one setting override the other, which this decision rules
+   out. Tests: `bookmarks-toolbar.test.ts` "needsToolbarNotice", `config-v2.test.ts`
+   "toolbar = … is accepted" (`toolbarSet`), and mochitest
+   `a_config_that_shows_it_under_the_hidden_toolbar_says_so_once`.)
 9. **Private workspace.** The pref is per profile, so private windows follow it. With `"newtab"`,
    a private window's `about:privatebrowsing` counts as a new tab (Firefox's rule). A private
    window's bookmarks panel shows the toolbar folder (bookmarks decision 11); nothing else
@@ -309,7 +329,8 @@ Written first and seen to fail (red, then green, per CONTRIBUTING.md).
   - `config.test.mjs` / `config-v2.test.mjs`: given `schema = 2` and
     `[ui] bookmarks_toolbar = "shown"`, then it parses to `"shown"` (and `"hidden"`,
     `"newtab"` to themselves); given `"always"` (Firefox's word), then an error suggesting
-    `"shown"`; given `[ui]` in a schema-1 file, then the "new in schema 2" error; given no key,
+    `"shown"`; given `[ui]` in a schema-1 file, then the "new in schema 2" error (since changed:
+    it loads, as config.toml has no schema, #1379); given no key,
     then the parsed config has none (the pref decides); given an unknown `[ui]` key, then an error
     with the closest name.
   - `bookmarks-toolbar.test.mjs`: each word maps to Firefox's value and back; the three notices

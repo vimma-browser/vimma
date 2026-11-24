@@ -72,7 +72,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -109,7 +109,7 @@ async function openAgentTab(url = LINKS) {
  * Why the last collection of this tab's page was what it was, and whether the tab was ready to
  * answer, for a failure message: this test fails only on the macOS runner and an empty list has
  * four look-alike causes (#605).
- * @param {any} tab
+ * @param {MozTabbrowserTab} tab
  */
 function collectState(tab) {
   const browser = tab.linkedBrowser;
@@ -126,7 +126,6 @@ function collectState(tab) {
     actor,
     readyState: browser.contentDocument?.readyState ?? null,
     bcActive: bc?.isActive ?? null,
-    bcLoading: bc?.isLoading ?? null,
     windowGlobal: !!wg,
     hidden: tab.hidden,
     size: `${browser.clientWidth}x${browser.clientHeight}`,
@@ -136,7 +135,7 @@ function collectState(tab) {
 const CHILD = "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs";
 
 /** How many hint collections in `tab`'s process wait for their page's size (a test hook). */
-const sizeWaits = (/** @type {any} */ tab) =>
+const sizeWaits = (/** @type {MozTabbrowserTab} */ tab) =>
   SpecialPowers.spawn(
     tab.linkedBrowser,
     [CHILD],
@@ -146,14 +145,14 @@ const sizeWaits = (/** @type {any} */ tab) =>
 /**
  * How often, in ms, a collection in `tab`'s process that waits for its page's size looks again
  * (a test hook; null: the default).
- * @param {any} tab @param {number | null} ms
+ * @param {MozTabbrowserTab} tab @param {number | null} ms
  */
 const sizePoll = (tab, ms) =>
   SpecialPowers.spawn(tab.linkedBrowser, [CHILD, ms], (url, v) => {
     ChromeUtils.importESModule(url).VimmaChild._sizePollMsForTests = v;
   });
 
-/** Whether `tab`'s page has a viewport size. @param {any} tab */
+/** Whether `tab`'s page has a viewport size. @param {MozTabbrowserTab} tab */
 const sized = (tab) =>
   SpecialPowers.spawn(
     tab.linkedBrowser,
@@ -177,7 +176,7 @@ async function question() {
 
 /**
  * `agent-keys` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {string} keys @param {GateAnswer | null} [answer]
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {string} keys @param {GateAnswer | null} [answer]
  */
 async function keys(c, tab, keys, answer = { kind: "once" }) {
   const id = c.request("agent-keys", { tab: idOf(tab), keys });
@@ -207,12 +206,12 @@ add_task(async function test_f_lists_links_with_labels_marked_untrusted() {
   Assert.ok(r.ok, "f runs");
   Assert.deepEqual(r.result.steps, [{ keys: "f", action: "hint.follow", ok: true }], "one step");
   Assert.ok(
-    r.result.links.startsWith("<untrusted-web-content>\n") &&
+    r.result.links?.startsWith("<untrusted-web-content>\n") &&
       r.result.links.endsWith("\n</untrusted-web-content>"),
     "the list is inside the untrusted-content delimiters (M21)",
   );
   Assert.deepEqual(
-    lines(r.result.links),
+    lines(r.result.links ?? ""),
     [
       `a "Same site page" ${PAGE}?same`,
       `s "Handled link" ${PAGE}?href`,
@@ -356,7 +355,7 @@ add_task(async function test_agent_hints_leave_the_users_hint_mode_alone() {
   EventUtils.synthesizeKey("f");
   await until(() => VimmaHost.status(window).mode === "hint", "the user's hint mode");
   const r = await keys(c, tab, "f");
-  Assert.equal(lines(r.result.links).length, 6, "the agent's f got its links");
+  Assert.equal(lines(r.result.links ?? "").length, 6, "the agent's f got its links");
   Assert.equal(VimmaHost.status(window).mode, "hint", "the user's hint mode is still on (D12)");
   EventUtils.synthesizeKey(LABEL.same);
   await BrowserTestUtils.browserLoaded(mine.linkedBrowser, false, `${PAGE}?same`);
@@ -381,6 +380,13 @@ add_task(async function test_agent_hints_leave_the_users_hint_mode_alone() {
   BrowserTestUtils.removeTab(mine);
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
+});
+
+// The four tasks below hold a new tab's layout back with the chrome refresh driver paused. With
+// Firefox's toolbar hidden, the default (toolbar-toggle decision 3), the window is laid out before
+// the new tab's page loads even then, so they run with it shown, where the race still happens.
+add_task(async function tabs_not_sized_yet_with_the_toolbar_shown() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.toolbar.hidden", false]] });
 });
 
 // A new tab's page has no viewport size until the parent lays out its <browser> and sends the
@@ -415,7 +421,7 @@ add_task(async function test_f_on_a_tab_not_sized_yet_waits_for_its_size() {
   utils.restoreNormalRefresh();
   const r = await response;
   Assert.deepEqual(
-    lines(r.result.links).map((l) => l.split(" ")[0]),
+    lines(r.result.links ?? "").map((l) => l.split(" ")[0]),
     Object.values(LABEL),
     `f lists every link once the page has its size (steps: ${JSON.stringify(r.result.steps)}; ` +
       `collection: ${collectState(tab)})`,
@@ -514,6 +520,11 @@ add_task(async function test_a_page_that_goes_away_ends_the_wait() {
   Assert.less(ms, HINT_SIZE_WAIT_MS, `its wait ended before it ran out (${ms} ms)`);
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
+});
+
+// The toolbar goes back to its default for the tasks below.
+add_task(async function the_toolbar_back_to_its_default() {
+  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function test_cross_site_follow_asks_as_vimma_open() {

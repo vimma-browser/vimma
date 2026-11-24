@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.ts";
-import { exitCode, formatReport, githubAnnotations, runScenarios } from "../runner.ts";
+import {
+  exitCode,
+  formatReport,
+  githubAnnotations,
+  runScenarios,
+  warmUpAnnotations,
+} from "../runner.ts";
 import { shotFailure } from "../screenshot.ts";
 
 const scn = (name: string, over: object = {}) => ({
@@ -271,5 +277,27 @@ describe("report", () => {
       "::error title=e2e issue-7-x::step 2 (keys): boom",
       "::notice title=e2e pending::m1-b is pending, not run and not passed: needs the server",
     ]);
+  });
+});
+
+// Issue #901: the warm-up start before the first scenario.
+describe("warmUpAnnotations", () => {
+  it("annotates a failed warm-up with the first line of its report only", () => {
+    expect(
+      warmUpAnnotations({
+        error: "warm-up: the build did not start: no usable control socket\nbrowser stderr …",
+      }),
+    ).toEqual([
+      "::error title=e2e warm-up::warm-up: the build did not start: no usable control socket",
+    ]);
+  });
+
+  it("warns when the warm-up start was slow, so a cold-start regression shows", () => {
+    const line = "warm-up: the build's first start took 31.2 s (…)";
+    expect(warmUpAnnotations({ warmUp: { slow: true, line } })).toEqual([
+      `::warning title=e2e warm-up::${line}`,
+    ]);
+    expect(warmUpAnnotations({ warmUp: { slow: false, line } })).toEqual([]);
+    expect(warmUpAnnotations({})).toEqual([]);
   });
 });

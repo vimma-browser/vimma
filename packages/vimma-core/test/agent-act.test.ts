@@ -1419,6 +1419,288 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     expect(once(long)).not.toContain("ada");
     expect(once(long)).not.toContain("sss");
   });
+
+  // Issue #1324: Reader View's address carries the article's URL percent-encoded in its query, so
+  // its user name and password hide from a parser that only reads the authority.
+  const enc = encodeURIComponent;
+  const ARTICLE = "https://ada:secret@example.com/news/a?id=1";
+  /** Neither the user name nor the password, as they are or percent-encoded once or twice. */
+  const noCredentials = (out: string) => {
+    for (const text of [
+      out,
+      decodeURIComponent(out),
+      decodeURIComponent(decodeURIComponent(out)),
+    ]) {
+      expect(text).not.toContain("secret");
+      expect(text).not.toContain("ada");
+    }
+  };
+
+  test("a Reader View address is the article's URL without its user name and password", () => {
+    expect(once(`about:reader?url=${enc(ARTICLE)}`)).toBe("https://example.com/news/a?id=1");
+    // As the issue found it: the inner URL encoded, no path.
+    expect(once("about:reader?url=https%3A%2F%2Fuser%3Apass%40bank.com%2Fx")).toBe(
+      "https://bank.com/x",
+    );
+    // Not encoded, as a user may type it; with the reader's hash applied to the article.
+    expect(once("about:reader?url=https://ada:secret@example.com/a#part")).toBe(
+      "https://example.com/a#part",
+    );
+    // Without credentials, the article's URL as the status bar shows it (#1323).
+    expect(once(`about:reader?url=${enc("https://example.com/a")}`)).toBe("https://example.com/a");
+  });
+
+  test("a Reader View address the reader cannot show still loses them", () => {
+    for (const url of [
+      // A scheme Reader View does not load, so no article: the address, its inner URL stripped.
+      `about:reader?url=${enc("ftp://ada:secret@example.com/a")}`,
+      // Its own parameters beyond url, and another case of its name.
+      `about:reader?x=1&url=${enc(ARTICLE)}&y=${enc(ARTICLE)}`,
+      `ABOUT:Reader?url=${enc(ARTICLE)}`,
+      // Inside the wrappers Vimma already reads, and inside itself, encoded once more each time.
+      `view-source:about:reader?url=${enc(ARTICLE)}`,
+      `about:reader?url=${enc(`about:reader?url=${enc(ARTICLE)}`)}`,
+      `about:reader?url=${enc(`view-source:${ARTICLE}`)}`,
+      `jar:about:reader?url=${enc(`about:reader?url=${enc(ARTICLE)}`)}`,
+      // Firefox's other internal pages carry a URL in their query the same way.
+      `about:neterror?e=dnsNotFound&u=${enc(ARTICLE)}&c=UTF-8&d=x`,
+      `about:certerror?e=nssBadCert&u=${enc(ARTICLE)}`,
+    ]) {
+      noCredentials(once(url));
+    }
+    expect(once(`about:reader?url=${enc("ftp://ada:secret@example.com/a")}`)).toBe(
+      `about:reader?url=${enc("ftp://example.com/a")}`,
+    );
+    expect(once(`view-source:about:reader?url=${enc(ARTICLE)}`)).toBe(
+      `view-source:about:reader?url=${enc("https://example.com/news/a?id=1")}`,
+    );
+    // Past the nesting it reads, the rest is dropped.
+    let deep = ARTICLE;
+    for (let i = 0; i < 6; i++) deep = `about:reader?url=${enc(deep)}`;
+    noCredentials(once(deep));
+    // An about: page whose query names no URL is left as it is.
+    expect(once("about:preferences?entrypoint=menubar#privacy")).toBe(
+      "about:preferences?entrypoint=menubar#privacy",
+    );
+  });
+
+  test("inside an about: query too, the authority ends where a URL parser ends it", () => {
+    // NFKC would make these a slash, a question mark, a number sign or a backslash; the URL
+    // parser Firefox's reader and error pages use does not, so the at sign after them is the
+    // authority's end. Each value is stripped as given, then as shown (#1324 review).
+    for (const c of [
+      "\uff0f",
+      "\uff1f",
+      "\uff03",
+      "\ufe16",
+      "\ufe68",
+      "\u2100",
+      "\u2101",
+      "\u2105",
+      "\u2106",
+    ]) {
+      for (const article of [
+        `https://ada:se${c}cret@example.com/a`,
+        `https://ada${c}x:secret@example.com/a`,
+      ]) {
+        expect(new URL(article).host).toBe("example.com");
+        expect(once(`about:reader?url=${enc(article)}`)).toBe("https://example.com/a");
+        const error = once(`about:neterror?e=dnsNotFound&u=${enc(article)}&c=UTF-8`);
+        const u = new URLSearchParams(error.slice(error.indexOf("?") + 1)).get("u") ?? "";
+        expect(u).toBe("https://example.com/a");
+        noCredentials(error);
+      }
+    }
+    // The agent is told the host Firefox loads, never the look-alike before the at sign.
+    const evil = "https://good.example\uff0f@evil.example/";
+    expect(new URL(evil).host).toBe("evil.example");
+    expect(once(`about:reader?url=${enc(evil)}`)).toBe("https://evil.example/");
+  });
+
+  test("a Reader View address cut short, or long, never shows them", () => {
+    // Cut inside its encoded at sign, the user name and password still go.
+    const article = `https://ada:${"s".repeat(3000)}@example.com/a`;
+    noCredentials(once(`about:reader?url=${enc(article)}`));
+    noCredentials(agentUrl(`about:reader?url=${enc(article)}`, 64));
+    const reader = `about:reader?url=${enc(ARTICLE)}`;
+    for (let n = 1; n <= reader.length; n++) {
+      const cut = reader.slice(0, n);
+      // The address as Vimma would get it cut is not an article; any prefix loses them all.
+      const out = agentUrl(cut + "x".repeat(4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url);
+      expect(out).not.toContain("secret");
+      expect(out).not.toContain("ada");
+    }
+    const started = Date.now();
+    noCredentials(once(`about:reader?url=${enc(`https://ada:${"s".repeat(5_000_000)}@e.com/`)}`));
+    expect(Date.now() - started).toBeLessThan(budget(400));
+  });
+
+  // Issue #1348: any page's query, not only an about: page's, may carry a URL percent-encoded in
+  // a parameter: an extension page that wraps the page it blocked, a site's redirect parameter.
+  const STRIPPED = "https://example.com/news/a?id=1";
+
+  test("an extension page's query loses them as an about: query does (#1348)", () => {
+    const ext = "moz-extension://0d6f1c2e-1111-4a4a-9b9b-123456789abc/blocked.html";
+    expect(once(`${ext}?url=${enc(ARTICLE)}`)).toBe(`${ext}?url=${enc(STRIPPED)}`);
+    // Its other parameters and its hash are kept as written.
+    expect(once(`${ext}?a=b%20c+d&url=${enc(ARTICLE)}&z=%7E#top`)).toBe(
+      `${ext}?a=b%20c+d&url=${enc(STRIPPED)}&z=%7E#top`,
+    );
+    for (const wrapper of [
+      "chrome://browser/content/x.html",
+      "resource://gre/x.html",
+      "file:///x",
+    ]) {
+      expect(once(`${wrapper}?u=${enc(ARTICLE)}`)).toBe(`${wrapper}?u=${enc(STRIPPED)}`);
+    }
+  });
+
+  test("a redirect parameter loses them; the page and its other parameters stay (#1348)", () => {
+    const bank = "https://ada:secret@bank.example/acct?x=1";
+    const clean = "https://bank.example/acct?x=1";
+    for (const key of ["redirect", "url", "next", "continue", "returnTo", "RelayState"]) {
+      expect(once(`https://site.example/login?${key}=${enc(bank)}&lang=fi%2Bsv`)).toBe(
+        `https://site.example/login?${key}=${enc(clean)}&lang=fi%2Bsv`,
+      );
+    }
+    // Not encoded, as a site may write it, and with the page's own credentials too.
+    expect(once(`https://site.example/login?next=${bank}`)).toBe(
+      `https://site.example/login?next=${enc(clean)}`,
+    );
+    expect(once(`https://bob:pw@site.example/?next=${enc(bank)}`)).toBe(
+      `https://site.example/?next=${enc(clean)}`,
+    );
+    // A query that names no credentials is left byte for byte, however it is encoded.
+    for (const url of [
+      `https://site.example/s?q=a+b%20c&next=${enc("https://bank.example/")}&x=%7E&&y`,
+      `https://site.example/s?to=${enc("mailto:ada@example.com")}&email=ada%40example.com`,
+      "https://site.example/s?q=%E0%A4%A&r=%",
+    ]) {
+      expect(once(url)).toBe(url);
+    }
+    // A parameter name holding such a URL loses them too.
+    noCredentials(once(`https://site.example/?${enc(bank)}=1`));
+    // Inside the wrappers Vimma already reads.
+    expect(once(`view-source:https://site.example/?next=${enc(bank)}`)).toBe(
+      `view-source:https://site.example/?next=${enc(clean)}`,
+    );
+  });
+
+  test("a redirect parameter encoded twice, nested or in look-alikes loses them (#1348)", () => {
+    const page = "https://site.example/login";
+    // Encoded twice, the way a redirect inside a redirect is written.
+    expect(once(`${page}?next=${enc(enc(ARTICLE))}`)).toBe(`${page}?next=${enc(enc(STRIPPED))}`);
+    noCredentials(once(`${page}?next=${enc(enc(enc(ARTICLE)))}`));
+    // A chain of redirect pages, each inside the last.
+    let chain = ARTICLE;
+    for (let i = 0; i < 6; i++) chain = `https://hop${i}.example/r?next=${enc(chain)}`;
+    noCredentials(once(chain));
+    // A fullwidth at sign, encoded or not, and a fullwidth percent sign that is one once shown.
+    noCredentials(once(`${page}?next=${enc("https://ada:secret\uff20bank.example/")}`));
+    noCredentials(once(`${page}?next=${enc("https://ada:secret\ufe6bbank.example/")}`));
+    noCredentials(once(`${page}?next=${enc(ARTICLE).replace(/%/g, "\uff05")}`));
+    noCredentials(once(`${page}\uff1fnext=${enc(ARTICLE)}`));
+    // A look-alike slash before the at sign ends no authority for a URL parser, nor here.
+    for (const article of [
+      "https://ada:se\uff0fcret@bank.example/a",
+      "https://good.example\uff0f@evil.example/a",
+    ]) {
+      const host = new URL(article).host;
+      const out = once(`${page}?next=${enc(article)}`);
+      const next = new URLSearchParams(out.slice(out.indexOf("?") + 1)).get("next") ?? "";
+      expect(next).toBe(`https://${host}/a`);
+      expect(out.startsWith(`${page}?`)).toBe(true);
+    }
+  });
+
+  test("a redirect parameter in the hash, or after a semicolon, loses them (#1348)", () => {
+    const bank = "https://ada:secret@bank.example/a";
+    const clean = enc("https://bank.example/a");
+    expect(once(`https://app.example/#/login?next=${enc(bank)}&x=%7E`)).toBe(
+      `https://app.example/#/login?next=${clean}&x=%7E`,
+    );
+    expect(once(`https://app.example/?a=1#next=${enc(bank)}`)).toBe(
+      `https://app.example/?a=1#next=${clean}`,
+    );
+    expect(once(`https://app.example/s?a=1;next=${enc(bank)};b=2`)).toBe(
+      `https://app.example/s?a=1;next=${clean};b=2`,
+    );
+    // A hash that names no credentials is kept as written.
+    for (const url of [
+      "https://app.example/#/a?b=c%20d",
+      "https://app.example/#top",
+      "about:x#a@b",
+    ]) {
+      expect(once(url)).toBe(url);
+    }
+  });
+
+  test("a semicolon in a user name or password does not split their URL (#1352 review)", () => {
+    // URLSearchParams, Reader View and the error pages split a query at & only: a value read
+    // whole there is read whole here too.
+    expect(once("about:reader?url=ftp://ada:se;cret@example.com/a")).toBe(
+      `about:reader?url=${enc("ftp://example.com/a")}`,
+    );
+    expect(once("about:neterror?e=x&u=https://ada:se;cret@bank.example/&d=y")).toBe(
+      `about:neterror?e=x&u=${enc("https://bank.example/")}&d=y`,
+    );
+    expect(once("https://site.example/?next=https://ada:se;cret@bank.example/")).toBe(
+      `https://site.example/?next=${enc("https://bank.example/")}`,
+    );
+    expect(once(`https://site.example/?a=1;next=${enc("https://a;da:secret@bank.example/")}`)).toBe(
+      `https://site.example/?a=1;next=${enc("https://bank.example/")}`,
+    );
+  });
+
+  test("a URL anywhere in a hash or a parameter's value loses them (#1352 review)", () => {
+    const bank = "https://ada:secret@bank.example/?a=1";
+    for (const url of [
+      `https://site.example/#${bank}`,
+      `https://site.example/#/go/${bank}`,
+      `https://site.example/#/a?x=1?next=${enc(bank)}`,
+      `https://site.example/?a=1?next=${enc(bank)}`,
+      `https://site.example/?to=/go/${enc(bank)}`,
+      `https://site.example/?to=x${enc(" ")}${enc(bank)}`,
+    ]) {
+      const out = once(url);
+      noCredentials(out);
+      expect(out.startsWith("https://site.example/")).toBe(true);
+    }
+    expect(once(`https://site.example/#/go/${bank}`)).toBe(
+      `https://site.example/#${enc("/go/https://bank.example/?a")}=1`,
+    );
+  });
+
+  test("a value encoded past the nesting read is dropped, not kept (#1352 review)", () => {
+    let value = ARTICLE;
+    for (let i = 0; i < 5; i++) value = enc(value);
+    let out = once(`https://site.example/login?next=${value}`);
+    expect(out.startsWith("https://site.example/login?next=")).toBe(true);
+    for (let i = 0; i < 6; i++) out = decodeURIComponent(out);
+    expect(out).not.toContain("secret");
+    expect(out).not.toContain("ada");
+  });
+
+  test("a redirect parameter cut short, or long, never shows them (#1348)", () => {
+    const long = `https://site.example/?a=1&next=${enc(`https://ada:${"s".repeat(3000)}@b.example/`)}`;
+    noCredentials(once(long));
+    noCredentials(agentUrl(long, 64));
+    const url = `https://site.example/login?next=${enc(ARTICLE)}&lang=fi`;
+    for (let n = 1; n <= url.length; n++) {
+      const out = agentUrl(url.slice(0, n) + "x".repeat(4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url);
+      expect(out).not.toContain("secret");
+      expect(out).not.toContain("ada");
+    }
+    // Cut after it, a parameter before the cut that names no credentials is not dropped.
+    const kept = `https://site.example/?next=${enc("https://bank.example/")}&q=`;
+    expect(agentUrl(kept + "q".repeat(4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url)).toContain(
+      `next=${enc("https://bank.example/")}&q=`,
+    );
+    const started = Date.now();
+    const many = `https://site.example/?${`next=${enc(ARTICLE)}&`.repeat(200_000)}`;
+    noCredentials(once(many));
+    expect(Date.now() - started).toBeLessThan(budget(400));
+  });
 });
 
 // Issue #1119: edges the weekly mutation run found unpinned. A child's reply is checked for its
@@ -1508,6 +1790,13 @@ describe("the child's replies before a click or a fill, at their edges (mutation
     expect(parseFillTarget({ ...email, secret: "toString" })).toBe(null);
     expect(parseFillTarget({ ...email, submit: asList(submit) })).toBe(null);
     expect(parseFillTarget({ ...email, submit: "post" })).toBe(null);
+  });
+
+  // A key lookup reads a list or an object as its text: ["password"] as "password".
+  test("a fill's reply whose secret only reads as a known one is refused", () => {
+    expect(parseFillTarget({ ...email, secret: ["password"] })).toBe(null);
+    expect(parseFillTarget({ ...email, secret: { toString: () => "card" } })).toBe(null);
+    expect(parseFillTarget({ ...email, secret: "card" })?.secret).toBe("card");
   });
 
   // fillRefusal refuses a value the field does not take only when the child says so: a false
@@ -1746,7 +2035,9 @@ describe("the element list, clicks, fills and console reads, at their edges (mut
     expect(consoleLists(errors, requests, 0, exact - 1).dropped).toBe(1);
   });
 
-  test("only the URL's own user name and password go, not a URL inside its query", () => {
+  // The page stays example.com: its authority ends at its first slash, not at the last at sign;
+  // the URL in its query loses its own user name and password as a parameter (#1348).
+  test("the URL's own authority ends at its slash; a URL in its query loses them apart", () => {
     const urls = [
       "https://u:p@example.com/login?next=https://v:q@other.example/",
       "https://example.com/login?next=https://v:q@other.example/",
@@ -1758,8 +2049,8 @@ describe("the element list, clicks, fills and console reads, at their edges (mut
       AGENT_CONSOLE.bytes,
     );
     expect(lines(r.requests).map((l) => l.url)).toEqual([
-      "https://example.com/login?next=https://v:q@other.example/",
-      "https://example.com/login?next=https://v:q@other.example/",
+      "https://example.com/login?next=https%3A%2F%2Fother.example%2F",
+      "https://example.com/login?next=https%3A%2F%2Fother.example%2F",
     ]);
   });
 
@@ -1831,5 +2122,75 @@ describe("element lists without user names and passwords (security.md M31; #1209
 
   test("the console's and the lists' URLs go through one stripper", () => {
     expect(agentUrl).toBe(keysAgentUrl);
+  });
+});
+
+describe("element filters, reply checks and console reads, at their edges (mutation-tested, #1119)", () => {
+  const el = (label: string, info: AgentElementInfo) => ({
+    label,
+    target: { rect, kind: "click", info },
+  });
+  const page = [
+    el("aa", { kind: "link", text: "Dairy" }),
+    el("as", { kind: "button", text: "Oat drink" }),
+  ];
+
+  test("a query of white space only holds no word, so it keeps every element", () => {
+    for (const query of ["", " ", " \t\n "]) {
+      expect(filterAgentElements(page, { query }).map((e) => e.label)).toEqual(["aa", "as"]);
+    }
+  });
+
+  test("a kind, field or form method that is no string is refused, whatever it would read as", () => {
+    const click = { alive: true, kind: "button", text: "Go" };
+    const submit = { method: "post", action: "https://shop.example/", fields: 1 };
+    const fill = { alive: true, kind: "field", field: "text" };
+    for (const bad of [7, null, true, ["button"], { toString: () => "button" }]) {
+      expect(parseActTarget({ ...click, kind: bad })).toBe(null);
+      expect(parseActTarget({ ...click, field: bad })).toBe(null);
+      expect(parseActTarget({ ...click, submit: { ...submit, method: bad } })).toBe(null);
+      expect(parseFillTarget({ ...fill, kind: bad })).toBe(null);
+      expect(parseFillTarget({ ...fill, field: bad })).toBe(null);
+      expect(parseFillTarget({ ...fill, submit: { ...submit, method: bad } })).toBe(null);
+    }
+    for (const bad of [["text"], ["file"], ["get"], ["post"]]) {
+      expect(parseActTarget({ ...click, field: bad })).toBe(null);
+      expect(parseActTarget({ ...click, submit: { ...submit, method: bad } })).toBe(null);
+    }
+    expect(parseActTarget({ ...click, submit })?.submit).toEqual(submit);
+    expect(parseFillTarget({ ...fill, submit })?.submit).toEqual(submit);
+  });
+
+  test("a console call's arguments are not read past the first that fills the message", () => {
+    const read: PropertyKey[] = [];
+    const args = new Proxy(["x".repeat(2 * AGENT_CONSOLE.message), "never read"], {
+      get(target, key, receiver) {
+        read.push(key);
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    expect(consoleArgsText(args)).toBe("x".repeat(2 * AGENT_CONSOLE.message));
+    expect(read).toContain("0");
+    expect(read).not.toContain("1");
+  });
+
+  test("an nsIScriptError's level reads no flags that are no whole number of zero or more", () => {
+    for (const bad of [
+      -1,
+      0.5,
+      1.5,
+      Number.NaN,
+      Infinity,
+      "1",
+      null,
+      undefined,
+      [1],
+      { valueOf: () => 1 },
+    ]) {
+      expect(scriptErrorLevel(bad)).toBe(null);
+    }
+    expect(scriptErrorLevel(2)).toBe("error");
+    expect(scriptErrorLevel(0x9)).toBe("warn");
+    expect(scriptErrorLevel(0x8)).toBe(null);
   });
 });

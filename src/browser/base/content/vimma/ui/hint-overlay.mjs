@@ -40,12 +40,15 @@ export class HintOverlay {
    * Outlines a text block: a ring just outside its border box, in chrome over the page. Called
    * again as the block moves (a scroll, `j`), it moves the same ring; a null box (the block is
    * scrolled out of its frame) hides it until the next.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {{ x: number, y: number, width: number, height: number } | null} box  in the top
    *   frame's CSS pixels
    */
   outline(browser, box) {
-    const parent = browser.closest(".browserStack") ?? browser.parentNode;
+    // The selected tab's <browser>, so in the document: a tab switch ends the session first.
+    const parent = /** @type {ParentNode} */ (
+      browser.closest(".browserStack") ?? browser.parentNode
+    );
     if (this.ring?.parentNode !== parent) this.clearOutline();
     this.#style();
     const doc = this.win.document;
@@ -79,15 +82,17 @@ export class HintOverlay {
 
   /**
    * Draws a label at the top left of each target.
-   * @param {any} browser XULBrowserElement the targets belong to
+   * @param {MozBrowser} browser  the <browser> the targets belong to
    * @param {readonly Hint<HintTarget>[]} hints
+   * @param {"lower" | "upper"} [labelCase]  the case the labels are drawn in (core hintLabelCase)
    */
-  show(browser, hints) {
+  show(browser, hints, labelCase = "upper") {
     this.hide();
     const doc = this.win.document;
     this.#style();
     const layer = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
     layer.id = HINT_OVERLAY_ID;
+    layer.dataset.case = labelCase;
     // Labels drawn over a page are a picture of where to type, thousands of them: out of the
     // accessible tree. The status bar says "hint mode" (m7-a11y).
     layer.setAttribute("aria-hidden", "true");
@@ -106,7 +111,10 @@ export class HintOverlay {
       this.labels.set(label, el);
     }
     layer.append(fragment);
-    (browser.closest(".browserStack") ?? browser.parentNode).append(layer);
+    // The selected tab's <browser>, so in the document: a tab switch cancels the hints first.
+    /** @type {ParentNode} */ (browser.closest(".browserStack") ?? browser.parentNode).append(
+      layer,
+    );
     this.layer = layer;
   }
 

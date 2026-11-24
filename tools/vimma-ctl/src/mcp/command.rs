@@ -62,6 +62,7 @@ impl ToolCall {
             ToolCall::Fill { .. } => "vimma_fill",
             ToolCall::Screenshot { .. } => "vimma_screenshot",
             ToolCall::Console { .. } => "vimma_console",
+            ToolCall::Bookmarklet { .. } => "vimma_bookmarklet",
         }
     }
 
@@ -163,6 +164,10 @@ impl ToolCall {
                 }
                 ("agent-console", Value::Object(args))
             }
+            ToolCall::Bookmarklet { tab, name } => (
+                "agent-bookmarklet",
+                object([("tab", text(tab)), ("name", text(name))]),
+            ),
         }
     }
 }
@@ -282,6 +287,19 @@ mod tests {
             ToolCall::Show { tab: tab() }.command().1.to_string(),
             r#"{"tab":"12"}"#
         );
+    }
+
+    /// bookmarklets B12: a tab and a title become `agent-bookmarklet` with exactly those.
+    #[test]
+    fn the_bookmarklet_tool_sends_a_tab_and_a_title() {
+        let call = ToolCall::Bookmarklet {
+            tab: "12".into(),
+            name: "Readability".into(),
+        };
+        assert_eq!(call.name(), "vimma_bookmarklet");
+        let (command, args) = call.command();
+        assert_eq!(command, "agent-bookmarklet");
+        assert_eq!(args.to_string(), r#"{"name":"Readability","tab":"12"}"#);
     }
 
     #[test]
@@ -668,5 +686,55 @@ mod tests {
             crate::protocol::request_named(7, "agent-cancel", object([("id", Value::Number(4.0))])),
             *cancel.get("message").unwrap()
         );
+    }
+
+    // Issue #1336: no tool's result carries structuredContent, which Claude Code shows the
+    // model in place of the text (and so in place of the untrusted header and the list).
+    #[test]
+    fn no_tool_result_carries_structured_content() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        for (request, response, tool) in [
+            ("agent-tabs", "agent-tabs", "vimma_tabs"),
+            ("agent-read", "agent-read", "vimma_read_page"),
+            ("agent-open", "agent-open", "vimma_open"),
+            ("agent-open-elements", "agent-open-elements", "vimma_open"),
+            ("agent-close", "agent-close", "vimma_close_tab"),
+            ("agent-keys", "agent-keys", "vimma_keys"),
+            ("agent-keys", "agent-keys-links", "vimma_keys"),
+            ("agent-show", "agent-show", "vimma_show"),
+            ("agent-elements", "agent-elements", "vimma_elements"),
+            (
+                "agent-elements-filters",
+                "agent-elements-filters",
+                "vimma_elements",
+            ),
+            ("agent-activate", "agent-activate", "vimma_activate"),
+            (
+                "agent-activate-elements",
+                "agent-activate-elements",
+                "vimma_activate",
+            ),
+            ("agent-fill", "agent-fill", "vimma_fill"),
+            ("agent-screenshot", "agent-screenshot", "vimma_screenshot"),
+            ("agent-console", "agent-console", "vimma_console"),
+            (
+                "agent-bookmarklet",
+                "agent-bookmarklet",
+                "vimma_bookmarklet",
+            ),
+        ] {
+            let request = v2_fixture(&format!("request-{request}.valid.json"));
+            let args = request.get("message").unwrap().get("args").unwrap();
+            let Action::Call(call) = handle(&mut p, &call_line(1, tool, &args.to_string())) else {
+                panic!("{request}: not a call");
+            };
+            let response = v2_fixture(&format!("response-{response}.valid.json"));
+            let result = response.get("message").unwrap().get("result").unwrap();
+            let r = tool_result(&call, Ok(result));
+            let out = r.get("result").unwrap();
+            assert!(out.get("isError").is_none(), "{response}: {r}");
+            assert!(out.get("structuredContent").is_none(), "{response}: {r}");
+        }
     }
 }

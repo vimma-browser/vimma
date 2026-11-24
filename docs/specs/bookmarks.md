@@ -16,6 +16,10 @@ As a Vimma user I open my bookmarks the way I open the side panel, with a keybin
 1. **Storage: Firefox's Places** (`PlacesUtils.bookmarks`, `PlacesUtils.promiseBookmarksTree`,
    `PlacesUtils.observers`; grepped in `toolkit/components/places/`). Existing bookmarks,
    import/export, the Library and Sync keep working; Vimma keeps no bookmark store of its own.
+   (Since changed: each workspace's bookmarks can also live in `bookmarks.toml` beside
+   `config.toml`, mirrored into its Places folder and written back from it; Places stays the
+   store Firefox, the Library and Sync use. See [bookmarks-file](bookmarks-file.md), delivered
+   in #1313, #1343, #1354 and #1349, and on by default with #1286 closed.)
 2. **One tree, rooted at the Bookmarks Toolbar** (`[bookmarks] root = "toolbar"`; the default
    until decision 11). Its top level is the toolbar folder's own children, at depth 0
    (`aria-level` 1); no row stands for the toolbar itself, and the header says "Bookmarks
@@ -49,7 +53,9 @@ As a Vimma user I open my bookmarks the way I open the side panel, with a keybin
      Folder names match exactly, else case-insensitively when one folder matches.
 6. **Opening.** Only `http:`, `https:`, `file:` and `about:` URLs open (core `isOpenable`).
    `javascript:`, `data:` and anything else are listed but refuse with a notice: a bookmarklet
-   would run with the page's rights from a key in chrome. Loads go through
+   would run with the page's rights from a key in chrome. (Since changed: with
+   `bookmarklets = "user"` or `"agent"` under `[bookmarks]`, `Enter` or `l` runs a `javascript:`
+   bookmark in the current page; `data:` still refuses; [bookmarklets](bookmarklets.md).) Loads go through
    `openTrustedLinkIn` in the panel's own window: a new tab takes the current workspace's
    container (the m3 routing patch), a current-tab load stays in the tab's container, and a
    private window's load is private (no history). `Enter` / `l` open in this tab and close the

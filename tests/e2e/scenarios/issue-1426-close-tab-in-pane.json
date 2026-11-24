@@ -1,0 +1,40 @@
+{
+  "name": "issue-1426-close-tab-in-pane",
+  "issue": 1426,
+  "description": "docs/specs/m4-split-panes.md, close tab in a pane: pages a, b, c and d each open alone; in the side panel 2G space j space j space Enter makes the split a | b | c; gt shows d alone and gT brings the split back, c focused. x (tab.close) closes c and selects b, the pane core focuses next, so the split stays on screen instead of Firefox's next tab in the strip (d). x again closes b, the last two panes: the split ends and a shows alone, not d.",
+  "timeoutSeconds": 90,
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "fixture:pane.html#a" },
+    { "open": "fixture:pane.html#b" },
+    { "open": "fixture:pane.html#c" },
+    { "open": "fixture:pane.html#d" },
+    { "wait-for-state": { "tabs": [{}, {}, {}, {}, { "title": "d 1280", "selected": true }] } },
+    { "keys": "ctrl+b b" },
+    { "wait-for-state": { "mode": "panel" } },
+    { "keys": "2 G space j space j space enter" },
+    { "wait-for-state": { "mode": "normal", "splits": [{ "number": 1, "shown": true }] } },
+    { "keys": "g t" },
+    { "wait-for-state": { "tabs": [{}, {}, {}, {}, { "title": "d 1280", "selected": true }] } },
+    { "keys": "g T" },
+    {
+      "wait-for-state": {
+        "splits": [{ "number": 1, "shown": true }],
+        "tabs": [{}, {}, {}, { "selected": true }, {}]
+      }
+    },
+    { "keys": "x" },
+    {
+      "wait-for-state": {
+        "splits": [{ "number": 1, "shown": true }],
+        "tabs": [{}, {}, { "selected": true }, {}]
+      },
+      "timeoutSeconds": 10
+    },
+    { "keys": "x" },
+    {
+      "wait-for-state": { "tabs": [{}, { "title": "a 1280", "selected": true }, {}] },
+      "timeoutSeconds": 10
+    }
+  ]
+}

@@ -11,6 +11,7 @@
 // (decision 13). Recently closed tabs and windows have no page text; their titles and URLs are
 // matched in a worker of this process, as a page's text is in its own.
 
+import { focusOpener } from "../ui/toolbar.mjs";
 import {
   GREP_CAPS,
   closedPreview,
@@ -31,6 +32,7 @@ import {
   setGrepRows,
   stepGrepList,
 } from "../core/grep.mjs";
+import { pageUrl } from "../core/pageurl.mjs";
 import { PRIVATE_NAME } from "../core/privatews.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { GrepMatcher } from "../actors/grep-matcher.mjs";
@@ -42,6 +44,7 @@ import { GrepPicker } from "../ui/grep.mjs";
 
 /** @import { GrepClosedEntry, GrepClosedRow, GrepFrame, GrepList, GrepMatchRow, GrepPickerState, GrepRow, GrepTab } from "../core/grep.mjs" */
 /** @import { GrepInfo } from "../ui/grep.mjs" */
+/** @import { GrepAsk } from "../actors/grep-page.mjs" */
 
 const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
   "resource://gre/modules/Timer.sys.mjs",
@@ -340,7 +343,7 @@ export class GrepSession {
   /**
    * A frame's reply to one message; the test replaces it to hold replies back.
    * @param {CanonicalBrowsingContext} bc
-   * @param {object} data
+   * @param {GrepAsk} data
    * @param {string} [name]
    * @returns {Promise<unknown>}
    */
@@ -498,7 +501,7 @@ export class GrepSession {
           const browser = tab.linkedBrowser;
           const loaded =
             !!tab.linkedPanel && !tab.hasAttribute("pending") && !!browser?.browsingContext;
-          const url = browser?.currentURI?.spec ?? "";
+          const url = pageUrl(browser?.currentURI?.spec ?? "");
           this.windowOf.set(id, win);
           out.push({
             browser,
@@ -829,7 +832,7 @@ export class GrepSession {
     this.opener = null;
     if (!keepFrames) {
       if (tabChanged || !opener?.isConnected) gBrowserOf(this.win).selectedBrowser.focus();
-      else /** @type {HTMLElement} */ (opener).focus();
+      else focusOpener(this.win, opener);
     }
     this.host.emit();
   }

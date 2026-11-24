@@ -7,6 +7,7 @@
 // workspace's tabs; keys reach it only through VimmaHost (`action`) in `panel` mode. The logic
 // is core sidepanel.mjs, this only renders it.
 
+import { focusOpener } from "./toolbar.mjs";
 import { WORKSPACE_COLOR_TOKENS } from "../core/statusbar.mjs";
 import {
   gutterOf,
@@ -30,7 +31,18 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into (once: a second load throws) */
 const styled = new WeakSet();
 /** Tab events that change a row: re-render while open. */
-const TAB_EVENTS = ["TabOpen", "TabClose", "TabSelect", "TabAttrModified", "TabMove"];
+const TAB_EVENTS = [
+  "TabOpen",
+  "TabClose",
+  "TabSelect",
+  "TabAttrModified",
+  "TabMove",
+  // A tab put to sleep, and one woken: its row is muted while it has no loaded page
+  // (docs/specs/tab-sleep.md, behaviour 14).
+  "TabBrowserDiscarded",
+  "TabBrowserInserted",
+  "SSTabRestored",
+];
 
 /**
  * `[panel] numbers` from config.toml (docs/specs/side-panel-counts.md decision 6), for the side
@@ -158,9 +170,9 @@ export class SidePanel {
 
   /**
    * One `[modal.panel]` action (panel.down, panel.up, panel.first, panel.last, panel.half_down,
-   * panel.half_up, panel.open, panel.select, panel.close, panel.close_tab, panel.mark,
-   * panel.visual, panel.move), with its count.
-   * @param {{ id: string, arg?: number, count?: number }} action
+   * panel.half_up, panel.open, panel.select, panel.close, panel.close_tab,
+   * panel.close_active_tab, panel.mark, panel.visual, panel.move), with its count.
+   * @param {{ id: string, arg?: number, count?: number, shown?: string | null }} action
    */
   action(action) {
     if (!this.state) return;
@@ -207,6 +219,16 @@ export class SidePanel {
     }
     this.state = refreshPanel(this.state, model, this.host.info, this.#options());
     this.render();
+  }
+
+  /**
+   * What the panel would list now, open or not: the tab line's source, so its numbers, names and
+   * tabs are the panel's (docs/specs/tab-line.md decision 7). Null without workspaces.
+   * @returns {PanelState | null}
+   */
+  snapshot() {
+    const model = this.host.model();
+    return model ? openPanel(model, this.host.info, this.#options()) : null;
   }
 
   /** Close and remove the box (VimmaHost.uninit). */
@@ -294,6 +316,12 @@ export class SidePanel {
         row.setAttribute("aria-selected", String(i === state.selected));
         row.dataset.tabId = r.tabId;
         if (r.active) row.classList.add("vimma-panel-active");
+        // Muted by CSS with nothing else changed, and described, so the state is not shown by
+        // colour alone (tab-sleep, decision 17).
+        if (r.asleep) {
+          row.setAttribute("asleep", "");
+          row.setAttribute("aria-description", "asleep");
+        }
         const isMarked = marked.has(r.tabId);
         const ranged = inRange(state, i);
         if (checkable) row.setAttribute("aria-checked", String(isMarked));
@@ -389,7 +417,7 @@ export function giveFocusBack(win, box, opener) {
   const tabs = tabsOf(win);
   const back = opener?.el;
   if (back?.isConnected && !box.contains(back) && opener?.tab === tabs?.selectedTab) {
-    /** @type {HTMLElement} */ (back).focus();
+    focusOpener(win, back);
   } else {
     tabs?.selectedBrowser.focus();
   }

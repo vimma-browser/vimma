@@ -22,6 +22,7 @@ import { LOAD_ERRORS } from "../agent/load-errors.mjs";
 import { DEFAULT_HINT_CHARS } from "../page/hints.mjs";
 import { parseKey } from "../keys/keys.mjs";
 import { MODES } from "../keys/modes.mjs";
+import { STEPS } from "../system/setup-steps.mjs";
 
 /** Protocol 1: what a hello without a role speaks (the `full` role). */
 export const CONTROL_PROTOCOL = 1;
@@ -43,7 +44,8 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
  * and links with hint labels (docs/specs/mcp-forms.md F2), `agent-activate` clicks one by its
  * label (F8), `agent-fill` fills fields by their labels (F12), `agent-screenshot` returns an
  * image of an agent tab's viewport (F18), and `agent-console` its script errors and failed
- * requests (F22).
+ * requests (F22). `agent-bookmarklet` runs one of the user's bookmarklets, named by its title,
+ * in an agent tab (docs/specs/bookmarklets.md B12).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -60,7 +62,10 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-fill",
   "agent-screenshot",
   "agent-console",
+  "agent-bookmarklet",
 ]);
+/** The longest bookmark title `agent-bookmarklet` takes, in code points (bookmarklets B12). */
+export const MAX_BOOKMARKLET_NAME = 1024;
 /** Why `agent-activate`'s wait after the click stopped early (mcp-forms F27). */
 export const ACTIVATE_STOPS = Object.freeze(["in-use"]);
 /** The page dialogs `agent-activate` reports (mcp-forms F11). */
@@ -554,6 +559,13 @@ function checkRequest(m, errors) {
     checkTabArg(args, errors);
     checkListFilters(args, errors);
     if ("full" in args && typeof args.full !== "boolean") errors.push("full must be a boolean");
+  } else if (command === "agent-bookmarklet") {
+    // A tab and a bookmark's title, never a URL or script (bookmarklets B12).
+    noExtraFields(args, ["tab", "name"], errors, "args.");
+    checkTabArg(args, errors);
+    if (!isBookmarkletName(args.name)) {
+      errors.push(`name must be a string of 1 to ${MAX_BOOKMARKLET_NAME} characters`);
+    }
   } else if (command === "agent-close" || command === "agent-show") {
     // A show names its tab only, never a workspace (mcp-drive D2).
     noExtraFields(args, ["tab"], errors, "args.");
@@ -590,10 +602,18 @@ function checkRequest(m, errors) {
  *   "agent-fill": TabArgs & StepListArgs & { fields: FillField[], submit?: true | string },
  *   "agent-screenshot": TabArgs & { labels?: boolean, full?: boolean },
  *   "agent-console": TabArgs & { since?: number },
+ *   "agent-bookmarklet": TabArgs & { name: string },
  * }} AgentArgs
  * @typedef {keyof AgentArgs} AgentCommand
  * @typedef {{ [C in AgentCommand]: { command: C, args: AgentArgs[C] } }[AgentCommand]} AgentRequest
  */
+
+/**
+ * A bookmark title as `agent-bookmarklet` takes it: 1 to MAX_BOOKMARKLET_NAME code points.
+ * @param {unknown} v @returns {v is string}
+ */
+const isBookmarkletName = (v) =>
+  typeof v === "string" && v.length > 0 && [...v].length <= MAX_BOOKMARKLET_NAME;
 
 /** @param {unknown} v @returns {v is string[]} */
 const isStrings = (v) => Array.isArray(v) && v.every((s) => typeof s === "string");
@@ -616,12 +636,13 @@ export function parseAgentRequest(command, given) {
   let args;
   try {
     args = JSON.parse(JSON.stringify(given));
-  } catch {
+  } /* Stryker disable next-line BlockStatement: an emptied catch leaves args undefined, which the next line refuses */ catch {
     return null;
   }
   if (!isObject(args)) return null;
   /** @type {string[]} */
   const errors = [];
+  // Stryker disable next-line StringLiteral: checkRequest never reads a request's type, only its keys
   checkRequest({ type: "request", id: 1, command, args }, errors);
   if (errors.length) return null;
   // Checked above; each read narrows again, so a shape the checks let through by mistake is
@@ -634,6 +655,7 @@ export function parseAgentRequest(command, given) {
   };
   if (command === "agent-hello") {
     const { client, via, ctl, session } = args;
+    // Stryker disable next-line LogicalOperator: equivalent while checkAgentHelloArgs holds (client an object, its name a string); defence in depth (S11)
     if (!isObject(client) || typeof client.name !== "string") return null;
     return {
       command,
@@ -659,6 +681,9 @@ export function parseAgentRequest(command, given) {
   }
   if (typeof tab !== "string") return null;
   if (command === "agent-close" || command === "agent-show") return { command, args: { tab } };
+  if (command === "agent-bookmarklet") {
+    return isBookmarkletName(args.name) ? { command, args: { tab, name: args.name } } : null;
+  }
   if (command === "agent-read") {
     const { format, max_chars } = args;
     return {
@@ -1094,6 +1119,10 @@ function checkAgentResult(result, command, errors) {
   } else if (command === "agent-show") {
     noExtraFields(result, ["shown"], errors, "result.");
     if (result.shown !== true) errors.push("result.shown must be true");
+  } else if (command === "agent-bookmarklet") {
+    // Nothing of the script's comes back (bookmarklets B16).
+    noExtraFields(result, ["ran"], errors, "result.");
+    if (result.ran !== true) errors.push("result.ran must be true");
   } else if (command === "agent-cancel") {
     checkFields(result, "result", { flags: ["cancelled"] }, errors);
   } else if (command === "agent-keys") {
@@ -1113,10 +1142,7 @@ function checkAgentResult(result, command, errors) {
 
 /** @param {Obj} result @param {string[]} errors */
 function checkStateResult(result, errors) {
-  if (
-    typeof result.mode !== "string" ||
-    !(/** @type {readonly unknown[]} */ (MODES).includes(result.mode))
-  ) {
+  if (!(/** @type {readonly unknown[]} */ (MODES).includes(result.mode))) {
     errors.push(`result.mode must be one of ${MODES.join(", ")}`);
   }
   for (const key of ["pending", "workspace"]) {
@@ -1152,6 +1178,10 @@ function checkStateResult(result, errors) {
       if ("loading" in tab && typeof tab.loading !== "boolean") {
         errors.push(`result.tabs[${i}].loading must be a boolean`);
       }
+      // A sleeping tab (docs/specs/tab-sleep.md, behaviour 15): listed only when true.
+      if ("asleep" in tab && tab.asleep !== true) {
+        errors.push(`result.tabs[${i}].asleep must be true when present`);
+      }
     });
     if (selected > 1) errors.push("result.tabs must have at most one selected tab");
   }
@@ -1178,6 +1208,38 @@ function checkStateResult(result, errors) {
   // Whether the selected tab's PDF viewer has drawn every page in view (#1006): one flag, never
   // the page, the page count, the title or the outline.
   if ("pdf" in result) checkFlagObject(result.pdf, "pdf", "drawn", hidden, errors);
+  // The setup page's screen as drawn (#1298): optional, as `pdf`; a word from SETUP_SCREENS,
+  // never a choice, a search or a line a step writes.
+  if ("setup" in result) checkSetup(result.setup, hidden, errors);
+}
+
+/**
+ * `state.setup.screen`: the setup page's welcome screen, a step (by its id, once its choices are
+ * drawn), `loading` while a step's view loads, or a stop screen.
+ */
+export const SETUP_SCREENS = Object.freeze([
+  "welcome",
+  "loading",
+  ...STEPS.map((s) => s.id),
+  "stop",
+]);
+
+/**
+ * `state.setup`: null unless the selected tab shows the setup page, else `{ screen }`, the
+ * screen it draws as a word from SETUP_SCREENS. Null in a private window (security.md S9).
+ * @param {unknown} value @param {boolean} hidden  a private window's @param {string[]} errors
+ */
+function checkSetup(value, hidden, errors) {
+  if (value === null) return;
+  if (!isObject(value)) {
+    errors.push("result.setup must be an object or null");
+    return;
+  }
+  noExtraFields(value, ["screen"], errors, "result.setup.");
+  if (!(/** @type {readonly unknown[]} */ (SETUP_SCREENS).includes(value.screen))) {
+    errors.push(`result.setup.screen must be one of ${SETUP_SCREENS.join(", ")}`);
+  }
+  if (hidden) errors.push("result.setup must be null in a private window");
 }
 
 /**
@@ -1251,7 +1313,7 @@ export const DOWNLOAD_SEGMENTS = Object.freeze(["progress", "paused", "done", "f
  */
 function checkDownloads(downloads, hidden, errors) {
   if (downloads === null) return;
-  if (typeof downloads !== "string" || !DOWNLOAD_SEGMENTS.includes(downloads)) {
+  if (!(/** @type {readonly unknown[]} */ (DOWNLOAD_SEGMENTS).includes(downloads))) {
     errors.push(`result.downloads must be null or one of ${DOWNLOAD_SEGMENTS.join(", ")}`);
   } else if (hidden) {
     errors.push("result.downloads must be null in a private window");
@@ -1375,8 +1437,12 @@ function checkResult(result, command, errors) {
     errors.push("result must be an object");
     return;
   }
-  if (command === "send-keys" && !isInt(result.sent, 0, MAX_ID)) {
-    errors.push("result.sent must be an integer >= 0");
+  if (command === "send-keys") {
+    if (!isInt(result.sent, 0, MAX_ID)) errors.push("result.sent must be an integer >= 0");
+    // A key opened a dialog that waits for its answer, and the keys after it were not pressed.
+    if ("dialog" in result && result.dialog !== true) {
+      errors.push("result.dialog must be true when present");
+    }
   } else if (command === "open" && typeof result.tab !== "string") {
     errors.push("result.tab must be a string");
   } else if (command === "reload-theme" && typeof result.changed !== "boolean") {
@@ -1416,7 +1482,7 @@ function checkResponse(m, command, errors) {
     return;
   }
   noExtraFields(error, ["code", "message", "reason", "retryAfter"], errors, "error.");
-  if (typeof error.code !== "string" || !ERROR_CODES.includes(error.code)) {
+  if (!(/** @type {readonly unknown[]} */ (ERROR_CODES).includes(error.code))) {
     errors.push(`error.code must be one of ${ERROR_CODES.join(", ")}`);
   }
   if (typeof error.message !== "string") errors.push("error.message must be a string");

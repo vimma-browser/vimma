@@ -162,6 +162,18 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
   `MouseEvent::Constructor`, `dom/events/MouseEvent.cpp:146-163`). The `mouseover`, `mousedown`
   and `mouseup` that `#activateHint` builds with the content window's `MouseEvent` are therefore
   `isTrusted: false`; only the `click()` is trusted.
+  (Since changed: this stopped at the constructor, and was wrong. At dispatch,
+  `EventDispatcher::DispatchDOMEvent` sets an event that was never dispatched to
+  `nsContentUtils::LegacyIsCallerChromeOrNativeCode()`, the subject principal being the system
+  one (`dom/events/EventDispatcher.cpp:1491-1504`, Firefox 160.0.1), so the page saw all three
+  events trusted from the child. Gecko then ran a real press's link handling on them: the
+  `mouseover` and a link's focus set the window's link preview
+  (`Element::GetEventTargetParentForLinks`, `dom/base/Element.cpp:4774-4784`), the `mousedown`
+  focused the link (`PostHandleEventForLinks`, `:4874-4900`), and the `mousedown` and `mouseup`
+  listeners ran as "handling user input". Untrusted, a link skips all of it
+  (`CheckHandleEventForLinksPrecondition`, `:4727-4742`). Issue #1321 dispatches an agent's three
+  events through the page's own `dispatchEvent` with Xrays waived, so the call runs in the page's
+  realm and they are untrusted; the user's own hints keep them trusted.)
 - **Filling a field.** `HTMLInputElement.setUserInput(value)` is chrome-only
   (`dom/webidl/HTMLInputElement.webidl:231-236`). It sets the value as user input, dispatches
   `input`, and dispatches `change` at once when the field does not have focus
@@ -405,6 +417,20 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    through `sendMouseEvent`, because it is indistinguishable from the user's own press and would
    hand the page the user's activation; untrusted `click` events only, because most pages ignore
    them and links do not follow them.
+   (Since changed: the user's own hints no longer share this. A label the user types gives the
+   page their activation, through `Vimma:ActivateHint`, which only the parent sends for a key
+   typed in chrome; an agent's click reaches the same press through `Vimma:AgentElement`, which
+   has no way to ask for activation. Issue #1303.)
+   (Since changed: the three mouse events were not untrusted as written: Firefox marks an event
+   that system code dispatches trusted (Research, "Events the actor constructs"), so the page
+   saw them trusted, the `mousedown` focused a link and the link's address showed in the user's
+   window. An agent's press now dispatches them as the page's own script would, through the
+   page's `dispatchEvent` with Xrays waived (`actors/page-events.mjs`), so the page sees them
+   untrusted and none of that happens; `click()` is still called by the child and stays
+   trusted, for pages that check it. A page that acts only on a trusted `mousedown` now ignores
+   the agent's press, and the untrusted events before a trusted click mark the press as an
+   agent's; both are accepted (security.md M26). The user's hints dispatch them from the child,
+   trusted, as before. Issue #1321.)
 9. **What it will not click.** Refused before anything is asked, naming the label and the
    reason: a text field, text area, select or editable root (`use vimma_fill`); a file field
    (it would open a file chooser for the user, and `setUserInput` from system code can set a
@@ -695,7 +721,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     call stops with `changed`. A tab the user is using (`VimmaHost.inUse`) denies
     `vimma_activate` and `vimma_fill` with `in-use`, and a call already running stops there,
     because a click or a fill under the user's cursor would take their page out of their hands.
-    The read-only tools run while the user uses the tab, since they change nothing.
+    The read-only tools run while the user uses the tab, since they change nothing. (Since
+    changed: a field the page focuses by itself, such as a dialog with autofocus the agent's own
+    click opened, does not make the tab in use; mcp-drive D13, issue
+    [#1325](https://github.com/vimma-browser/vimma/issues/1325).)
 28. **Questions, notices and log.** Each question shows the tab's title and URL and what the call
     does: the element's kind and text for an activation, each field and value for a fill (F14),
     the destination for a submit (F15). Under a grant each call shows a notice naming the tab and

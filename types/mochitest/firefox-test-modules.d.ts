@@ -5,17 +5,6 @@
 // imports a URL that no map has, and the tests' type check fails where it reads one
 // (importESModule gives `unknown` for it).
 interface VimmaModules {
-  // engine/browser/components/urlbar/content/UrlbarShared.mjs
-  "chrome://browser/content/urlbar/UrlbarShared.mjs": {
-    UrlbarShared: {
-      readonly RESULT_TYPE: {
-        readonly TAB_SWITCH: number;
-        readonly SEARCH: number;
-        readonly URL: number;
-      };
-      readonly RESULT_GROUP: { readonly GENERAL_PARENT: string };
-    };
-  };
   // engine/browser/components/migration/InternalTestingProfileMigrator.sys.mjs: the tests stub
   // its prototype's methods.
   "moz-src:///browser/components/migration/InternalTestingProfileMigrator.sys.mjs": {
@@ -27,17 +16,6 @@ interface VimmaModules {
         getSourceProfiles(): Promise<{ id: string; name: string }[]>;
       };
     };
-  };
-  // engine/browser/components/migration/MigrationUtils.sys.mjs
-  "moz-src:///browser/components/migration/MigrationUtils.sys.mjs": {
-    MigrationUtils: {
-      readonly availableMigratorKeys: string[];
-      insertManyBookmarksWrapper(bookmarks: object[], parentGuid: string): Promise<void>;
-    };
-  };
-  // engine/browser/components/places/PlacesBrowserStartup.sys.mjs
-  "moz-src:///browser/components/places/PlacesBrowserStartup.sys.mjs": {
-    PlacesBrowserStartup: { _placesInitialized: boolean; initPlaces(): void };
   };
   // engine/browser/components/sessionstore/SessionFile.sys.mjs: the session file's paths.
   "moz-src:///browser/components/sessionstore/SessionFile.sys.mjs": {
@@ -58,18 +36,6 @@ interface VimmaModules {
   "moz-src:///browser/components/sidebar/SidebarManager.sys.mjs": {
     SidebarManager: { updateDefaultTools(): void };
   };
-  // engine/browser/components/urlbar/UrlbarProvidersManager.sys.mjs: the manager of one search
-  // access point.
-  "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs": {
-    ProvidersManager: {
-      getInstanceForSap(sapName: string): {
-        registerProvider(provider: object): void;
-        unregisterProvider(provider: object): void;
-      };
-    };
-  };
-  // engine/browser/components/urlbar/UrlbarUtils.sys.mjs: the tests replace a method.
-  "moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs": Pick<LazyModules, "UrlbarUtils">;
   // engine/toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs
   "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs": Pick<
     LazyModules,
@@ -88,6 +54,10 @@ interface VimmaModules {
       getEngineByName(name: string): SearchEngine | null;
       getEngineByAlias(alias: string): Promise<TestSearchEngine | null>;
     };
+  };
+  // engine/toolkit/actors/SelectChild.sys.mjs: whether a <select>'s dropdown is open.
+  "moz-src:///toolkit/actors/SelectChild.sys.mjs": {
+    SelectContentHelper: { readonly open: boolean };
   };
   // engine/browser/modules/AboutNewTab.sys.mjs
   "resource:///modules/AboutNewTab.sys.mjs": Pick<LazyModules, "AboutNewTab">;
@@ -298,6 +268,7 @@ interface VimmaModules {
       getResultCount(win: Window): number;
       /** Null past the last row. */
       getRowAt(win: Window, index: number): Element | null;
+      getSelectedRowIndex(win: Window): number;
       getDetailsOfResultAt(win: Window, index: number): Promise<UrlbarResultDetails>;
       promiseAutocompleteResultPopup(options: { window: Window; value: string }): Promise<void>;
       promisePopupClose(win: Window): Promise<void>;

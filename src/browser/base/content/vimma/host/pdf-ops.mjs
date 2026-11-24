@@ -28,7 +28,7 @@ const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
 /** @import { Context } from "../core/modes.mjs" */
 /** @import { FindStatus } from "../core/find.mjs" */
 
-/** @type {WeakMap<object, { windowId: number, state: PdfState }>} by <browser> */
+/** @type {WeakMap<MozBrowser, { windowId: number, state: PdfState }>} */
 const states = new WeakMap();
 
 /** @type {Set<(browser: MozBrowser) => void>} */
@@ -39,13 +39,13 @@ const listeners = new Set();
  * window global, which its actor counts the same way: a report counting fewer is from before
  * the last one. Kept with the window global, so a document back from the back-forward cache
  * keeps its count, as its actor does.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<WindowGlobalParent, number>}
  */
 const sentOps = new WeakMap();
 
 /**
  * The chrome windows whose tabs' zoom changes are watched (watchZoom).
- * @type {WeakSet<object>}
+ * @type {WeakSet<Window>}
  */
 const zoomWatched = new WeakSet();
 
@@ -82,7 +82,7 @@ function watchZoom(browser) {
 /**
  * Sends the viewer's actor one operation, and counts it.
  * @param {WindowGlobalParent} wg  the viewer's window global (viewerGlobal)
- * @param {object} msg  a parsed operation (parsePdfOp)
+ * @param {NonNullable<ReturnType<typeof parsePdfOp>>} msg  a parsed operation
  */
 function sendOp(wg, msg) {
   wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfOp", msg);
@@ -93,10 +93,10 @@ function sendOp(wg, msg) {
  * The parsed outline of a tab's document, kept in memory until the tab navigates or closes
  * (decision 10, V11), and the documents asked for theirs (V8). `doc` is the viewer's count of
  * documents it opened when the outline was read.
- * @type {WeakMap<object, { windowId: number, doc: number, outline: PdfOutline }>}
+ * @type {WeakMap<MozBrowser, { windowId: number, doc: number, outline: PdfOutline }>}
  */
 const outlines = new WeakMap();
-/** @type {WeakMap<object, number>} by <browser>: the window global asked for its outline */
+/** @type {WeakMap<MozBrowser, number>} the window global asked for its outline */
 const asked = new WeakMap();
 
 /** @type {Set<(browser: MozBrowser, outline: PdfOutline | null) => void>} */
@@ -503,13 +503,16 @@ export const PdfOps = {
    * Asks the viewer in `browser` for its outline, on the user's key (V8); the answer comes to
    * the outline listeners. An outline already read is not asked for again.
    * @param {MozBrowser} browser
+   * @param {boolean} [allPages]  wait for every page, so that each entry has its page: for the
+   *   outline shown as the PDF opens, which no key waits for (decision 19); Tab's read waits at
+   *   most a second, inside the time Tab gives the reply
    * @returns {boolean} false when `browser` does not show the PDF viewer
    */
-  askOutline(browser) {
+  askOutline(browser, allPages = false) {
     const wg = viewerGlobal(browser);
     if (!wg) return false;
     asked.set(browser, wg.innerWindowId);
-    return this.run(browser, "outline");
+    return this.run(browser, "outline", allPages ? 1 : 0);
   },
 
   /**

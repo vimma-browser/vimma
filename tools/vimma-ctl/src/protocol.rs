@@ -161,10 +161,19 @@ pub struct State {
 /// A command's decoded result.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CommandResult {
-    SendKeys { sent: u64 },
+    /// `dialog`: a key opened a dialog and waits for its answer; the keys after it were not
+    /// pressed.
+    SendKeys {
+        sent: u64,
+        dialog: bool,
+    },
     State(State),
-    Open { tab: String },
-    ReloadTheme { changed: bool },
+    Open {
+        tab: String,
+    },
+    ReloadTheme {
+        changed: bool,
+    },
 }
 
 /// The discovery file `<profile>/vimma-control.json`.
@@ -473,11 +482,18 @@ pub fn decode_response(value: &Value) -> Result<Response, DecodeError> {
 pub fn decode_result(command: &Command, result: &Value) -> Result<CommandResult, DecodeError> {
     let map = as_object(result, "result")?;
     match command {
-        Command::SendKeys { .. } => map
-            .get("sent")
-            .and_then(Value::as_u64)
-            .map(|sent| CommandResult::SendKeys { sent })
-            .ok_or_else(|| fail("result.sent must be an integer >= 0")),
+        Command::SendKeys { .. } => {
+            let sent = map
+                .get("sent")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| fail("result.sent must be an integer >= 0"))?;
+            let dialog = match map.get("dialog") {
+                None => false,
+                Some(Value::Bool(true)) => true,
+                Some(_) => return Err(fail("result.dialog must be true when present")),
+            };
+            Ok(CommandResult::SendKeys { sent, dialog })
+        }
         Command::Open { .. } => match map.get("tab") {
             Some(Value::String(tab)) => Ok(CommandResult::Open { tab: tab.clone() }),
             _ => Err(fail("result.tab must be a string")),
@@ -531,6 +547,12 @@ fn decode_state(map: &BTreeMap<String, Value>, raw: &Value) -> Result<State, Dec
                 "result.tabs[{i}].selected must be a boolean"
             )));
         };
+        // A sleeping tab (docs/specs/tab-sleep.md, behaviour 15): listed only when true.
+        if !matches!(tab.get("asleep"), None | Some(Value::Bool(true))) {
+            return Err(fail(&format!(
+                "result.tabs[{i}].asleep must be true when present"
+            )));
+        }
         tabs.push(Tab {
             id: field("id")?,
             url: withheld("url")?,
@@ -1207,6 +1229,8 @@ mod tests {
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":"u","title":"t","selected":1}],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":null,"title":null,"selected":true}],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"private":true,"tabs":[{"id":"1","url":"u","title":null,"selected":true}],"panes":null}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":"u","title":"t","selected":false,"asleep":false}],"panes":null}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":"u","title":"t","selected":false,"asleep":"yes"}],"panes":null}"#,
             r#"{"pending":null,"workspace":null,"tabs":[],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":{}}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[1]}"#,
@@ -1233,8 +1257,20 @@ mod tests {
         };
         assert_eq!(
             sent(r#"{"sent":2}"#),
-            Ok(CommandResult::SendKeys { sent: 2 })
+            Ok(CommandResult::SendKeys {
+                sent: 2,
+                dialog: false
+            })
         );
+        assert_eq!(
+            sent(r#"{"sent":1,"dialog":true}"#),
+            Ok(CommandResult::SendKeys {
+                sent: 1,
+                dialog: true
+            })
+        );
+        assert!(sent(r#"{"sent":1,"dialog":false}"#).is_err());
+        assert!(sent(r#"{"sent":1,"dialog":"yes"}"#).is_err());
         assert!(sent(r#"{"sent":-1}"#).is_err());
         assert!(sent(r#"{"sent":"2"}"#).is_err());
     }

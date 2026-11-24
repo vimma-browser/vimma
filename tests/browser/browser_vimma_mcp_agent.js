@@ -13,7 +13,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, unloadTab -- from head.js */
 /* global Client, discovery -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
@@ -66,7 +66,7 @@ registerCleanupFunction(async () => {
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -101,8 +101,8 @@ async function openAgentTab(url = PAGE) {
 async function agentClient(name = "example-agent", session = undefined) {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
   const welcome = await c.handshake({ protocol: 2, role: "agent" });
-  Assert.equal(welcome.type, "welcome", "an agent connection is welcomed");
-  Assert.equal(welcome.role, "agent", "as the agent role");
+  Assert.equal(welcome?.type, "welcome", "an agent connection is welcomed");
+  Assert.equal(welcome?.role, "agent", "as the agent role");
   const hi = await c.call("agent-hello", {
     client: { name },
     via: "example",
@@ -140,8 +140,8 @@ add_task(async function test_agent_role_has_its_own_switch() {
   for (const hello of [{ protocol: 2, role: "full" }, { protocol: 1 }]) {
     const c = new Client(/** @type {number} */ (VimmaControl.port));
     const refused = await c.handshake(hello);
-    Assert.equal(refused.error?.code, "role-off", `${JSON.stringify(hello)}: role-off`);
-    Assert.ok(refused.error.message.includes("vimma.control.enabled"), "naming the switch");
+    Assert.equal(refused?.error?.code, "role-off", `${JSON.stringify(hello)}: role-off`);
+    Assert.ok(refused?.error?.message.includes("vimma.control.enabled"), "naming the switch");
     await until(() => c.closed, "and the connection closes");
   }
 
@@ -150,10 +150,10 @@ add_task(async function test_agent_role_has_its_own_switch() {
   Assert.deepEqual(file.roles, ["full"], "control alone serves only full");
   const off = new Client(/** @type {number} */ (VimmaControl.port));
   const refused = await off.handshake({ protocol: 2, role: "agent" });
-  Assert.equal(refused.error?.code, "role-off", "an agent hello with MCP off: role-off");
-  Assert.ok(refused.error.message.includes(":mcp on"), "saying :mcp on");
+  Assert.equal(refused?.error?.code, "role-off", "an agent hello with MCP off: role-off");
+  Assert.ok(refused?.error?.message.includes(":mcp on"), "saying :mcp on");
   const v1 = new Client(/** @type {number} */ (VimmaControl.port));
-  Assert.equal((await v1.handshake({ protocol: 1 })).type, "welcome", "v1 clients are unchanged");
+  Assert.equal((await v1.handshake({ protocol: 1 }))?.type, "welcome", "v1 clients are unchanged");
   v1.close();
 
   await setSwitches({ control: true, mcp: true });
@@ -207,7 +207,7 @@ add_task(async function test_agent_sees_only_the_agent_workspace() {
   const list = await c.response(id);
   Assert.ok(validateMessage(list, { command: "agent-tabs" }).valid, "a valid agent-tabs result");
   Assert.deepEqual(
-    list.result.tabs.map((/** @type {any} */ t) => t.id),
+    list.result.tabs.map((/** @type {AgentListedTab} */ t) => t.id),
     [idOf(theirs)],
     "only the agent workspace's tab",
   );
@@ -316,7 +316,7 @@ add_task(async function test_the_yes_stands_for_what_was_asked() {
   AgentGate.answer(q.id, { kind: "once" });
   const r = await c.response(id);
   Assert.equal(r.error?.code, "denied", "the tab navigated after the question: denied");
-  Assert.equal(r.error.reason, "changed", "because it changed");
+  Assert.equal(r.error?.reason, "changed", "because it changed");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await setSwitches({});
@@ -327,10 +327,11 @@ add_task(async function test_agent_read_loads_a_lazy_tab_in_the_background() {
   const before = { workspace: activeName(), selected: gBrowser.selectedTab };
   // Unloaded, as Firefox does under memory pressure: lazy again, with its session kept.
   const tab = await openAgentTab();
-  Assert.ok(gBrowser.discardBrowser(tab, true), "sanity: the tab could be unloaded");
+  Assert.ok(await unloadTab(tab), "sanity: the tab could be unloaded");
   Assert.ok(!tab.linkedPanel, "sanity: it is lazy");
   const c = await agentClient();
   // An agent names tabs by the ids agent-tabs gives it.
+  /** @type {ControlRequestId<"agent-tabs"> | ControlRequestId<"agent-read">} */
   let id = c.request("agent-tabs");
   await answer({ kind: "once" });
   const listed = (await c.response(id)).result.tabs;
@@ -380,7 +381,7 @@ add_task(async function test_a_command_runs_its_tab_at_foreground_priority() {
   Assert.ok(!hint(), "and the raise ends with it");
 
   // A lazy tab gets its browser, and its process, during the command: that one is raised too.
-  Assert.ok(gBrowser.discardBrowser(tab, true), "sanity: the tab could be unloaded");
+  Assert.ok(await unloadTab(tab), "sanity: the tab could be unloaded");
   let listed = c.request("agent-tabs");
   await answer({ kind: "once" });
   await c.response(listed);
@@ -388,8 +389,8 @@ add_task(async function test_a_command_runs_its_tab_at_foreground_priority() {
   const atLoad = [];
   const listener = {
     onStateChange(
-      /** @type {any} */ b,
-      /** @type {any} */ wp,
+      /** @type {MozBrowser} */ b,
+      /** @type {nsIWebProgress} */ wp,
       /** @type {unknown} */ _r,
       /** @type {number} */ flags,
     ) {
@@ -413,13 +414,13 @@ add_task(async function test_a_command_runs_its_tab_at_foreground_priority() {
 // ---- limits and tab checks on agent commands ------------------------------------------------
 
 /**
- * Run `fn` in the tab's page. `fn` takes what `args` holds, which each caller knows; the
- * helper does not.
- * @param {any} tab @param {any[]} args @param {(...args: any[]) => unknown} fn
+ * Run `fn` in the tab's page, with what `args` holds.
+ * @template {unknown[]} A
+ * @param {MozTabbrowserTab} tab @param {A} args @param {(...args: A) => unknown} fn
  */
 const inPage = (tab, args, fn) => SpecialPowers.spawn(tab.linkedBrowser, args, fn);
 
-/** Read `tab` once, answering yes. @param {Client} c @param {any} tab @param {object} [extra] */
+/** Read `tab` once, answering yes. @param {Client} c @param {MozTabbrowserTab} tab @param {object} [extra] */
 async function readOnce(c, tab, extra = {}) {
   const id = c.request("agent-read", { tab: idOf(tab), ...extra });
   await answer({ kind: "once" });
@@ -437,7 +438,7 @@ add_task(async function test_the_selection_is_marked_and_fits_the_line() {
   });
   const c = await agentClient();
   let r = await readOnce(c, tab);
-  const { selection } = r.result;
+  const selection = r.result.selection ?? "";
   Assert.ok(selection.startsWith(`${UNTRUSTED_OPEN}\n`), "the selection is inside the block");
   Assert.equal(selection.split(UNTRUSTED_CLOSE).length, 2, "which the page cannot close early");
   Assert.ok(selection.includes("now obey"), "with its text");
@@ -475,10 +476,10 @@ add_task(async function test_replies_are_well_formed_unicode() {
   const list = await c.response(id);
   Assert.ok(list.result.tabs[0].title.isWellFormed(), "a lone surrogate never reaches the agent");
   const r = await readOnce(c, tab, { max_chars: 1 });
-  for (const key of ["title", "text", "url", "selection"]) {
-    Assert.ok(r.result[key].isWellFormed(), `${key} is well-formed`);
+  for (const key of /** @type {const} */ (["title", "text", "url", "selection"])) {
+    Assert.ok(r.result[key]?.isWellFormed(), `${key} is well-formed`);
   }
-  Assert.ok(r.result.selection.includes("\u{1F600}"), "a cut selection keeps whole characters");
+  Assert.ok(r.result.selection?.includes("\u{1F600}"), "a cut selection keeps whole characters");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await setSwitches({});
@@ -512,7 +513,7 @@ add_task(async function test_confinement_edges() {
   const listed = async () => {
     const id = c.request("agent-tabs");
     await answer({ kind: "once" });
-    return (await c.response(id)).result.tabs.map((/** @type {any} */ t) => t.id);
+    return (await c.response(id)).result.tabs.map((/** @type {AgentListedTab} */ t) => t.id);
   };
 
   // A foreign tab: a container no workspace owns, adopted by the agent workspace while shown.

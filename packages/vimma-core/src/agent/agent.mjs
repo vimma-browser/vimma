@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Local AI agents and the agent workspace (docs/specs/vimma-mcp.md). Pure: `:mcp on|off|forget`
+ * AI agents and the agent workspace (docs/specs/vimma-mcp.md). Pure: `:mcp on|off|forget`
  * and their questions (decisions 8 and 26), and the agent workspace's glyph. The agent role's
  * gate: the queue of questions, the mute and the grants (decisions 12-22, `AgentQueue`), and the
  * untrusted-content delimiters of page text ("Marking content untrusted").
@@ -36,25 +36,54 @@ export function parseMcpCommand(text) {
 }
 
 /**
- * What `:mcp on|off` does (decision 26): with `[mcp] enabled` in config.toml (`config`), nothing
- * but say so; `on` asks first (the pref is the command's, and so is the question); `off` sets
- * the pref at once.
- * @param {"on" | "off"} word
- * @param {{ pref: boolean, config?: boolean }} state  the pref, and the file's value if it sets one
- * @returns {{ kind: "say", text: string } | { kind: "ask" }
- *   | { kind: "set", value: boolean, text: string }}
+ * @typedef {object} McpSwitchState
+ * @property {boolean} pref     `vimma.mcp.enabled`, which `:mcp on` sets
+ * @property {boolean} [config] `[mcp] enabled` when config.toml sets it
+ * @property {boolean} off      `:mcp off` this session: held in memory, never cleared by a read
+ *   of config.toml, only by `:mcp on` or a restart (docs/specs/setup-v2.md decision 16)
  */
-export function planMcpSwitch(word, { pref, config }) {
-  if (config !== undefined) {
-    return {
-      kind: "say",
-      text: `mcp: config.toml sets [mcp] enabled = ${config}; change it there`,
-    };
+
+/**
+ * Whether agents may connect, and what decides it: `:mcp off` this session wins over the file,
+ * which wins over the pref. Reason: a kill switch that the next read of config.toml undoes is
+ * no kill switch (setup-v2 decision 16).
+ * @param {McpSwitchState} state
+ * @returns {{ enabled: boolean, from: "session" | "config" | "pref" }}
+ */
+export function mcpState({ pref, config, off }) {
+  const under =
+    config === undefined
+      ? { enabled: pref, from: /** @type {const} */ ("pref") }
+      : { enabled: config, from: /** @type {const} */ ("config") };
+  return off && under.enabled ? { enabled: false, from: "session" } : under;
+}
+
+/**
+ * What `:mcp on|off` does (decision 26, setup-v2 decision 16). `off` always turns agents off for
+ * the session, whatever the file says, and clears the pref when it is set (`pref: true`), so
+ * that taking `enabled` out of the file later keeps them off. `on` asks first, as the pref's
+ * question is the user's consent; with `[mcp] enabled = false` in the file it only says so.
+ * @param {"on" | "off"} word
+ * @param {McpSwitchState} state
+ * @returns {{ kind: "say", text: string } | { kind: "ask" }
+ *   | { kind: "off", pref: boolean, text: string }}
+ */
+export function planMcpSwitch(word, state) {
+  const now = mcpState(state);
+  if (word === "off") {
+    if (!now.enabled) return { kind: "off", pref: state.pref, text: "mcp is already off" };
+    const text =
+      state.config === true
+        ? "mcp off until :mcp on or a restart; config.toml's [mcp] enabled = true turns agents " +
+          "on again at the next start"
+        : "mcp off: agents cannot reach Vimma";
+    return { kind: "off", pref: state.pref, text };
   }
-  const on = word === "on";
-  if (pref === on) return { kind: "say", text: `mcp is already ${word}` };
-  if (on) return { kind: "ask" };
-  return { kind: "set", value: false, text: "mcp off: agents cannot reach Vimma" };
+  if (state.config === false) {
+    return { kind: "say", text: "mcp: config.toml sets [mcp] enabled = false; change it there" };
+  }
+  if (now.enabled) return { kind: "say", text: "mcp is already on" };
+  return { kind: "ask" };
 }
 
 /**
@@ -65,22 +94,33 @@ export function planMcpSwitch(word, { pref, config }) {
  */
 export function mcpOnQuestion(name, adopted) {
   if (!adopted) {
-    return `Let local AI agents ask to use the "${name}" workspace? Every request asks you first. y/N`;
+    return `Let AI agents ask to use the "${name}" workspace? Nothing runs until you allow it. y/N`;
   }
-  const tabs = `${adopted.tabs} tab${adopted.tabs === 1 ? "" : "s"}`;
-  return (
-    `"${name}" is your own workspace (${tabs}, its own logins). Agents will be able to read ` +
-    "it. y/N"
-  );
+  return `${mcpAdoptedWarning(name, adopted)} y/N`;
+}
+
+/**
+ * What `:mcp on`'s question, and the setup's agents step, say of an agent workspace Vimma did
+ * not make (decision 8).
+ * @param {string} name @param {{ tabs: number }} adopted
+ */
+export function mcpAdoptedWarning(name, { tabs }) {
+  const n = `${tabs} tab${tabs === 1 ? "" : "s"}`;
+  return `"${name}" is your own workspace (${n}, its own logins). Agents will be able to read it.`;
 }
 
 /**
  * `:mcp` without a word: on or off (and whether config.toml says so), and the workspace.
- * @param {{ enabled: boolean, from: "config" | "pref", workspace: string }} state
+ * @param {{ enabled: boolean, from: "session" | "config" | "pref", workspace: string }} state
  */
 export function mcpStatus({ enabled, from, workspace }) {
-  const where = from === "config" ? " (config.toml)" : "";
-  const what = enabled ? "every request asks you first" : ":mcp on lets agents ask to use it";
+  const where =
+    from === "config"
+      ? " (config.toml)"
+      : from === "session"
+        ? " (until :mcp on or a restart)"
+        : "";
+  const what = enabled ? "nothing runs until you allow it" : ":mcp on lets agents ask to use it";
   return `mcp ${enabled ? "on" : "off"}${where} · agent workspace "${workspace}" · ${what}`;
 }
 
@@ -125,14 +165,17 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-fill": "vimma_fill",
   "agent-screenshot": "vimma_screenshot",
   "agent-console": "vimma_console",
+  "agent-bookmarklet": "vimma_bookmarklet",
 });
 /**
  * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a
  * page changes what the user sees, so no grant may let an agent do it at any moment
- * (docs/specs/mcp-drive.md D4, mcp-grants G2, security.md M19). Requests asked with `always`
+ * (docs/specs/mcp-drive.md D4, mcp-grants G2, security.md M19). Running a bookmarklet runs code
+ * with the page's rights, past every other tool's checks, so it is asked each time too
+ * (docs/specs/bookmarklets.md B14, security.md M63). Requests asked with `always`
  * (a submission, a dangerous or unscanned download) do the same.
  */
-export const ALWAYS_ASK = Object.freeze(["vimma_show"]);
+export const ALWAYS_ASK = Object.freeze(["vimma_show", "vimma_bookmarklet"]);
 /** Questions that may wait: per connection and in all (decision 17). */
 export const QUEUE_LIMITS = Object.freeze({ perConnection: 4, total: 16 });
 /**
@@ -152,6 +195,13 @@ export const KEYS_RATE = Object.freeze({ max: 30, ms: 60_000 });
  * counted when asked, so a refused show cannot be retried in a loop.
  */
 export const SHOW_RATE = Object.freeze({ max: 6, ms: 60_000 });
+
+/**
+ * `agent-bookmarklet` requests per connection in any window of `ms` (docs/specs/bookmarklets.md
+ * B16, security.md M63), counted before the bookmark is looked up: titles cannot be probed
+ * quickly, and the user is not flooded with questions.
+ */
+export const BOOKMARKLET_RATE = Object.freeze({ max: 6, ms: 60_000 });
 
 /**
  * `agent-elements` requests per connection in any window of `ms` (mcp-forms F26, security.md
@@ -194,8 +244,9 @@ export class CallRate {
    */
   take(conn, now) {
     const { max, ms } = this.limit;
-    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - ms);
+    const recent = this.#recent(conn, now, ms);
     if (recent.length >= max) {
+      // Stryker disable next-line CallExpression: every read filters the old times out again
       this.times.set(conn, recent);
       return false;
     }
@@ -211,7 +262,7 @@ export class CallRate {
    */
   can(conn, now) {
     const { max, ms } = this.limit;
-    return (this.times.get(conn) ?? []).filter((t) => t > now - ms).length < max;
+    return this.#recent(conn, now, ms).length < max;
   }
 
   /**
@@ -221,7 +272,7 @@ export class CallRate {
    */
   retryAfter(conn, now) {
     const { max, ms } = this.limit;
-    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - ms);
+    const recent = this.#recent(conn, now, ms);
     if (recent.length < max) return 0;
     // At most the window: a clock set back leaves calls stamped in the future.
     return Math.min(ms, Math.min(...recent) + ms - now);
@@ -243,6 +294,14 @@ export class CallRate {
   /** @param {string | number} conn  closed */
   forget(conn) {
     this.times.delete(conn);
+  }
+
+  /**
+   * Connection `conn`'s calls in the window that ends at `now`, as a new array.
+   * @param {string | number} conn @param {number} now @param {number} ms
+   */
+  #recent(conn, now, ms) {
+    return this.times.get(conn)?.filter((t) => t > now - ms) ?? [];
   }
 }
 
@@ -299,7 +358,10 @@ const frozenCopies = new WeakSet();
  * @returns {Readonly<T>}
  */
 export function frozenCopy(value) {
-  /** Objects being copied: met again, they are a cycle. @type {WeakSet<object>} */
+  /**
+   * Objects whose copy began: met again before `done` has them, they are a cycle.
+   * @type {WeakSet<object>}
+   */
   const open = new WeakSet();
   /** Objects already copied: met again, they share their copy. @type {WeakMap<object, unknown>} */
   const done = new WeakMap();
@@ -330,7 +392,7 @@ export function frozenCopy(value) {
       }
       out = o;
     }
-    open.delete(v);
+    // `v` stays in `open`: from here on `done`, checked first, answers for it.
     Object.freeze(out);
     frozenCopies.add(/** @type {object} */ (out));
     done.set(v, out);
@@ -354,7 +416,8 @@ export class AgentLog {
   add(entry) {
     // Its own frozen row: neither the caller's object nor a reader's can change it (M62).
     this.rows.push(frozenCopy(entry));
-    if (this.rows.length > LOG_SIZE) this.rows.splice(0, this.rows.length - LOG_SIZE);
+    // A count of 0 or less removes nothing.
+    this.rows.splice(0, this.rows.length - LOG_SIZE);
   }
 
   /**
@@ -416,6 +479,11 @@ export function mcpClientName(name) {
  *   covered?: true | string }} AgentRequest  `always`: asks even under a grant, and its answer
  *   never makes one (decision 31 d); `covered`: a form a grant covers all the same, `true` for
  *   a harmless one, or the allowance that covers it (docs/specs/mcp-consequence.md K1, K5)
+ * @typedef {{ denials: number, mutedUntil: number, grant: number, session?: string,
+ *   allowed?: Set<string> }} ConnState  `grant`: when the connection's grant ends, 0 for none,
+ *   Infinity for the whole connection; `session`: its process's id, when no other connection
+ *   had it; `allowed`: the allowances `a` made under the grant in force, which end with it
+ *   (setGrant)
  * @typedef {{ conn: ConnId, until: number }} AgentGrant  one per connection, for every tool but
  *   ALWAYS_ASK (mcp-grants G1, G5)
  * @typedef {{ id: number, allow: true } | { id: number, allow: false,
@@ -454,11 +522,7 @@ export class AgentQueue {
   constructor() {
     /** @type {AgentRequest[]} */
     this.queue = [];
-    /** @type {Map<ConnId, { denials: number, mutedUntil: number, grant: number,
-     *   session?: string, allowed?: Set<string> }>} `grant`: when the connection's grant ends,
-     *   0 for none, Infinity for the whole connection; `session`: its process's id, when no
-     *   other connection had it; `allowed`: the allowances `a` made under the grant in force,
-     *   which end with it (setGrant) */
+    /** @type {Map<ConnId, ConnState>} */
     this.conns = new Map();
     /**
      * Grants of connections that closed, by session id, kept until `parkedUntil` for the same
@@ -482,8 +546,8 @@ export class AgentQueue {
     /** @type {{ denials: number, mutedUntil: number, grant: number, session?: string }} */
     const c = { denials: 0, mutedUntil: 0, grant: 0 };
     // A session held by an open connection is not this one's: a second claim gets nothing.
-    const live =
-      session !== undefined && [...this.conns.values()].some((o) => o.session === session);
+    // Read only with a session: the test below checks `session !== undefined` first.
+    const live = [...this.conns.values()].some((o) => o.session === session);
     if (this.sessions && session !== undefined && !live) {
       c.session = session;
       const parked = this.parked.get(session);
@@ -586,9 +650,8 @@ export class AgentQueue {
   answer(id, answer, now) {
     const request = this.queue.find((r) => r.id === id);
     if (!request) return { resolved: [] };
-    const c = /** @type {NonNullable<ReturnType<Map<ConnId, any>["get"]>>} */ (
-      this.conns.get(request.conn)
-    );
+    // A waiting request's connection is open: disconnecting one drops its requests.
+    const c = /** @type {ConnState} */ (this.conns.get(request.conn));
     this.#drop(id);
     if (answer.kind === "here") {
       c.denials = 0;
@@ -673,15 +736,15 @@ export class AgentQueue {
    * A grant for the whole of `conn`'s connection, made by the user's own action rather than an
    * answer: a task sent with `Enter` in Vimma's chat window (docs/specs/builtin-agent.md B18).
    * It lifts a mute, since the user just asked the agent to go on.
-   * @param {ConnId} conn @param {number} now
+   * @param {ConnId} conn
    * @returns {boolean} false for a connection that is not open
    */
-  grantConnection(conn, now) {
+  grantConnection(conn) {
     const c = this.conns.get(conn);
     if (!c) return false;
     setGrant(c, Infinity);
     c.denials = 0;
-    if (c.mutedUntil > now) c.mutedUntil = 0;
+    c.mutedUntil = 0;
     return true;
   }
 
@@ -699,10 +762,11 @@ export class AgentQueue {
 
   /**
    * End every grant (`:mcp revoke`, `ctrl+b shift+a`: decision 22, mcp-grants G4).
-   * @param {number} [now]  grants that ended before it are not counted
+   * @param {number} [now]  grants that ended before it are not counted; without it, every grant
+   *   is (0 is no grant, so it never counts)
    * @returns {number} how many there were
    */
-  revoke(now = -Infinity) {
+  revoke(now = 0) {
     let n = 0;
     for (const c of this.conns.values()) {
       if (c.grant > now) n++;

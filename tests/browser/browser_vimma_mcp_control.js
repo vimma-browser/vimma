@@ -82,7 +82,7 @@ async function setSwitches({ control = false, mcp = false }) {
 async function agentClient(name = "example-agent") {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
   const welcome = await c.handshake({ protocol: 2, role: "agent" });
-  Assert.equal(welcome.role, "agent", "an agent connection");
+  Assert.equal(welcome?.role, "agent", "an agent connection");
   await c.call("agent-hello", { client: { name }, via: "example" });
   return c;
 }
@@ -141,7 +141,8 @@ add_task(async function test_a_window_not_in_front_gets_attention_and_a_notifica
     Assert.ok(!lineOpen(), "the line does not open in a window that is not in front");
     await until(() => segment() === "◇ agent 1?", "it waits there");
     c.close();
-    await c.response(read);
+    // Closed while it waits: the request gets no reply, and take ends with null.
+    await c.take((m) => m.type === "response" && m.id === read);
     BrowserTestUtils.removeTab(tab);
   } finally {
     window.getAttention = original;
@@ -163,10 +164,10 @@ add_task(async function test_full_control_asks_only_while_mcp_is_on() {
   Services.prefs.setIntPref(ARMING, 100);
   await setSwitches({ control: true });
   const quiet = await fullHandshake();
-  Assert.equal((await quiet.reply).type, "welcome", "MCP off: a full connection is welcomed");
+  Assert.equal((await quiet.reply)?.type, "welcome", "MCP off: a full connection is welcomed");
   Assert.equal(AgentGate.waiting.length, 0, "without a question");
   const v1 = new Client(/** @type {number} */ (VimmaControl.port));
-  Assert.equal((await v1.handshake({ protocol: 1 })).type, "welcome", "v1 too");
+  Assert.equal((await v1.handshake({ protocol: 1 }))?.type, "welcome", "v1 too");
   v1.close();
 
   await setSwitches({ control: true, mcp: true });
@@ -204,7 +205,7 @@ add_task(async function test_full_control_asks_only_while_mcp_is_on() {
   Assert.ok(lineOpen(), "a and digits do nothing here");
   EventUtils.synthesizeKey("y");
   const welcome = await asked.reply;
-  Assert.equal(welcome.type, "welcome", "y lets that connection in");
+  Assert.equal(welcome?.type, "welcome", "y lets that connection in");
   Assert.equal((await asked.c.call("state")).ok, true, "and it works");
   asked.c.close();
 
@@ -218,8 +219,8 @@ add_task(async function test_full_control_asks_only_while_mcp_is_on() {
   );
   EventUtils.synthesizeKey("n");
   const no = await refused.reply;
-  Assert.equal(no.error?.code, "denied", "n refuses it");
-  Assert.equal(no.error?.reason, "user", "as the user's no");
+  Assert.equal(no?.error?.code, "denied", "n refuses it");
+  Assert.equal(no?.error?.reason, "user", "as the user's no");
   await until(() => refused.c.closed, "and closes it");
   Assert.equal(AgentGate.grants().length, 0, "nothing is remembered");
 
@@ -229,7 +230,7 @@ add_task(async function test_full_control_asks_only_while_mcp_is_on() {
   EventUtils.synthesizeKey("KEY_Escape");
   await new Promise((r) => setTimeout(r, 150));
   EventUtils.synthesizeKey("KEY_Escape");
-  Assert.equal((await again.reply).error?.code, "denied", "Esc refuses");
+  Assert.equal((await again.reply)?.error?.code, "denied", "Esc refuses");
   await setSwitches({});
 });
 
@@ -315,7 +316,7 @@ add_task(async function test_control_on_says_it_reaches_beyond_agent_while_mcp_i
   Assert.ok(
     (await question()).includes(
       'Turn on full control for 15 min? It reaches every workspace and tab, not only "\u2068agent\u2069", ' +
-        "and any local AI agent with a shell can use it. y/N",
+        "and any AI agent with a shell on this machine can use it. y/N",
     ),
     "MCP on: the question says what full control gives away",
   );

@@ -105,11 +105,11 @@ function ask(browser) {
 }
 
 add_task(async function test_the_agent_container_asks_for_nothing() {
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const tab = await tabIn(agent.userContextId);
   /** @type {string[]} */
   const shown = [];
-  const onShown = (/** @type {Event} */ e) => shown.push(/** @type {any} */ (e.target).id);
+  const onShown = (/** @type {Event} */ e) => shown.push(/** @type {Element} */ (e.target).id);
   PopupNotifications.panel.addEventListener("popupshowing", onShown);
   const got = await ask(tab.linkedBrowser);
   PopupNotifications.panel.removeEventListener("popupshowing", onShown);
@@ -171,7 +171,7 @@ add_task(async function test_another_workspace_still_asks() {
 });
 
 add_task(async function test_agent_tabs_open_no_popups() {
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const tab = await tabIn(agent.userContextId);
   Assert.ok(
     contextOf(tab.linkedBrowser).sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION,
@@ -245,7 +245,7 @@ add_task(async function test_site_permissions_are_per_workspace() {
       Services.perms.addFromPrincipal(principal, type, Services.perms.ALLOW_ACTION);
     }
   }
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const agentTab = await tabIn(agent.userContextId);
   const there = await ask(agentTab.linkedBrowser);
   Assert.equal(there.geo, "denied", "the default and work ALLOWs do not reach an agent tab");
@@ -273,7 +273,7 @@ add_task(async function test_a_page_from_a_service_worker_is_denied_too() {
       ["dom.serviceWorkers.testing.enabled", true],
     ],
   });
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const tab = await tabIn(agent.userContextId, `${DIR}file_vimma_agent_sw.html`);
   await TestUtils.waitForCondition(
     () => tab.linkedBrowser.contentTitle === "sw ready",
@@ -310,7 +310,7 @@ add_task(async function test_a_page_from_a_service_worker_is_denied_too() {
 // workspace changes (a sweep), an agent tab that loaded without the flag is reloaded, so the
 // flag applies to the page in it, not only to its next navigation.
 add_task(async function test_a_sweep_reloads_agent_tabs_that_loaded_unsandboxed() {
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const tab = await tabIn(agent.userContextId);
   const bc = contextOf(tab.linkedBrowser);
   bc.sandboxFlags &= ~SANDBOXED_AUXILIARY_NAVIGATION;
@@ -366,7 +366,7 @@ add_task(async function test_agent_pages_launch_no_app() {
   info.possibleApplicationHandlers.appendElement(web);
   handlerSvc.store(info);
   registerCleanupFunction(() => handlerSvc.remove(info));
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const agentTab = await tabIn(agent.userContextId);
   await SpecialPowers.spawn(agentTab.linkedBrowser, [], () => {
     content.document.notifyUserGestureActivation();

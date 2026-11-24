@@ -119,7 +119,10 @@
 
   & .vimma-grep-row {
     display: grid;
-    grid-template-columns: 2ch 3ch minmax(0, 26ch) minmax(0, 14ch) auto minmax(0, 1fr);
+    /* The tab title and host narrow in a narrow list, so the line keeps room for its match. */
+    grid-template-columns:
+      2ch 3ch minmax(0, min(26ch, 25%)) minmax(0, min(14ch, 16%))
+      auto minmax(0, 1fr);
     gap: 0.5ch;
     padding: 0.05rem 0.25rem;
     white-space: nowrap;
@@ -138,9 +141,32 @@
 
   & .vimma-grep-tab,
   & .vimma-grep-host,
-  & .vimma-grep-where {
+  & .vimma-grep-frame,
+  & .vimma-grep-text {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* The line takes the room the frame's host leaves; ui/grep.mjs fits it to that room. */
+  & .vimma-grep-where {
+    display: flex;
+    min-width: 0;
+  }
+
+  & .vimma-grep-frame {
+    flex: 0 1 auto;
+    max-width: 40%;
+  }
+
+  & .vimma-grep-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  & .vimma-grep-probe {
+    position: absolute;
+    visibility: hidden;
+    white-space: pre;
   }
 
   & .vimma-grep-win,

@@ -48,9 +48,41 @@ memory, Firefox 158.0, a keyless build of `main` as the nightly builds it):
 | Whole job                                   | 124 min | peak 42 GB used including the swap file                       |
 
 Without the 16 GB swap file both jobs create, the first measured build was killed after 38 min
-(run 38718105585, exit 143, while the Rust stage held all of memory). `timeout-minutes` is about
-1.5 times the measured job: 190 for the nightly, 180 for the release (which runs no
-mochitests). Each job's disk guard fails at once when less than 50 GB is free: the build needs
+(run 38718105585, exit 143, while the Rust stage held all of memory).
+
+**Memory and lost runners (#1033).** Even with the swap file, a successful build swaps 18 to
+20 GB in and out (mach's own summary: v0.1.20's release job, 81 min of build, 19.5 GB in, 19.4 GB
+out; nightly job 133731708351, 130 min, 17.6 GB each way), and three builds lost their hosted
+runner in the Build step 61 to 72 min in, during the libxul link: nightly run 43581331472 and
+both attempts of release run 44050265017 (v0.1.21), with no log left. So the Linux build step:
+
+- Builds with `surfer build --jobs 3`, which Surfer passes to `./mach build -j3`. mach would
+  pick 4 (one job per GiB of the runner's 15.6 GiB, capped at 4 CPUs), and Cargo takes its jobs
+  from make's jobserver, so the cap holds for the Rust stage too.
+- Runs `tools/ci/memory-watch.sh` in the background; the step's exit trap stops it and waits for
+  it. It logs `free -m` and `df -h /` each minute and adds a `Build memory` warning to the run
+  when less than 1 GB is available, more than half the swap is used, or the OOM killer killed
+  something (at most one every 5 min, an OOM kill at once, and 10 in all). At its start it walks
+  up its parent processes and gives the two whose executable is named `Runner.Worker` and
+  `Runner.Listener` an `oom_score_adj` of -999 with `sudo -n choom` (util-linux; hosted runners
+  have passwordless sudo), so an out-of-memory build loses a compiler, with a log, rather than
+  the runner. As it stops it gives them their old values back: every later step (the smoke
+  check, the mochitests, the package) is a child of the worker and inherits its value, and must
+  stay killable. If the runner is lost anyway, the step log and its warnings are lost with it; a
+  successful run's warnings show how close it came.
+
+`timeout-minutes` is 240 for the nightly and 230 for the release (which runs no mochitests),
+well over 1.5 times the 4-job measurements. The first 3-job build, manual nightly run
+44089137879 on 17 Nov 2026 (cold sccache), took 136 min in the Build step and 167 min for the
+whole job, so the nightly's margin is 73 min. The watch shielded both runner agents
+(`runner agent 2255 (Runner.Worker): oom_score_adj -999, was 0`, and the same for
+`Runner.Listener`), logged 137 minutes, and warned three times, all for low available memory:
+649 to 926 MB at minutes 28 to 39, the Rust stage. Swap use peaked at 10.2 GB and mach's summary
+says 14.7 GB in and 14.7 GB out (against 17.6 to 19.5 GB with 4 jobs); the OOM killer killed
+nothing. A 3-job release build has not been timed yet; once one has run, put its Build time
+here and check the release's margin.
+
+Each job's disk guard fails at once when less than 50 GB is free: the build needs
 about 26 GB and the swap file 16 GB. The free space is a property of the runner image, not a
 documented guarantee (GitHub documents 14 GB); if the guard fails, the image has shrunk, and
 removing preinstalled toolsets (`/usr/local/lib/android` alone is about 9 GB) is the first fix.

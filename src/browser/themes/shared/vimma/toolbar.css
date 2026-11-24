@@ -40,6 +40,13 @@
     anchor-name: --vimma-nav-bar;
   }
 
+  /* Under the tab line while it is drawn (tab-line behaviour 3). The toolbox is a flex box, and
+   * an absolutely positioned child of one takes the static position of a sole item, the box's
+   * top edge, whatever comes before it: without a `top`, the revealed bar covers the line. */
+  &[vimma-tabline] #nav-bar {
+    top: anchor(--vimma-tabline bottom);
+  }
+
   #PersonalToolbar {
     position: absolute;
     inset-inline: 0;
@@ -67,6 +74,19 @@
   &[vimma-toolbar-minimal] {
     #PersonalToolbar {
       visibility: collapse;
+    }
+
+    /* The address bar as a box of its own over the page, not a band across the window (issue
+     * #1446): the bar keeps its full width for the layout above, but its row is not painted and
+     * lets the pointer through to the page on both sides of the field. */
+    #nav-bar {
+      background: none !important;
+      border-color: transparent !important;
+      pointer-events: none;
+    }
+
+    #urlbar-container {
+      pointer-events: auto;
     }
 
     :is(

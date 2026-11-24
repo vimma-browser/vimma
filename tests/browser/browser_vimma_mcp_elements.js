@@ -82,7 +82,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -125,7 +125,7 @@ async function openAgentTab(url = FORM) {
   return tab;
 }
 
-/** The connections the running task opened. @type {any[]} */
+/** The connections the running task opened. @type {Client[]} */
 const clients = [];
 
 /** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
@@ -159,7 +159,7 @@ async function question() {
 
 /**
  * `agent-elements` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {GateAnswer | null} [answer] @param {object} [args]
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {GateAnswer | null} [answer] @param {object} [args]
  */
 async function elements(c, tab, answer = { kind: "once" }, args = {}) {
   const id = c.request("agent-elements", { tab: idOf(tab), ...args });
@@ -178,13 +178,18 @@ async function elements(c, tab, answer = { kind: "once" }, args = {}) {
 
 /**
  * `agent-keys` on `tab`, answered once.
- * @param {any} c @param {any} tab @param {string} keys
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {string} keys
  */
 async function keys(c, tab, keys) {
   const id = c.request("agent-keys", { tab: idOf(tab), keys });
   AgentGate.answer((await question()).id, { kind: "once" });
   return c.response(id);
 }
+
+/**
+ * A result with an element list: the list, and the labels it repeats of the last list of the site.
+ * @typedef {{ elements: string, repeated?: string[] }} ListResult
+ */
 
 /** The list's JSON objects, between the delimiters; an empty list has none. @param {string} list */
 const parsed = (list) =>
@@ -194,7 +199,10 @@ const parsed = (list) =>
     .filter((l) => l !== "")
     .map((l) => JSON.parse(l));
 
-/** @param {any[]} list @param {(e: any) => boolean} pick @param {string} what */
+/**
+ * @param {ListedElement[]} list @param {(e: ListedElement) => boolean} pick @param {string} what
+ * @returns {Partial<ListedElement>}
+ */
 function one(list, pick, what) {
   const found = list.filter(pick);
   Assert.equal(found.length, 1, `one ${what} is listed`);
@@ -446,7 +454,7 @@ addTidyTask(async function test_elements_under_a_grant_notice_log_and_rate() {
     if (!x.ok) busy = { i, x };
   }
   Assert.equal(busy?.i, 28, "the 31st list in a minute is refused");
-  Assert.equal(busy?.x.error.reason, "busy", "as busy");
+  Assert.equal(busy?.x.error?.reason, "busy", "as busy");
   Assert.equal(AgentGate.log[0].outcome, "busy", "and logged");
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
@@ -456,7 +464,9 @@ addTidyTask(async function test_elements_under_a_grant_notice_log_and_rate() {
 
 /**
  * `command` with `elements: true`, answered with `answer` (null: a grant runs it).
- * @param {any} c @param {string} command @param {object} args @param {GateAnswer | null} [answer]
+ * @template {string} C
+ * @param {Client} c @param {C} command @param {object} args
+ * @param {GateAnswer | null} [answer]
  */
 async function withList(c, command, args, answer = { kind: "once" }) {
   const id = c.request(command, { ...args, elements: true });
@@ -470,14 +480,16 @@ async function withList(c, command, args, answer = { kind: "once" }) {
     const v = validateMessage(r, { command });
     Assert.deepEqual(v.errors, [], `a valid ${command} result with a list`);
   }
-  return r;
+  // Each caller steps on a page that is ready, so the result has its list; one still loading
+  // fails the test where it reads `elements`.
+  return /** @type {ListedReply<C>} */ (r);
 }
 
 /**
  * That `list` keeps the M31 rules this file checks on vimma_elements' own; its items, or those
  * a model reads off it with `known`, the connection's last list of the site (agent-speed S4).
- * @param {string} list @param {string} what @param {any} [result]  the result with `list`
- * @param {Map<string, any>} [known]
+ * @param {string} list @param {string} what @param {ListResult} [result]  the result with `list`
+ * @param {Map<string, ListedElement>} [known]
  */
 function checkM31(list, what, result, known) {
   Assert.ok(
@@ -488,7 +500,10 @@ function checkM31(list, what, result, known) {
   for (const secret of SECRETS) {
     Assert.ok(!list.includes(secret), `${what}: the value ${secret} never reaches the agent`);
   }
-  const items = known ? readList(known, result) : parsed(list).filter((e) => "label" in e);
+  // A caller that passes `known` passes the result too.
+  const items = known
+    ? readList(known, /** @type {ListResult} */ (result))
+    : parsed(list).filter((e) => "label" in e);
   for (const name of ["password", "old", "code", "cardnumber", "expiry", "cvc", "card2", "pin"]) {
     const field = one(items, (e) => e.name === name, `${what}: ${name} field`);
     Assert.equal(field.sensitive, true, `${what}: ${name} is sensitive`);
@@ -520,7 +535,8 @@ addTidyTask(async function test_steps_return_the_element_list_vimma_elements_wou
     "the list is the page after the fill",
   );
   const after = await elements(c, tab, undefined, { full: true });
-  const byLabel = (/** @type {any} */ a, /** @type {any} */ b) => (a.label < b.label ? -1 : 1);
+  const byLabel = (/** @type {ListedElement} */ a, /** @type {ListedElement} */ b) =>
+    a.label < b.label ? -1 : 1;
   Assert.deepEqual(
     [...items].sort(byLabel),
     parsed(after.result.elements)
@@ -585,7 +601,10 @@ addTidyTask(async function test_a_steps_list_says_nothing_of_a_tab_that_left() {
 
   const tab = await openAgentTab();
   const t0 = Date.now();
-  const hash = await c.call("agent-open", { url: `${FORM}#plans`, tab: idOf(tab), elements: true });
+  // Asked with elements: a page that was listed has them, which the assertion checks.
+  const hash = /** @type {ListedReply<"agent-open">} */ (
+    await c.call("agent-open", { url: `${FORM}#plans`, tab: idOf(tab), elements: true })
+  );
   Assert.ok(
     hash.ok && hash.result.elements,
     `a same-document open is listed: ${hash.error?.message}`,
@@ -607,6 +626,10 @@ addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {
   Services.prefs.setIntPref(ASK_TIMEOUT, 200);
   const tab = await openAgentTab();
   const c = await agentClient();
+  /**
+   * @type {ControlReply<"agent-elements"> | ControlReply<"agent-activate">
+   *   | ControlReply<"agent-open">}
+   */
   let r = await elements(c, tab, { kind: "grant", minutes: 12 });
   const items = parsed(r.result.elements).filter((e) => "label" in e);
   const menu = one(items, (e) => e.text === "Menu", "script button");
@@ -629,7 +652,10 @@ addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {
     "naming the elements rate",
   );
   // Issue #592: a client naming no vimma-ctl version may predate retryAfter (decision 6).
-  Assert.ok(!("retryAfter" in r.error), "and no retryAfter to a client that names no version");
+  Assert.ok(
+    r.error && !("retryAfter" in r.error),
+    "and no retryAfter to a client that names no version",
+  );
   const title = await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.document.title);
   Assert.equal(title, "Form agent fixture", "and nothing was clicked");
   Assert.equal(AgentGate.log[0].outcome, "busy", "the refusal is in :mcp log");
@@ -645,7 +671,7 @@ addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {
  * The list a model reads off a compact list (agent-speed S4): the lines shown, and for each
  * repeated label the line an earlier list gave it. `known` maps labels to the lines of the
  * connection's last list of the site, and is replaced by this list's.
- * @param {Map<string, any>} known @param {any} result
+ * @param {Map<string, ListedElement>} known @param {ListResult} result
  */
 function readList(known, result) {
   const items = parsed(result.elements).filter((e) => "label" in e);
@@ -700,7 +726,7 @@ addTidyTask(async function test_repeated_list_leaves_out_unchanged_lines() {
     "only the changed field's line is written",
   );
   Assert.equal(shown[0].value, "Changed bio", "with its value now");
-  Assert.equal(changed.result.repeated.length, all.length - 1, "the rest repeated");
+  Assert.equal(changed.result.repeated?.length, all.length - 1, "the rest repeated");
   // full: every line.
   const full = await c.call("agent-elements", { tab: idOf(tab), full: true });
   Assert.ok(full.ok, `full lists: ${JSON.stringify(full.error)}`);
@@ -744,8 +770,9 @@ addTidyTask(async function test_compact_list_keeps_delimiters_and_sensitive_rule
   for (const secret of [...SECRETS, "another-secret", "999"]) {
     Assert.ok(!text.includes(secret), `the value ${secret} never reaches the agent`);
   }
-  Assert.ok(r.result.repeated.length > 0, "the list is compact");
-  for (const label of r.result.repeated) {
+  const repeated = r.result.repeated ?? [];
+  Assert.ok(repeated.length > 0, "the list is compact");
+  for (const label of repeated) {
     Assert.ok(/^[asdfghjkl]{1,3}$/.test(label), `${label} is a label only`);
   }
   const lines = readList(known, r.result);
@@ -767,7 +794,7 @@ addTidyTask(async function test_compact_list_keeps_delimiters_and_sensitive_rule
       step.result.elements.endsWith("\n</untrusted-web-content>"),
     "a step's compact list is inside the delimiters",
   );
-  Assert.ok(step.result.repeated.length > 0, "and compact too");
+  Assert.ok((step.result.repeated ?? []).length > 0, "and compact too");
   c.close();
   await mcp(false);
 });
@@ -814,12 +841,15 @@ addTidyTask(async function test_elements_query_and_kinds() {
   const gone = await c.call("agent-activate", { tab: idOf(tab), label: signup[0].label });
   Assert.ok(!gone.ok, `a label the newest list did not give is refused: ${JSON.stringify(gone)}`);
   Assert.equal(AgentGate.waiting.length, 0, "unasked");
-  const open = await c.call("agent-open", {
-    url: FORM,
-    tab: idOf(tab),
-    elements: true,
-    kinds: ["field"],
-  });
+  // Asked with elements on a ready page: it is listed.
+  const open = /** @type {ListedReply<"agent-open">} */ (
+    await c.call("agent-open", {
+      url: FORM,
+      tab: idOf(tab),
+      elements: true,
+      kinds: ["field"],
+    })
+  );
   Assert.ok(open.ok, `an open with kinds lists: ${JSON.stringify(open.error)}`);
   const fields = [
     ...parsed(open.result.elements).filter((e) => "label" in e),
@@ -832,6 +862,49 @@ addTidyTask(async function test_elements_query_and_kinds() {
       .every((e) => e.kind === "field"),
     "and only fields",
   );
+  c.close();
+  await mcp(false);
+});
+
+// agent-speed S4, issue #1328: a filtered list of a site listed before leaves out the matching
+// lines that are unchanged and names their labels, as an unfiltered list does, so a query whose
+// matches are all unchanged never reads as "nothing matches"; a query that matches nothing gives
+// exactly the empty list with no labels, which the renderers then say matched nothing.
+addTidyTask(async function test_filtered_list_names_unchanged_matches() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const known = new Map();
+  const all = readList(known, (await elements(c, tab, { kind: "grant", minutes: 12 })).result);
+  const menu = one(all, (e) => e.text === "Menu", "script button");
+  const signup = one(all, (e) => e.text === "Sign up", "form button");
+  for (const { query, element } of [
+    { query: "menu", element: menu },
+    { query: "sign up", element: signup },
+  ]) {
+    // An unfiltered list first, so the site's last list holds every line again.
+    await elements(c, tab, null);
+    const r = await elements(c, tab, null, { query });
+    Assert.ok(r.ok, `${query} lists: ${JSON.stringify(r.error)}`);
+    Assert.deepEqual(
+      parsed(r.result.elements).filter((e) => "label" in e),
+      [],
+      `the query ${query} writes no unchanged line again`,
+    );
+    Assert.deepEqual(
+      r.result.repeated,
+      [String(element.label)],
+      "and names its one match as unchanged",
+    );
+  }
+  const none = await elements(c, tab, null, { query: "no such words" });
+  Assert.ok(none.ok, `a query matching nothing lists: ${JSON.stringify(none.error)}`);
+  Assert.equal(
+    none.result.elements,
+    "<untrusted-web-content>\n\n</untrusted-web-content>",
+    "a query matching nothing gives the empty list",
+  );
+  Assert.ok(!("repeated" in none.result), "with no labels left out");
   c.close();
   await mcp(false);
 });
@@ -976,7 +1049,7 @@ addTidyTask(async function test_a_foreign_input_in_a_label_inspects_as_its_contr
 /**
  * A form whose submit button is `#buy`, and a label for it around `kind`'s content: a summary
  * in a foreign-namespace `label`, or a link.
- * @param {any} browser @param {string} kind
+ * @param {MozBrowser} browser @param {string} kind
  */
 async function labelForBuy(browser, kind) {
   await SpecialPowers.spawn(browser, [kind], (kind) => {
@@ -1161,14 +1234,14 @@ const REFERENCE_TARGET_PREF = "dom.shadowdom.referenceTarget.enabled";
 /**
  * Adds a form with a submit button `#buy` inside a shadow root of a host `#shop`, the root's
  * reference target that button, and a label for the host; `mode` is the root's.
- * @param {any} browser @param {"open" | "closed"} mode
+ * @param {MozBrowser} browser @param {"open" | "closed"} mode
  */
 async function labelForShadowBuy(browser, mode) {
   await SpecialPowers.spawn(browser, [mode], (mode) => {
     const doc = content.document;
     const host = doc.createElement("span");
     host.id = "shop";
-    const root = /** @type {any} */ (host.attachShadow({ mode }));
+    const root = host.attachShadow({ mode });
     root.innerHTML =
       '<form action="https://example.com/collect"><input name="note" value="kept">' +
       '<button id="buy">Buy</button></form>';
@@ -1190,9 +1263,9 @@ addTidyTask(async function test_a_label_for_a_reference_target_submit_asks() {
   const items = parsed(r.result.elements).filter((e) => "label" in e);
   const target = one(items, (e) => e.text === "Continue", "element in the label");
   const id = c.request("agent-activate", { tab: idOf(tab), label: target.label });
-  /** @type {any} */
-  let reply = null;
-  const replied = c.response(id).then((/** @type {any} */ v) => (reply = v));
+  // Set when the call ends, which the type checker does not follow.
+  let reply = /** @type {ControlResponse | null} */ (null);
+  const replied = c.response(id).then((/** @type {ControlResponse} */ v) => (reply = v));
   await until(() => AgentGate.waiting.length > 0 || reply, "a question waits or the call ends");
   Assert.equal(reply, null, "the click did not run unasked under the grant (M28)");
   const q = await question();
@@ -1225,7 +1298,7 @@ addTidyTask(async function test_label_forwarding_follows_reference_targets() {
     const hostFor = (target, mode = "open") => {
       const host = doc.createElement("span");
       host.id = `host${++n}`;
-      const root = /** @type {any} */ (host.attachShadow({ mode }));
+      const root = host.attachShadow({ mode });
       root.innerHTML = FORM;
       root.referenceTarget = target;
       return host;
@@ -1253,7 +1326,7 @@ addTidyTask(async function test_label_forwarding_follows_reference_targets() {
     // A shadow root that forwards to another host, whose root forwards to its submit button.
     const outer = doc.createElement("span");
     outer.id = "outer";
-    const outerRoot = /** @type {any} */ (outer.attachShadow({ mode: "closed" }));
+    const outerRoot = outer.attachShadow({ mode: "closed" });
     const inner = hostFor("buy", "closed");
     inner.id = "inner";
     outerRoot.append(inner);
@@ -1292,14 +1365,14 @@ addTidyTask(async function test_label_forwarding_follows_reference_targets() {
  * Adds a shadow host `#shop` whose shadow root (of `mode`) holds a form `#order` that sends a
  * field to https://example.com/collect and forwards to it, and a submit button `Buy` outside the
  * root whose `form` attribute names the host.
- * @param {any} browser @param {"open" | "closed"} mode
+ * @param {MozBrowser} browser @param {"open" | "closed"} mode
  */
 async function buttonForShadowForm(browser, mode) {
   await SpecialPowers.spawn(browser, [mode], (mode) => {
     const doc = content.document;
     const host = doc.createElement("span");
     host.id = "shop";
-    const root = /** @type {any} */ (host.attachShadow({ mode }));
+    const root = host.attachShadow({ mode });
     root.innerHTML =
       '<form id="order" action="https://example.com/collect"><input name="note" value="kept">' +
       "</form>";
@@ -1321,9 +1394,9 @@ addTidyTask(async function test_a_submit_for_a_reference_target_form_asks() {
   const items = parsed(r.result.elements).filter((e) => "label" in e);
   const target = one(items, (e) => e.text === "Buy", "the button for the host's form");
   const id = c.request("agent-activate", { tab: idOf(tab), label: target.label });
-  /** @type {any} */
-  let reply = null;
-  const replied = c.response(id).then((/** @type {any} */ v) => (reply = v));
+  // Set when the call ends, which the type checker does not follow.
+  let reply = /** @type {ControlResponse | null} */ (null);
+  const replied = c.response(id).then((/** @type {ControlResponse} */ v) => (reply = v));
   await until(() => AgentGate.waiting.length > 0 || reply, "a question waits or the call ends");
   Assert.equal(reply?.error, undefined, "the click is not refused as gone");
   Assert.equal(reply, null, "the click did not run unasked under the grant (M28)");
@@ -1357,7 +1430,7 @@ addTidyTask(async function test_form_owners_follow_reference_targets() {
     const hostFor = (target, mode = "open") => {
       const host = doc.createElement("span");
       host.id = `owner${++n}`;
-      const root = /** @type {any} */ (host.attachShadow({ mode }));
+      const root = host.attachShadow({ mode });
       root.innerHTML = FORM;
       root.referenceTarget = target;
       return host;
@@ -1392,7 +1465,7 @@ addTidyTask(async function test_form_owners_follow_reference_targets() {
     // A shadow root that forwards to another host, whose root forwards to its form.
     const outer = doc.createElement("span");
     outer.id = "outer-owner";
-    const outerRoot = /** @type {any} */ (outer.attachShadow({ mode: "closed" }));
+    const outerRoot = outer.attachShadow({ mode: "closed" });
     const inner = hostFor("order", "closed");
     outerRoot.append(inner);
     outerRoot.referenceTarget = inner.id;

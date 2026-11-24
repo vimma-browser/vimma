@@ -37,6 +37,13 @@ const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0
  * @property {() => nsISelectionController | null} selCon  the frame's selection controller
  */
 
+/**
+ * A live grep message's data as the parent sends it (`Vimma:Grep`, `Vimma:GrepPreview`,
+ * `Vimma:GrepJump`; `Vimma:GrepEnd` carries none).
+ * @typedef {Parameters<GrepPage["search"]>[0] | Parameters<GrepPage["preview"]>[0]
+ *   | Parameters<GrepPage["jump"]>[0] | Record<string, never>} GrepAsk
+ */
+
 export class GrepPage {
   /** @type {JSWindowActorChild} */
   #actor;

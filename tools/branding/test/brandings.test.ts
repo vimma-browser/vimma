@@ -4,7 +4,8 @@
 // copy, and every upstream term that says Firefox or Mozilla must be decided by the mapping, so a
 // Firefox bump surfaces a new name instead of shipping it. The upstream copy needs engine/: the
 // e2e workflow reads it before `npm run import` (BRANDINGS_REQUIRE_UPSTREAM=1 forbids the skip
-// there); the plain CI job has no engine/ and skips those checks.
+// there; in Beta mode it regenerates the file from the Beta's first, #858); the plain CI job has no
+// engine/ and skips those checks.
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { GENERATED, KEEP, RENAME, generate, readUpstream, undecidedTerms } from "../brandings.ts";

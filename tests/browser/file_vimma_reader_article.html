@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Vimma reader article</title>
+  </head>
+  <body>
+    <article>
+      <h1>Vimma reader article</h1>
+      <p>
+        Reader View shows this article without the page around it. The status bar and the yank key
+        should name this page's own address, as Firefox's address bar does, never the about:reader
+        address that wraps it. This paragraph is long enough for Readability to treat the page as an
+        article rather than as a fragment of navigation or boilerplate.
+      </p>
+      <p>
+        A second paragraph keeps the article above Readability's length threshold, so the reader
+        renders the text instead of its "failed to load" page. It says nothing else of note, and it
+        repeats itself on purpose: the content is not what this test checks, only the address that
+        Vimma shows and copies while the reader displays it.
+      </p>
+      <p>
+        A third paragraph, for good measure, with a few more sentences of plain text. Reader View
+        needs several hundred characters of prose in one container before it calls a page readable,
+        and these three paragraphs give it well over that.
+      </p>
+    </article>
+  </body>
+</html>

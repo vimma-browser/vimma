@@ -66,7 +66,7 @@ let writes = 0;
  */
 async function useConfig(text) {
   writes++;
-  await IOUtils.writeUTF8(file, `schema = 2\n${text}\n${"#".repeat(writes)}\n`);
+  await IOUtils.writeUTF8(file, `${text}\n${"#".repeat(writes)}\n`);
   await ConfigHost.reload();
   Assert.deepEqual(ConfigHost.errors, [], "config.toml applies");
 }
@@ -310,8 +310,12 @@ add_task(async function enable_gives_one_back_and_a_list_replaces_the_default() 
     await enableAndListOnMacos();
     return;
   }
-  // ctrl+j unbound and not on the list: Firefox's again, as the list replaces "all".
-  await useConfig(`[keys]\nweb_search = []\n[firefox]\ndisable = ["ctrl+u"]\nenable = []`);
+  // ctrl+j unbound and not on the list: Firefox's again, as the list replaces "all". Unbound
+  // means in every mode: insert mode's suggestion key too (issue #1261).
+  await useConfig(
+    `[keys]\nweb_search = []\n[unbind]\ninsert = ["<C-j>"]\n` +
+      `[firefox]\ndisable = ["ctrl+u"]\nenable = []`,
+  );
   Assert.ok(!byId("key_search2").hasAttribute("disabled"), "all is undone");
   Assert.equal(byId("key_find").getAttribute("disabled"), "true", "bound");
   Assert.equal(
@@ -522,7 +526,7 @@ add_task(async function enabling_a_chord_the_user_binds_is_an_error() {
   writes++;
   await IOUtils.writeUTF8(
     file,
-    `schema = 2\n[keys]\nnew_tab = ["ctrl+t"]\n[firefox]\nenable = ["ctrl+t"]\n${"#".repeat(writes)}\n`,
+    `[keys]\nnew_tab = ["ctrl+t"]\n[firefox]\nenable = ["ctrl+t"]\n${"#".repeat(writes)}\n`,
   );
   await ConfigHost.reload();
   Assert.deepEqual(

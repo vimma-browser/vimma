@@ -63,7 +63,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -96,7 +96,7 @@ async function openAgentTab(url = FILL) {
   return tab;
 }
 
-/** The connections the running task opened. @type {any[]} */
+/** The connections the running task opened. @type {Client[]} */
 const clients = [];
 
 /** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
@@ -127,7 +127,7 @@ async function question() {
   return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
-/** The list's elements by what they say. @param {any} c @param {any} tab */
+/** The list's elements by what they say. @param {Client} c @param {MozTabbrowserTab} tab */
 async function labels(c, tab) {
   // Every line, also those as in the last list of the site (agent-speed S4): the map needs all.
   const id = c.request("agent-elements", { tab: idOf(tab), full: true });
@@ -146,8 +146,8 @@ async function labels(c, tab) {
 
 /**
  * `agent-fill` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {{ label: string, value: string | boolean }[]} fields
- * @param {{ answer?: GateAnswer | null, submit?: true | string, asked?: (q: any) => any }} [o]
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {{ label: string, value: string | boolean }[]} fields
+ * @param {{ answer?: GateAnswer | null, submit?: true | string, asked?: (q: AskedQuestion) => unknown }} [o]
  */
 async function fill(c, tab, fields, { answer = { kind: "once" }, submit, asked } = {}) {
   const id = c.request("agent-fill", {
@@ -177,7 +177,7 @@ async function fill(c, tab, fields, { answer = { kind: "once" }, submit, asked }
  */
 function requestStatus(prefix) {
   return new Promise((resolve) => {
-    const observe = (/** @type {any} */ subject) => {
+    const observe = (/** @type {nsISupports} */ subject) => {
       const channel = subject.QueryInterface(Ci.nsIHttpChannel);
       if (!channel.URI.spec.startsWith(prefix)) return;
       Services.obs.removeObserver(observe, "http-on-modify-request");
@@ -187,12 +187,16 @@ function requestStatus(prefix) {
   });
 }
 
-/** What the page's fields hold, and the events they got. @param {any} tab */
+/** What the page's fields hold, and the events they got. @param {MozTabbrowserTab} tab */
 const page = (tab) =>
   SpecialPowers.spawn(tab.linkedBrowser, [], () => {
     const d = content.document;
-    const v = (/** @type {string} */ id) => /** @type {any} */ (d.getElementById(id)).value;
-    const on = (/** @type {string} */ id) => /** @type {any} */ (d.getElementById(id)).checked;
+    const v = (/** @type {string} */ id) =>
+      /** @type {HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement} */ (
+        d.getElementById(id)
+      ).value;
+    const on = (/** @type {string} */ id) =>
+      /** @type {HTMLInputElement} */ (d.getElementById(id)).checked;
     return {
       email: v("email"),
       name: v("name"),
@@ -207,7 +211,10 @@ const page = (tab) =>
       otp: v("otp"),
       cc: v("cc"),
       cardno: v("cardno"),
-      files: /** @type {any} */ (d.getElementById("upload")).files.length,
+      // A file field always has its list.
+      files: /** @type {FileList} */ (
+        /** @type {HTMLInputElement} */ (d.getElementById("upload")).files
+      ).length,
       stubborn: v("stubborn"),
       q: v("q"),
       events: JSON.parse(JSON.stringify(content.wrappedJSObject.events)),
@@ -231,8 +238,8 @@ addTidyTask(async function test_fill_sets_values_and_fires_input_and_change() {
     { label: by.Age, value: "36" },
     { label: by.Day, value: "1815-12-10" },
   ];
-  /** @type {any} */
-  let what = null;
+  // Set by `asked`; a fill that never asks leaves it empty, and the checks below fail.
+  let what = /** @type {AskedWhat} */ ({});
   const r = await fill(c, tab, fields, { asked: (q) => (what = q.what) });
   Assert.ok(r.ok, `the fill ran: ${JSON.stringify(r.error)}`);
   Assert.equal(r.result.filled, 8, "every field was filled");
@@ -240,7 +247,7 @@ addTidyTask(async function test_fill_sets_values_and_fires_input_and_change() {
   Assert.equal(r.result.navigated, false, "the page stayed");
   Assert.equal(r.result.url, FILL, "on the form");
   Assert.deepEqual(
-    what.fields.slice(0, 2),
+    /** @type {unknown[]} */ (what.fields).slice(0, 2),
     [
       { label: by.Email, name: "Email", value: "ada@example.com" },
       { label: by.Name, name: "Name", value: "Ada Lovelace" },
@@ -302,7 +309,7 @@ addTidyTask(async function test_fill_refuses_password_card_otp_and_file_fields()
   const tab = await openAgentTab();
   const c = await agentClient();
   const by = await labels(c, tab);
-  for (const [field, value, message] of [
+  for (const [field, value, message] of /** @type {[string, string | boolean, string][]} */ ([
     [by.Password, "hunter2", `field "${by.Password}" is a password field; Vimma never fills it`],
     [by.Code, "123456", `field "${by.Code}" is a one-time-code field; Vimma never fills it`],
     [by.Card, "4111111111111111", `field "${by.Card}" is a payment card field`],
@@ -319,7 +326,7 @@ addTidyTask(async function test_fill_refuses_password_card_otp_and_file_fields()
     [by.Country, "Norway", `select "${by.Country}" has no option with the value or text "Norway"`],
     [by.Day, "tomorrow", `field "${by.Day}" does not take "tomorrow" as a date`],
     [by.Age, "many", `field "${by.Age}" does not take "many" as a number`],
-  ]) {
+  ])) {
     Assert.ok(field, `the list has ${message}`);
     // A refused field among good ones refuses the whole call.
     const r = await c.call("agent-fill", {
@@ -348,11 +355,11 @@ addTidyTask(async function test_fill_refuses_password_card_otp_and_file_fields()
 addTidyTask(async function test_fill_stops_when_a_field_turns_sensitive() {
   await mcp(true);
   const c = await agentClient();
-  for (const [type, attr] of [
+  for (const [type, attr] of /** @type {[string, string | null][]} */ ([
     ["password", null],
     ["text", "cc-number"],
     ["file", null],
-  ]) {
+  ])) {
     // A fresh page each time: a field that was ever a password field stays sensitive.
     const tab = await openAgentTab();
     const by = await labels(c, tab);
@@ -367,7 +374,9 @@ addTidyTask(async function test_fill_stops_when_a_field_turns_sensitive() {
         // Between the question and the answer the page turns the email field into a secret.
         asked: () =>
           SpecialPowers.spawn(tab.linkedBrowser, [type, attr], (t, a) => {
-            const email = /** @type {any} */ (content.document.getElementById("email"));
+            const email = /** @type {HTMLInputElement} */ (
+              content.document.getElementById("email")
+            );
             email.type = t;
             if (a) email.setAttribute("autocomplete", a);
           }),
@@ -380,9 +389,11 @@ addTidyTask(async function test_fill_stops_when_a_field_turns_sensitive() {
       `it says so: ${r.error?.message}`,
     );
     const p = await SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
-      name: /** @type {any} */ (content.document.getElementById("name")).value,
-      email: /** @type {any} */ (content.document.getElementById("email")).value,
-      files: /** @type {any} */ (content.document.getElementById("email")).files?.length ?? 0,
+      name: /** @type {HTMLInputElement} */ (content.document.getElementById("name")).value,
+      email: /** @type {HTMLInputElement} */ (content.document.getElementById("email")).value,
+      files:
+        /** @type {HTMLInputElement} */ (content.document.getElementById("email")).files?.length ??
+        0,
     }));
     Assert.equal(p.name, "Ada", "the field before it was filled");
     Assert.equal(p.email, "", "the field that turned secret was not");
@@ -428,8 +439,8 @@ addTidyTask(async function test_fill_submit_asks_under_a_grant() {
     "with a notice naming the page",
   );
   Assert.equal(AgentGate.log[0].outcome, "grant", "and a row in :mcp log (M32)");
-  /** @type {any} */
-  let what = null;
+  // Set by `asked`; a fill that never asks leaves it empty, and the checks below fail.
+  let what = /** @type {AskedWhat} */ ({});
   r = await fill(c, tab, [{ label: by.Query, value: "cats" }], {
     submit: true,
     answer: { kind: "grant", minutes: 60 },
@@ -460,7 +471,11 @@ addTidyTask(async function test_fill_submit_asks_under_a_grant() {
     submit: again.Search,
     asked: (q) => (what = q.what),
   });
-  Assert.equal(what.submit?.host, "example.com", "asked as a submission");
+  Assert.equal(
+    /** @type {{ host?: string } | undefined} */ (what.submit)?.host,
+    "example.com",
+    "asked as a submission",
+  );
   Assert.equal(r.result?.url, `${PAGE}?q=dogs`, "sent through its button");
   // A label that is no submit button is refused before anything is asked.
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, FILL);
@@ -534,7 +549,7 @@ addTidyTask(async function test_a_skipped_submit_is_not_sent_and_allows_nothing_
 /**
  * Names the page function Vimma's child calls just before it checks an agent's form
  * submission in `tab`'s process (VimmaChild._beforeSubmitCheckForTests), or null for none.
- * @param {any} tab @param {string | null} name
+ * @param {MozTabbrowserTab} tab @param {string | null} name
  */
 const beforeSubmitCheck = (tab, name) =>
   SpecialPowers.spawn(tab.linkedBrowser, [name], (n) => {
@@ -628,9 +643,9 @@ addTidyTask(async function test_selects_ranges_and_a_submit_button_of_another_fo
   let r = await fill(c, tab, [{ label: by.Tags, value: "Beta" }]);
   Assert.ok(r.ok, "a multiple select is filled");
   const picked = await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    [.../** @type {any} */ (content.document.getElementById("tags")).selectedOptions].map(
-      (o) => o.value,
-    ),
+    [
+      .../** @type {HTMLSelectElement} */ (content.document.getElementById("tags")).selectedOptions,
+    ].map((o) => o.value),
   );
   Assert.deepEqual(picked, ["b"], "with that option alone, as the question showed");
   for (const [field, value, message] of [
@@ -671,7 +686,7 @@ addTidyTask(async function test_fill_reports_a_dialog_and_stops() {
   ]);
   Assert.ok(r.ok, "the fill ran");
   Assert.equal(r.result.dialog?.type, "alert", "the result names the dialog");
-  Assert.ok(r.result.dialog.text.includes("Saved"), "with its text");
+  Assert.ok(r.result.dialog?.text.includes("Saved"), "with its text");
   Assert.equal(r.result.filled, 1, "the fields after it were not filled");
   c.close();
   BrowserTestUtils.removeTab(tab);
@@ -686,9 +701,8 @@ addTidyTask(async function test_fill_in_use_while_the_user_types() {
   ww().switchTo({ id: agent().id });
   await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
   await focusContent(tab.linkedBrowser);
-  await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    /** @type {HTMLElement} */ (content.document.getElementById("q")).focus(),
-  );
+  // The user's own click: a field the page focuses by itself is not theirs (#1325).
+  await BrowserTestUtils.synthesizeMouseAtCenter("#q", {}, tab.linkedBrowser);
   await until(() => VimmaHost.status(window).mode === "insert", "the user is in insert mode");
   const r = await c.call("agent-fill", {
     tab: idOf(tab),

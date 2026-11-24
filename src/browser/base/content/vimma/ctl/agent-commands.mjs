@@ -18,6 +18,7 @@
 import {
   ACT_RATE,
   AGENT_TOOLS,
+  BOOKMARKLET_RATE,
   CallRate,
   CONSOLE_RATE,
   ELEMENTS_RATE,
@@ -46,8 +47,16 @@ import {
   parseAgentRequest,
 } from "../core/control.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
+import { AGENTS_OFF, bookmarkletDecision } from "../core/bookmarks.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { AgentUi } from "../host/agent-ui.mjs";
+import {
+  bookmarkletPage,
+  bookmarkletsNamed,
+  bookmarkletsSetting,
+  fetchBookmark,
+  runBookmarklet,
+} from "../host/bookmark-ops.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
@@ -93,6 +102,7 @@ import { LOAD_TIMEOUT_MS, docOf, notLoading, raisePriority, within } from "./age
 export { AgentError };
 
 /** @import { ConnId, LogOutcome } from "../core/agent.mjs" */
+/** @import { GateWhat } from "../host/AgentGate.sys.mjs" */
 /** @import { AgentArgs, AgentCommand } from "../core/control.mjs" */
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
 /** @import { AgentWorkspace, Tab, Win } from "./agent-tabs.mjs" */
@@ -120,6 +130,15 @@ const opens = new OpenRate();
 const keyCalls = new CallRate(KEYS_RATE);
 /** Each connection's `agent-show`: at most SHOW_RATE a minute, counted when asked (D7). */
 const showCalls = new CallRate(SHOW_RATE);
+/** Why `agent-bookmarklet` refuses a title that names no bookmarklet, or several (B16). */
+const NOT_ONE_BOOKMARKLET =
+  "no single bookmarklet has that title: check it is one you saved, and that no other " +
+  "bookmarklet shares it";
+/**
+ * Each connection's `agent-bookmarklet`: at most BOOKMARKLET_RATE a minute, counted before the
+ * bookmark is looked up (bookmarklets B16).
+ */
+const bookmarkletCalls = new CallRate(BOOKMARKLET_RATE);
 /** Each connection's `agent-elements`: at most ELEMENTS_RATE a minute, counted when asked (F26). */
 const elementCalls = new CallRate(ELEMENTS_RATE);
 /**
@@ -191,7 +210,7 @@ function rateDenied(rate, conn, calls) {
  * With `until`, the question is withdrawn then (a step of a call that must end by then);
  * `always`: asked even under a grant, and never granted (mcp-drive D4); `covered`: a form the
  * grant runs all the same (docs/specs/mcp-consequence.md K1, K5).
- * @param {ConnId} conn @param {string} command @param {object} what
+ * @param {ConnId} conn @param {string} command @param {GateWhat} what
  * @param {AgentConn} state @param {number | undefined} rid @param {number} [until]
  * @param {boolean} [always] @param {true | string} [covered]
  */
@@ -266,7 +285,7 @@ async function pageElements(conn, tab, still, { query, kinds, full = false } = {
  * Takes a slot of the connection's `agent-elements` rate for a step asked with `elements`
  * (issue #584; mcp-forms F26): counted when asked, as a list of its own, so returning the list
  * with a step is no way past the rate. Refused as `busy` before anything else of the step.
- * @param {ConnId} conn @param {string} tool @param {object} what
+ * @param {ConnId} conn @param {string} tool @param {GateWhat} what
  */
 function takeListSlot(conn, tool, what) {
   if (elementCalls.take(conn, Date.now())) return;
@@ -282,7 +301,7 @@ function takeListSlot(conn, tool, what) {
  * while it was listed), `error` (the load ended on Firefox's error page, named in `loadError`;
  * issue #643) or `failed`. A tab that left the agent workspace or closed meanwhile is a
  * `failed` refusal that says nothing of its page, noted in `:mcp log` (M23).
- * @param {ConnId} conn @param {string} tool @param {object} what  the step's, for the log
+ * @param {ConnId} conn @param {string} tool @param {GateWhat} what  the step's, for the log
  * @param {AgentWorkspace} agent @param {Win} win @param {Tab} tab
  * @param {() => Promise<boolean>} ready @param {ListOptions} filters  the step's `query` and `kinds`
  * @returns {Promise<{ url: string, title: string }
@@ -821,6 +840,74 @@ const COMMANDS = {
   },
 
   /**
+   * One of the user's bookmarklets, named by its exact title, run in an agent tab's page
+   * (docs/specs/bookmarklets.md B12-B16; security.md M63). Only at `[bookmarks] bookmarklets =
+   * "agent"`, refused before anything else below it (B13). The agent sends a title, never
+   * script: the URL that runs is the stored bookmark's, read again after the yes (B15). Always
+   * asked, never under a grant (B14). The result says only that it ran (B16).
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-bookmarklet"]} args
+   * @param {number | undefined} rid
+   */
+  async "agent-bookmarklet"(conn, state, { tab: id, name }, rid) {
+    if (bookmarkletsSetting() !== "agent") throw new AgentError("failed", AGENTS_OFF);
+    const agent = agentWorkspace();
+    const asked = findAgentTab(agent, id, conn);
+    const base = { ...describeTab(asked.tab), index: asked.index };
+    /**
+     * Logs a call that ended before or after the question (M23), and returns its error.
+     * @param {LogOutcome} outcome @param {unknown} error @param {GateWhat} [what]
+     */
+    const refuse = (outcome, error, what = base) => {
+      AgentGate.note(conn, "vimma_bookmarklet", what, outcome);
+      return error;
+    };
+    // Counted before the bookmark is looked up, so titles cannot be probed quickly (B16).
+    if (!bookmarkletCalls.take(conn, Date.now())) {
+      throw refuse("busy", rateDenied(bookmarkletCalls, conn, "vimma_bookmarklet calls"));
+    }
+    // One refusal for none and for several, so the agent learns no more than whether exactly
+    // one bookmarklet has the title, at the rate above (B16).
+    const named = await bookmarkletsNamed(name);
+    const bookmark = named.length === 1 ? named[0] : undefined;
+    if (!bookmark) throw refuse("failed", new AgentError("failed", NOT_ONE_BOOKMARKLET));
+    if (!bookmarkletPage(asked.tab.linkedBrowser)) {
+      throw refuse("failed", new AgentError("failed", "bookmarklets run only on web pages"));
+    }
+    if (inUse(asked.tab.linkedBrowser)) throw refuse("in-use", denied("in-use"));
+    const what = { ...base, bookmarklet: bookmark.path };
+    // AgentQueue asks it every time (ALWAYS_ASK); always is said here too (B14).
+    await ask(conn, "agent-bookmarklet", what, state, rid, undefined, true);
+    // The bookmark as stored now: a change to it while the question waited runs nothing (B15).
+    const stored = await fetchBookmark(bookmark.guid);
+    if (!stored || stored.url !== bookmark.url || stored.title !== bookmark.title) {
+      throw refuse("changed", denied("changed"), what);
+    }
+    // Then the tab and its page as asked (M8), right before the run, with no await between.
+    let found;
+    try {
+      found = stillAsAsked(agent, id, what.url, conn);
+    } catch (e) {
+      throw refuse("changed", e, what);
+    }
+    const browser = found.tab.linkedBrowser;
+    if (inUse(browser)) throw refuse("in-use", denied("in-use"), what);
+    // The level may have changed while the question waited: decided again, as the agent.
+    const decided = bookmarkletDecision({
+      url: stored.url,
+      setting: bookmarkletsSetting(),
+      by: "agent",
+      where: "current",
+    });
+    if (decided.kind !== "run") {
+      const text = decided.kind === "refuse" ? decided.text : "only a bookmarklet can be run";
+      throw refuse("failed", new AgentError("failed", text), what);
+    }
+    const refused = runBookmarklet(browser, stored.url, { popups: false });
+    if (refused) throw refuse("failed", new AgentError("failed", refused), what);
+    return { ran: true };
+  },
+
+  /**
    * The buttons, fields, links and other clickable elements on screen in an agent tab, with
    * labels (mcp-forms F2-F7): read-only, so it runs while the user uses the tab (F27); nothing
    * on the page is touched and the tab stays in the background (M25).
@@ -1012,7 +1099,7 @@ const COMMANDS = {
     };
     /**
      * A refusal outside the gate goes into `:mcp log` too (M23, M32).
-     * @param {LogOutcome} outcome @param {unknown} error @param {object} [what]
+     * @param {LogOutcome} outcome @param {unknown} error @param {GateWhat} [what]
      */
     const refuse = (outcome, error, what = base) => {
       AgentGate.note(conn, "vimma_activate", what, outcome);
@@ -1187,7 +1274,8 @@ const COMMANDS = {
     };
     /**
      * A refusal outside the gate goes into `:mcp log` too (M23, M32).
-     * @param {LogOutcome} outcome @param {unknown} error @param {object} [what] @param {string} [why]
+     * @param {LogOutcome} outcome @param {unknown} error @param {GateWhat} [what]
+     * @param {string} [why]
      */
     const refuse = (outcome, error, what = base, why) => {
       AgentGate.note(conn, "vimma_fill", what, outcome, why);
@@ -1517,7 +1605,7 @@ function start(request, conn, state, rid) {
  * @overload
  * @param {ConnId} conn @param {AgentConn} state @param {string} command @param {unknown} args
  * @param {number} [rid]
- * @returns {Promise<object>}
+ * @returns {Promise<AgentResults[AgentCommand]>}
  */
 /**
  * @param {ConnId} conn
@@ -1525,7 +1613,7 @@ function start(request, conn, state, rid) {
  * @param {string} command
  * @param {unknown} args
  * @param {number} [rid]  the request's id, which `agent-cancel` names
- * @returns {Promise<object>}
+ * @returns {Promise<AgentResults[AgentCommand]>}
  */
 export async function runAgentCommand(conn, state, command, args, rid) {
   if (command === "agent-hello") {

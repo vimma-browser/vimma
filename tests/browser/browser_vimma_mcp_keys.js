@@ -61,7 +61,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -115,7 +115,7 @@ async function question() {
 
 /**
  * `agent-keys` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {string} keys @param {GateAnswer | null} [answer]
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {string} keys @param {GateAnswer | null} [answer]
  */
 async function keys(c, tab, keys, answer = { kind: "once" }) {
   const id = c.request("agent-keys", { tab: idOf(tab), keys });
@@ -230,14 +230,14 @@ add_task(async function test_keys_find_uses_the_tabs_finder() {
   Assert.greater(page.y, 0, "and scrolled into view in the hidden tab");
 
   r = await keys(c, tab, "/nowhere at all<CR>");
-  Assert.equal(r.result.find.found, false, "a word not on the page is not found");
+  Assert.equal(r.result.find?.found, false, "a word not on the page is not found");
   Assert.equal(r.result.steps[0].ok, false, "and its step says so");
 
   r = await keys(c, tab, "/Plans<CR>n");
   Assert.equal(r.result.steps[1].action, "find.next", "n is the call's last query again");
-  Assert.equal(r.result.find.query, "Plans", "with that query");
-  Assert.equal(r.result.find.found, true, "found");
-  Assert.equal(r.result.find.wrapped, true, "wrapping around, as there is one match");
+  Assert.equal(r.result.find?.query, "Plans", "with that query");
+  Assert.equal(r.result.find?.found, true, "found");
+  Assert.equal(r.result.find?.wrapped, true, "wrapping around, as there is one match");
 
   Assert.equal(findbar._findField.value, "user query", "the user's find bar kept its query");
   Assert.ok(!findbar.hidden, "and stayed open");
@@ -285,7 +285,7 @@ add_task(async function test_keys_refuses_a_non_agent_tab() {
   Assert.equal(r.error?.code, "invalid-args", "a tab of another workspace is unknown (M2)");
   r = await c.call("agent-keys", { tab: idOf(tab), keys: "3j t" });
   Assert.equal(r.error?.code, "invalid-args", "a refused key is invalid-args");
-  Assert.ok(r.error.message.includes('key "t"'), "naming the key");
+  Assert.ok(r.error?.message.includes('key "t"'), "naming the key");
   r = await c.call("agent-keys", { tab: idOf(tab), keys: "j".repeat(33) });
   Assert.equal(r.error?.code, "invalid-args", "33 actions are refused (M20)");
   Assert.equal(AgentGate.waiting.length, 0, "and nothing was asked");
@@ -304,9 +304,8 @@ add_task(async function test_keys_in_use_while_the_user_types_in_the_tab() {
   ww().switchTo({ id: agent().id });
   await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
   await focusContent(tab.linkedBrowser);
-  await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    /** @type {HTMLElement} */ (content.document.getElementById("field")).focus(),
-  );
+  // The user's own click: a field the page focuses by itself is not theirs (#1325).
+  await BrowserTestUtils.synthesizeMouseAtCenter("#field", {}, tab.linkedBrowser);
   await until(() => VimmaHost.status(window).mode === "insert", "the user is in insert mode");
 
   let r = await c.call("agent-keys", { tab: idOf(tab), keys: "j" });
@@ -376,14 +375,14 @@ add_task(async function test_keys_under_a_grant_notice_and_rate() {
     if (!x.ok) busy = { i, x };
   }
   Assert.equal(busy?.i, 28, "the 31st call in a minute is refused");
-  Assert.equal(busy?.x.error.reason, "busy", "as busy");
+  Assert.equal(busy?.x.error?.reason, "busy", "as busy");
   // Issue #592: it names the limit and when the next call is allowed.
   Assert.equal(
-    busy?.x.error.message,
+    busy?.x.error?.message,
     "too many vimma_keys calls from this agent in the last minute (at most 30)",
     "naming the limit it hit",
   );
-  const wait = busy?.x.error.retryAfter;
+  const wait = busy?.x.error?.retryAfter ?? 0;
   Assert.ok(wait >= 1 && wait <= 60_000, `and the wait for the next call: ${wait} ms`);
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
@@ -401,9 +400,8 @@ add_task(async function test_keys_stop_when_the_user_starts_using_the_tab() {
     ww().switchTo({ id: agent().id });
     await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
     await focusContent(tab.linkedBrowser);
-    await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-      /** @type {HTMLElement} */ (content.document.getElementById("field")).focus(),
-    );
+    // The user's own click: a field the page focuses by itself is not theirs (#1325).
+    await BrowserTestUtils.synthesizeMouseAtCenter("#field", {}, tab.linkedBrowser);
     await until(() => VimmaHost.status(window).mode === "insert", "the user types there");
   };
   const r = await keys(c, tab, "j j j");
@@ -433,7 +431,7 @@ add_task(async function test_a_find_never_focuses_a_field_of_the_tab_the_user_is
   await until(() => VimmaHost.status(window).mode === "normal", "the user watches in normal mode");
   const r = await keys(c, tab, "/field<CR>");
   Assert.equal(r.result.steps[0].ok, false, "a find in the tab the user is in does not run");
-  Assert.ok(r.result.steps[0].note.includes("focus"), "and says why");
+  Assert.ok(r.result.steps[0].note?.includes("focus"), "and says why");
   const seen = await SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
     focused: content.wrappedJSObject.focused,
     active: content.document.activeElement?.localName,

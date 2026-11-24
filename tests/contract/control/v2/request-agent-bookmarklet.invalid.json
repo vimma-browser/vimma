@@ -1,0 +1,14 @@
+{
+  "description": "A bookmarklet is named by its title, never sent as a URL or script",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 9,
+    "command": "agent-bookmarklet",
+    "args": {
+      "tab": "12",
+      "name": "Readability",
+      "url": "javascript:alert(1)"
+    }
+  }
+}

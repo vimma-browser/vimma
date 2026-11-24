@@ -24,7 +24,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { validateMessage } from "../../packages/vimma-core/src/control/control.mjs";
 import { CONFIG_PATH_PREF, READ_PATH_PREF, devPrefs } from "../start.ts";
-import { startupProbe } from "./startup-probe.ts";
+import { megabytes, readDiskBytes, startupProbe, startupSampler } from "./startup-probe.ts";
 import type { ChildProcess } from "node:child_process";
 import type { Readable } from "node:stream";
 
@@ -933,6 +933,67 @@ export type Session = {
   teardown: () => Promise<void>;
 };
 
+/** How long the warm-up start may take to reach its control socket (issue #901). */
+export const WARM_UP_TIMEOUT_MS = 120_000;
+
+/**
+ * Issue #901: start the build once before the first scenario, wait for its control socket and
+ * stop it, so the machine's one-time cold start is not counted against the first scenario's
+ * launch. On CI the mochitests before the e2e step run headless: the first scenario's browser was
+ * the runner's first headed start and read the build, GTK, X11 and Mesa from a cold disk. Every
+ * CI launch slower than SLOW_LAUNCH_MS was that one, its main thread or gfxtest in disk wait
+ * (state D, folio_wait_bit_common) with under 1 s of CPU; locally a cold build reads about
+ * 150 MB on its first start and nothing on the next. The scenarios keep their own discovery
+ * timeout: a launch of a warm machine that stalls still fails, with startup-probe.ts's report.
+ * It runs on the scenarios' display: with the caller's DISPLAY, a window opens for a few seconds.
+ * Logs how long the start took and what its main process read from disk, and returns that line
+ * with `slow` when the socket came later than `slowMs`; throws when even this start does not
+ * reach its socket within `timeoutMs`.
+ */
+export async function warmUp({
+  timeoutMs = WARM_UP_TIMEOUT_MS,
+  slowMs = SLOW_LAUNCH_MS,
+  log = () => {},
+  ...options
+}: Omit<Parameters<typeof launch>[0], "discoveryTimeoutMs" | "keep"> & {
+  timeoutMs?: number;
+  slowMs?: number;
+}): Promise<{ line: string; slow: boolean }> {
+  const startedAt = Date.now();
+  let spawnedAt = 0;
+  let session: Session;
+  try {
+    session = await launch({
+      ...options,
+      discoveryTimeoutMs: timeoutMs,
+      onSpawn: (child) => {
+        spawnedAt = Date.now();
+        options.onSpawn?.(child);
+      },
+      log,
+    });
+  } catch (e) {
+    throw new Error(`warm-up: the build did not start: ${(e as Error).message}`, { cause: e });
+  }
+  const socketAt = Date.now();
+  const read = session.child.pid ? readDiskBytes(session.child.pid) : null;
+  try {
+    await session.teardown();
+  } catch (e) {
+    throw new Error(`warm-up: the build started but did not stop: ${(e as Error).message}`, {
+      cause: e,
+    });
+  }
+  const secs = (ms: number) => (ms / 1000).toFixed(1);
+  const line =
+    `warm-up: the build's first start took ${secs(socketAt - startedAt)} s (control socket ` +
+    `after ${secs(socketAt - spawnedAt)} s; the main process read ` +
+    `${read === null ? "an unknown amount" : megabytes(read)} from disk), outside every ` +
+    "scenario's timeout (issue #901)";
+  log(line);
+  return { line, slow: socketAt - spawnedAt > slowMs };
+}
+
 /**
  * Launch a build and wait for its control socket. On any failure everything started so far is
  * torn down before the error is thrown. `teardown` is handed out (onTeardown) before anything
@@ -1107,6 +1168,11 @@ export async function launch({
     // later than slowLaunchMs (a stall that does not reach the timeout shows too), and again when
     // the wait fails (timeout or exit).
     const probe = () => startupProbe({ profile, pid: spawned.pid, spawnedAtMs, tmp });
+    // About each second while it waits: the main thread and the machine over time, so a blocked
+    // main thread, a CPU-starved one and a machine that stopped as a whole tell apart.
+    const sampler = startupSampler({ pid: spawned.pid, spawnedAtMs });
+    const sampleTimer = setInterval(() => sampler.sample(), 1000);
+    sampleTimer.unref();
     const slowAt = `${(slowLaunchMs / 1000).toFixed(1)} s`;
     let slow: { stderr: string; probe: string } | null = null;
     const slowTimer = setTimeout(
@@ -1136,18 +1202,21 @@ export async function launch({
                 ]
               : []),
             probe(),
+            sampler.format(),
           ].join("\n"),
         stalePid,
       });
     } finally {
       clearTimeout(slowTimer);
+      clearInterval(sampleTimer);
     }
     const late = slow as { stderr: string; probe: string } | null;
     if (late) {
       const took = ((Date.now() - spawnedAtMs) / 1000).toFixed(1);
       log(
         `launch: the control socket came ${took} s after spawn, later than ${slowAt} ` +
-          `(issue #901)\nstart-up at ${slowAt} since spawn:\n${late.stderr}\n${late.probe}`,
+          `(issue #901)\nstart-up at ${slowAt} since spawn:\n${late.stderr}\n${late.probe}\n` +
+          sampler.format(),
       );
     }
     return { spawned, discovery };

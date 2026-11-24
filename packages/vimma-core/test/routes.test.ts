@@ -17,7 +17,8 @@ import {
 
 import type { ResolvedConfig } from "../src/config/config.mjs";
 
-const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+// A config.toml whose first line is a comment, so errors are on the lines they always were.
+const cfg = (...lines: string[]) => ["# config.toml", ...lines].join("\n") + "\n";
 
 function config(text: string) {
   const r = parseConfig(text);
@@ -48,7 +49,7 @@ const target = (raw: Record<string, string>[], url: string, app: string | null =
 describe("[[routes]] in config.toml", () => {
   test("are read in file order, with their rule number", () => {
     const c = config(
-      v2(
+      cfg(
         "[[routes]]",
         'domain = "github.com"',
         'workspace = "work"',
@@ -70,19 +71,17 @@ describe("[[routes]] in config.toml", () => {
   });
 
   test("no rules by default", () => {
-    expect(config(v2()).routes).toEqual([]);
+    expect(config(cfg()).routes).toEqual([]);
   });
 
-  test("are new in schema 2", () => {
-    expect(errors('[[routes]]\ndomain = "a.com"\nworkspace = "w"\n')).toEqual([
-      { line: 1, path: "routes", message: expect.stringMatching(/new in schema 2/) },
-    ]);
+  test("need no schema line", () => {
+    expect(parseConfig('[[routes]]\ndomain = "a.com"\nworkspace = "w"\n').errors).toEqual([]);
   });
 
   test("errors name the rule and the line", () => {
     expect(
       errors(
-        v2(
+        cfg(
           "[[routes]]",
           'domain = "https://github.com/x"',
           'workspace = "work"',
@@ -135,24 +134,24 @@ describe("[[routes]] in config.toml", () => {
   });
 
   test("routes must be an array of tables", () => {
-    expect(errors(v2('routes = "github.com"'))).toEqual([
+    expect(errors(cfg('routes = "github.com"'))).toEqual([
       { line: 2, path: "routes", message: "expected [[routes]] tables, got a string" },
     ]);
-    expect(errors(v2('routes = ["github.com"]'))).toEqual([
+    expect(errors(cfg('routes = ["github.com"]'))).toEqual([
       { line: 2, path: "routes[0]", message: "expected a table, got a string" },
     ]);
   });
 
   test("a workspace name is checked as [workspaces] checks it", () => {
-    expect(errors(v2("[[routes]]", 'domain = "a.com"', `workspace = "${"w".repeat(33)}"`))).toEqual(
-      [
-        {
-          line: 4,
-          path: "routes[0].workspace",
-          message: "workspace name must be 1 to 32 characters",
-        },
-      ],
-    );
+    expect(
+      errors(cfg("[[routes]]", 'domain = "a.com"', `workspace = "${"w".repeat(33)}"`)),
+    ).toEqual([
+      {
+        line: 4,
+        path: "routes[0].workspace",
+        message: "workspace name must be 1 to 32 characters",
+      },
+    ]);
   });
 });
 
@@ -367,7 +366,7 @@ describe("describing and adding rules", () => {
   });
 
   test("appendRouteText adds a [[routes]] table that parses", () => {
-    const before = v2("[panes]", "max = 2");
+    const before = cfg("[panes]", "max = 2");
     const r = appendRouteText(before, { domain: "github.com", workspace: "work" });
     expect(r).toEqual({
       append: '\n[[routes]]\ndomain = "github.com"\nworkspace = "work"\n',
@@ -382,8 +381,8 @@ describe("describing and adding rules", () => {
   test("appendRouteText checks the file with the platform's keymap (#386)", () => {
     const rule = { domain: "a.com", workspace: "w" };
     // alt+d is focus_urlbar on Linux only; meta+l is focus_urlbar on macOS only.
-    const altD = v2("[keys]", 'reload = ["alt+d"]');
-    const metaL = v2("[keys]", 'reload = ["meta+l"]');
+    const altD = cfg("[keys]", 'reload = ["alt+d"]');
+    const metaL = cfg("[keys]", 'reload = ["meta+l"]');
     expect(appendRouteText(altD, rule)).toHaveProperty("error");
     expect(appendRouteText(altD, rule, { mac: true })).toHaveProperty("append");
     expect(appendRouteText(metaL, rule)).toHaveProperty("append");
@@ -391,7 +390,7 @@ describe("describing and adding rules", () => {
   });
 
   test("appendRouteText quotes a workspace name as a TOML string", () => {
-    const r = appendRouteText(v2(), { domain: "a.com", workspace: 'say "hi"' });
+    const r = appendRouteText(cfg(), { domain: "a.com", workspace: 'say "hi"' });
     expect(r).toMatchObject({ append: expect.stringContaining('workspace = "say \\"hi\\""') });
   });
 
@@ -407,20 +406,32 @@ describe("describing and adding rules", () => {
     expect(config(r.create).routes).toHaveLength(1);
   });
 
+  test("appendRouteText keeps a CRLF file's line endings", () => {
+    const text = 'schema = 2\r\n[keys]\r\nnew_tab = "t"\r\n';
+    const r = appendRouteText(text, { domain: "a.com", workspace: "w" });
+    expect(r).toEqual({
+      append: '\r\n[[routes]]\r\ndomain = "a.com"\r\nworkspace = "w"\r\n',
+    });
+    expect(config(text + (r as { append: string }).append).routes).toHaveLength(1);
+    expect(appendRouteText("schema = 2\r\n", { domain: "a.com", workspace: "w" })).toEqual({
+      append: '\r\n[[routes]]\r\ndomain = "a.com"\r\nworkspace = "w"\r\n',
+    });
+  });
+
   test("appendRouteText refuses what would not parse, and says why", () => {
     expect(appendRouteText("schema = 2\n[keys\n", { domain: "a.com", workspace: "w" })).toEqual({
       error: expect.stringMatching(/does not parse.*fix it first/),
     });
     expect(
       appendRouteText('[keys]\nnew_tab = "prefix+c"\n', { domain: "a.com", workspace: "w" }),
-    ).toEqual({ error: expect.stringMatching(/schema = 2/) });
+    ).toEqual({ append: '\n[[routes]]\ndomain = "a.com"\nworkspace = "w"\n' });
     expect(
-      appendRouteText(v2('routes = [{ domain = "b.com", workspace = "w" }]'), {
+      appendRouteText(cfg('routes = [{ domain = "b.com", workspace = "w" }]'), {
         domain: "a.com",
         workspace: "w",
       }),
     ).toEqual({ error: expect.stringMatching(/does not parse/) });
-    expect(appendRouteText(v2(), { domain: "a b", workspace: "w" })).toEqual({
+    expect(appendRouteText(cfg(), { domain: "a b", workspace: "w" })).toEqual({
       error: expect.stringMatching(/hostname/),
     });
   });
@@ -653,14 +664,14 @@ describe("app names, nearest first (app-routes)", () => {
 
 describe("[routing] default_workspace (app-routes, decision 16)", () => {
   test("takes a workspace name", () => {
-    expect(config(v2("[routing]", 'default_workspace = "work"')).routing).toEqual({
+    expect(config(cfg("[routing]", 'default_workspace = "work"')).routing).toEqual({
       defaultWorkspace: "work",
     });
-    expect(config(v2()).routing).toEqual({ defaultWorkspace: null });
+    expect(config(cfg()).routing).toEqual({ defaultWorkspace: null });
   });
 
   test("refuses an unknown key and a name that is not a workspace name", () => {
-    expect(errors(v2("[routing]", 'default_workspac = "work"'))).toEqual([
+    expect(errors(cfg("[routing]", 'default_workspac = "work"'))).toEqual([
       {
         line: 3,
         path: "routing.default_workspac",
@@ -668,14 +679,14 @@ describe("[routing] default_workspace (app-routes, decision 16)", () => {
         suggestion: "default_workspace",
       },
     ]);
-    expect(errors(v2("[routing]", "default_workspace = 1"))).toEqual([
+    expect(errors(cfg("[routing]", "default_workspace = 1"))).toEqual([
       {
         line: 3,
         path: "routing.default_workspace",
         message: "expected a string, got an integer",
       },
     ]);
-    expect(errors(v2("[routing]", 'default_workspace = ""'))).toEqual([
+    expect(errors(cfg("[routing]", 'default_workspace = ""'))).toEqual([
       {
         line: 3,
         path: "routing.default_workspace",
@@ -684,8 +695,10 @@ describe("[routing] default_workspace (app-routes, decision 16)", () => {
     ]);
   });
 
-  test("needs schema 2", () => {
-    expect(errors('[routing]\ndefault_workspace = "work"\n')[0]?.path).toBe("routing");
+  test("needs no schema line", () => {
+    expect(
+      parseConfig('[workspaces.work]\n[routing]\ndefault_workspace = "work"\n').errors,
+    ).toEqual([]);
   });
 
   test("defaultWorkspaceFor: the default when no rule matched and it is usable", () => {

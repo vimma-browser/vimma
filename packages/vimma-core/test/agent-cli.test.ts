@@ -42,6 +42,7 @@ import {
   VERSION_MS,
 } from "../src/agent/agent-cli.mjs";
 import { STORE_VERSION, readRecord } from "../src/agent/agent-store.mjs";
+import { AGENT_TOOL_LIST } from "../src/agent/agent-tools-data.mjs";
 import { parseToml } from "../src/config/toml.mjs";
 
 /**
@@ -1116,10 +1117,23 @@ describe("gemini's command line (C2, C3, C5, C7)", () => {
           trust: true,
         },
       },
+      experimental: { enableAgents: false },
     });
     const args = GEMINI.args({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] });
     expect(args.join(" ")).not.toContain(ticket);
     expect(args.join(" ")).not.toContain(CTL);
+  });
+
+  test("gemini's subagents are off, so none brings a server named as vimma's (M56)", () => {
+    // A subagent of the user's (~/.gemini/agents/*.md) may declare an MCP server named
+    // vimma_chat: it passes --allowed-mcp-server-names and is merged into Vimma's entry, its
+    // command taking the ticket. -e none turns off only an extension's subagents; this setting,
+    // in the run folder's (trusted) settings, keeps every subagent from loading.
+    const settings = GEMINI.mcpConfig({ vimmaCtl: CTL, ticket: "ab".repeat(32), port: 4123 });
+    expect(settings).toHaveProperty("experimental.enableAgents", false);
+    expect(GEMINI.args({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] })).toEqual(
+      expect.arrayContaining(["-e", "none"]),
+    );
   });
 
   test("gemini trusts the run folder from its environment, and keeps its reports there", () => {
@@ -1318,6 +1332,52 @@ describe("gemini's stream (C7, C8)", () => {
       { type: "own-tool", id: "a", text: "gemini ran its own tool: read_file {}" },
     ]);
     expect(stream.failed).toBe(false);
+  });
+
+  test("only the prefix mcp_vimma_chat_ marks vimma's tools (M56)", () => {
+    // Gemini CLI names a tool `mcp_<server>_<tool>`. A server whose name only starts like
+    // Vimma's (`vimma`, `vimma_chatx`, `vimma-chat`) is another server, and a run of its tool
+    // ends the run.
+    const use = (name: string) =>
+      JSON.stringify({ type: "tool_use", tool_name: name, tool_id: "a", parameters: {} });
+    const ran = JSON.stringify({ type: "tool_result", tool_id: "a", status: "success" });
+    for (const name of [
+      "mcp_vimma_read",
+      "mcp_vimma_chatx_read",
+      "mcp_vimma-chat_read",
+      "mcp_vimma_chat",
+      "mcp_VIMMA_CHAT_vimma_tabs",
+    ]) {
+      const { out, stream } = geminiEvents(`${use(name)}\n${ran}\n`);
+      expect(out.at(-1)).toEqual({
+        type: "fail",
+        error: `gemini called an MCP server that is not Vimma's: ${name}`,
+      });
+      expect(stream.failed).toBe(true);
+    }
+    // A name does not say where its server's name ends: the tool `x_read` of a server named
+    // `vimma_chat_x` would read as Vimma's. Gemini CLI 0.66.0 starts only the servers named
+    // exactly in --allowed-mcp-server-names (`allowedNames.includes(name)`, Research), so that
+    // server never runs; this pins what the stream alone can tell.
+    const { out, stream } = geminiEvents(`${use("mcp_vimma_chat_x_read")}\n${ran}\n`);
+    expect(out).toEqual([]);
+    expect(stream.failed).toBe(false);
+  });
+
+  test("each of vimma's tools keeps its name through gemini's tool names", () => {
+    // Gemini CLI turns any character outside [A-Za-z0-9_.:-] into `_`, and cuts a name past 63
+    // characters to its first and last 30: Vimma's server and tool names need neither, so each
+    // tool reaches the stream as `mcp_vimma_chat_<tool>` and is skipped as Vimma's.
+    expect(AGENT_TOOL_LIST.length).toBeGreaterThan(0);
+    for (const tool of AGENT_TOOL_LIST) {
+      const name = `mcp_${GEMINI_SERVER}_${tool.name}`;
+      expect(name).toMatch(/^[A-Za-z_][A-Za-z0-9_.:-]{0,62}$/);
+      const use = { type: "tool_use", tool_name: name, tool_id: "v", parameters: {} };
+      const ran = { type: "tool_result", tool_id: "v", status: "success" };
+      const { out, stream } = geminiEvents(`${JSON.stringify(use)}\n${JSON.stringify(ran)}\n`);
+      expect(out).toEqual([]);
+      expect(stream.failed).toBe(false);
+    }
   });
 
   test("a step its policy refuses is marked refused", () => {

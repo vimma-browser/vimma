@@ -350,12 +350,7 @@ export function codexArguments({ vimmaCtl, dir, model, others }) {
  */
 export function codexServers(stdout) {
   const problem = { problem: "codex listed its MCP servers in a form Vimma does not read" };
-  let list;
-  try {
-    list = JSON.parse(stdout);
-  } catch {
-    return problem;
-  }
+  const list = parseJson(stdout);
   if (
     !Array.isArray(list) ||
     list.length > MAX_SERVERS ||
@@ -392,6 +387,11 @@ export function geminiArguments({ model }) {
 /**
  * The `.gemini/settings.json` of a Gemini CLI run's folder (C3): `vimma-ctl mcp` with the ticket
  * in its own environment, and `trust`, since a headless run asks nobody before a tool call.
+ * Subagents are off (M56): one of the user's (`~/.gemini/agents/*.md`) may declare an MCP server
+ * named `vimma_chat`, which the allow-list lets start and which is merged into Vimma's entry,
+ * its command getting the ticket; `-e none` turns off only an extension's. This file, trusted
+ * through `GEMINI_CLI_TRUST_WORKSPACE`, wins over the user's settings; only the system's
+ * settings, an administrator's, come after it.
  * @param {{ vimmaCtl: string, ticket: string, port: number }} o
  */
 export function geminiSettings({ vimmaCtl, ticket, port }) {
@@ -404,6 +404,7 @@ export function geminiSettings({ vimmaCtl, ticket, port }) {
         trust: true,
       },
     },
+    experimental: { enableAgents: false },
   };
 }
 
@@ -434,12 +435,7 @@ export function geminiLeftover(path, bases) {
  */
 export function geminiProjects(text, ours) {
   const none = { text: null, removed: [] };
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    return none;
-  }
+  const data = parseJson(text);
   if (!isObject(data) || !isObject(data.projects)) return none;
   const entries = Object.entries(data.projects);
   if (!entries.every(([, v]) => typeof v === "string")) return none;
@@ -447,7 +443,8 @@ export function geminiProjects(text, ours) {
   const removed = [];
   /** @type {Record<string, string>} */
   const kept = {};
-  for (const [path, slug] of entries) {
+  // Every value is a string, as checked above.
+  for (const [path, slug] of /** @type {[string, string][]} */ (entries)) {
     if (!ours(path)) kept[path] = slug;
     else removed.push({ path, slug: GEMINI_SLUG.test(slug) ? slug : null });
   }
@@ -656,7 +653,8 @@ const SUBJECT = Object.freeze({
  * @param {CliInfo} cli @param {unknown} name @param {unknown} input
  */
 export function ownToolText(cli, name, input) {
-  const tool = plain(name).replace(/\s+/g, " ").trim();
+  // The whole line's white space is collapsed below; no SUBJECT key holds any.
+  const tool = plain(name).trim();
   const field = Object.hasOwn(SUBJECT, tool)
     ? /** @type {Record<string, string>} */ (SUBJECT)[tool]
     : undefined;
@@ -774,14 +772,30 @@ export function besideBinary(walk, trusted) {
 
 const CLAUDE = /** @type {CliInfo} */ (CLIS["claude-code"]);
 
-/** @param {unknown} v @returns {v is Record<string, any>} */
+/**
+ * `text` as JSON, or undefined when it is not JSON: JSON itself has no undefined, and every
+ * caller refuses what is not an object or an array.
+ * @param {string} text @returns {unknown}
+ */
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Every caller refuses undefined as it refuses JSON of the wrong shape.
+  }
+}
+/** @param {unknown} v @returns {v is Record<string, unknown>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 /** @param {unknown} v */
-const count = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+const count = (v) => {
+  // Number.isFinite is false for anything that is not a number.
+  const n = /** @type {number} */ (v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
 /**
  * A usage block's input tokens, cache creation and reads included, as the Messages API
  * provider counts them: Claude Code caches its prompt, so most of a call's input is cached.
- * Null when it reports none. @param {Record<string, any> | undefined} u
+ * Null when it reports none. @param {Record<string, unknown> | undefined} u
  */
 const inputTokens = (u) => {
   const parts = [u?.input_tokens, u?.cache_creation_input_tokens, u?.cache_read_input_tokens]
@@ -842,8 +856,8 @@ class JsonLines {
 
   /** @protected @param {string} error @returns {CliEvent[]} */
   fail(error) {
+    // The buffer is left as it is: nothing reads it once the stream failed.
     this.failed = true;
-    this.buffer = "";
     return [{ type: "fail", error }];
   }
 
@@ -862,20 +876,17 @@ class JsonLines {
   /** @private @param {string} line @returns {CliEvent[]} */
   line(line) {
     if (!line.trim()) return [];
-    let m;
-    try {
-      m = JSON.parse(line);
-    } catch {
-      return this.skip();
-    }
+    const m = parseJson(line);
     return isObject(m) ? this.event(m) : this.skip();
   }
 
   /**
    * One JSON object of the stream, read by each CLI's class.
-   * @protected @abstract @param {Record<string, any>} m @returns {CliEvent[]}
+   * @protected @abstract @param {Record<string, unknown>} m @returns {CliEvent[]}
    */
+  // Stryker disable next-line BlockStatement: every class overrides it; JsonLines is not exported
   event(m) {
+    // Stryker disable next-line all: as above, never called
     throw new Error(`${this.cli.id}: no reader for ${typeof m}`);
   }
 }
@@ -895,7 +906,7 @@ export class ClaudeStream extends JsonLines {
     this.turn = { input: 0, output: 0 };
   }
 
-  /** @protected @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @protected @param {Record<string, unknown>} m @returns {CliEvent[]} */
   event(m) {
     if (m.type === "system" && m.subtype === "init") return this.init(m);
     if (m.type === "system" && m.subtype === "permission_denied") {
@@ -915,7 +926,7 @@ export class ClaudeStream extends JsonLines {
     return [];
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   init(m) {
     if (typeof m.claude_code_version === "string") this.version = plain(m.claude_code_version);
     const tools = m.tools;
@@ -943,7 +954,7 @@ export class ClaudeStream extends JsonLines {
     ];
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   assistant(m) {
     // A reply the CLI made up for an error (its model is "<synthetic>") repeats the result's
     // error, which the task's end shows.
@@ -980,7 +991,7 @@ export class ClaudeStream extends JsonLines {
     return out;
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   result(m) {
     const usage = m.usage;
     if (typeof m.is_error !== "boolean" || (usage !== undefined && !isObject(usage))) {
@@ -1016,7 +1027,7 @@ export class ClaudeStream extends JsonLines {
 const CODEX = /** @type {CliInfo} */ (CLIS.codex);
 
 /** A Codex usage block's tokens: its input counts the cached part already. */
-const codexUsage = (/** @type {Record<string, any>} */ u) => ({
+const codexUsage = (/** @type {Record<string, unknown>} */ u) => ({
   input: count(u.input_tokens) ?? 0,
   output: count(u.output_tokens) ?? 0,
 });
@@ -1042,7 +1053,7 @@ export class CodexStream extends JsonLines {
     this.lastError = null;
   }
 
-  /** @protected @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @protected @param {Record<string, unknown>} m @returns {CliEvent[]} */
   event(m) {
     if (m.type === "thread.started") {
       return [{ type: "init", model: plain(this.model), version: "", tools: null }];
@@ -1081,7 +1092,7 @@ export class CodexStream extends JsonLines {
     return [{ type: "result", ok, error, usage, rest: usage, cost: null, queued: 0 }];
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   item(m) {
     const item = m.item;
     if (!isObject(item)) return this.skip();
@@ -1107,7 +1118,8 @@ export class CodexStream extends JsonLines {
           : null;
     // Reasoning, todo lists, warnings (an `error` item), unknown kinds.
     if (own === null || (id && this.shown.has(id))) return this.skip();
-    if (id) this.shown.add(id);
+    // "" is never looked up: an item without an id is shown each time.
+    this.shown.add(id);
     return [{ type: "own-tool", id, text: own }];
   }
 }
@@ -1138,8 +1150,10 @@ const GEMINI_REFUSED = new Set(["tool_not_registered", "policy_violation"]);
  * after every answer) or at the stream's end without one, and an id given to a second call
  * while the first is still open, whose result could then be either's. Vimma's tools are told
  * by their `mcp_vimma_chat_` prefix: a tool's name does not say where its server's name ends,
- * so a server named `vimma_chat_x` would pass as Vimma's, but `--allowed-mcp-server-names`
- * starts the server named exactly `vimma_chat` alone, with extensions off.
+ * so a server named `vimma_chat_x` (or `vimma chat`, made `vimma_chat`) would pass as Vimma's,
+ * but `--allowed-mcp-server-names` starts only a server named exactly `vimma_chat`, whether
+ * from settings or an extension (off with `-e none`), and subagents, which could declare one,
+ * are off (`geminiSettings`); that exact name is the boundary.
  */
 export class GeminiStream extends JsonLines {
   /** @param {{ model?: string }} [o]  the provider's model, "" for Gemini CLI's own default */
@@ -1157,7 +1171,7 @@ export class GeminiStream extends JsonLines {
     this.lastError = null;
   }
 
-  /** @protected @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @protected @param {Record<string, unknown>} m @returns {CliEvent[]} */
   event(m) {
     if (m.type === "message" && m.role === "assistant" && typeof m.content === "string") {
       this.text += m.content;
@@ -1196,7 +1210,7 @@ export class GeminiStream extends JsonLines {
     return text.trim() ? [{ type: "reply", text }] : [];
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   use(m) {
     if (typeof m.tool_name !== "string") return this.skip();
     const name = m.tool_name;
@@ -1218,14 +1232,17 @@ export class GeminiStream extends JsonLines {
     return [{ type: "own-tool", id, text: ownToolText(GEMINI, name, m.parameters) }];
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   toolResult(m) {
+    // `use` keys `calls` and `open` by non-empty strings only, so "" finds no call.
+    // Stryker disable next-line ConditionalExpression,StringLiteral: "" is never a call's id
     const id = typeof m.tool_id === "string" ? m.tool_id : "";
     this.open.delete(id);
     const name = this.calls.get(id);
     if (name === undefined || name.startsWith(`mcp_${GEMINI_SERVER}_`)) return this.skip();
     const kind = isObject(m.error) ? m.error.type : null;
-    const refused = m.status === "error" && GEMINI_REFUSED.has(kind);
+    // A kind that is not a string is in no set of strings.
+    const refused = m.status === "error" && GEMINI_REFUSED.has(/** @type {string} */ (kind));
     if (refused) return [{ type: "own-tool-refused", id }];
     if (name.startsWith("mcp_")) return this.otherServer(name);
     return this.skip();
@@ -1253,7 +1270,7 @@ export class GeminiStream extends JsonLines {
     );
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   result(m) {
     const unanswered = this.unanswered();
     if (unanswered.length) return unanswered;

@@ -8,7 +8,11 @@
      when SessionStore restored it from its history entry. After a restart the tab first shows
      its saved title ("… navigate"); only the reloaded page says "back_forward", so a scenario
      waiting for it cannot pass on the stale label. Not a load counter in localStorage: a
-     SIGKILL can lose its last write. -->
+     SIGKILL can lose its last write. With "height" in the fragment (long.html#main.height) the
+     title ends with innerHeight too, kept current on every resize, so a scenario can wait for the
+     page to have its final height before G: the tab line (docs/specs/tab-line.md) is drawn a
+     frame after the tab that brings it opens, and a page scrolled to its bottom before the line
+     takes its row is left a row short of it. -->
 <meta charset="utf-8" />
 <title>long</title>
 <style>
@@ -24,8 +28,10 @@
     if (scrollY <= 0) return "top";
     return scrollY >= max - 1 ? "bottom" : "middle";
   };
-  const show = () => (document.title = `long ${where()} ${nav}`);
+  const height = /\bheight\b/.test(location.hash);
+  const show = () => (document.title = `long ${where()} ${nav}${height ? ` ${innerHeight}` : ""}`);
   addEventListener("scroll", show);
+  addEventListener("resize", show);
   addEventListener("load", show);
   // SessionStore restores the scroll position after load, which fires a scroll event; poll too,
   // in case the restore lands before the listener runs.
