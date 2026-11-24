@@ -481,7 +481,7 @@ export class PromptKeys {
     const text = popup
       ? popupBarHint({ inField, locked: popupLocked() })
       : barHint({ inField, dismissable: bar.dismissable, inBar: this.inBar(bar) });
-    if (!popup && !bar.buttonContainer?.querySelector("button") && !bar.dismissable) return null;
+    if (!popup && !firstBarButton(bar) && !bar.dismissable) return null;
     const hint = this.barHintFor(bar, text);
     const left = this.barArmedAt() - ChromeUtils.now();
     if (left > 0) {
@@ -571,7 +571,7 @@ export class PromptKeys {
    * @returns {boolean} whether it was the bar's key (consumed)
    */
   onOtherBarKey(e, chord, bar, armed) {
-    const first = bar.buttonContainer?.querySelector("button") ?? null;
+    const first = firstBarButton(bar);
     const result = barKey(formatKey(chord), {
       open: true,
       // Firefox disables the bar's buttons again whenever the window regains focus
@@ -640,4 +640,19 @@ export class PromptKeys {
     else if (result.kind === "focus") (toggle ?? n.footerFocusableButtons?.[0])?.focus();
     return true;
   }
+}
+
+/**
+ * The bar's first button, or null for a bar without one. Firefox makes them in
+ * NotificationMessage.setButtons (notificationbox.js): XUL `<button>`s up to Firefox 161,
+ * `<moz-button>`s from 162, each with the class `notification-button`. Both take focus (a
+ * moz-button hands it to the button in its shadow root) and have `disabled`, which Firefox's
+ * clickjacking delay sets.
+ * @param {MozNotificationMessage} bar
+ * @returns {HTMLButtonElement | null}
+ */
+function firstBarButton(bar) {
+  return /** @type {HTMLButtonElement | null} */ (
+    bar.buttonContainer?.querySelector(".notification-button") ?? null
+  );
 }
