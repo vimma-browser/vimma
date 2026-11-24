@@ -54,7 +54,12 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   secret is still pointed to login storage. Accepted risk: a key a newer build added to tighten
   something (in `[mcp]` or `[agent]`, say) is dropped by an older build while the rest of the
   same file applies, loosenings included; before, the older build refused the file and kept its
-  previous config, which lacked that key too, so neither way enforced it.
+  previous config, which lacked that key too, so neither way enforced it. The same holds for a
+  binding to an action with no close match in `[keys]` or `[modal.<mode>]`: only that binding
+  is left out. Accepted risk: a key a newer file moves to a newer action, such as a
+  `[modal.normal]` binding over a default sequence, keeps its default action in the older
+  build, which the older build's previous keymap did too.
+  [`in [keys] is a warning; the other bindings and the rest of the file apply`](../../packages/vimma-core/test/config-unknown-keys.test.ts),
   [`in a known table is a warning; the rest of the file applies`](../../packages/vimma-core/test/config-unknown-keys.test.ts),
   [`a program, command or secret in a CLI provider (M60)`](../../packages/vimma-core/test/config-unknown-keys.test.ts),
   [`an opt-out under a misspelt or misplaced table may mean check = false`](../../packages/vimma-core/test/updates.test.ts).

@@ -174,15 +174,22 @@ describe("parseConfig: errors carry line numbers", () => {
 
   // Regression (found by the fuzzer, seed 1027517388, issue #134): an action name with a `[`
   // made parseConfig throw "RangeError: Invalid array length" instead of reporting it.
-  test("an unknown action whose name is not a bare key is an error, not a throw", () => {
-    const e = oneError(toml("schema = 1", "[keys]", '"c[mmand" = "/"'));
-    expect(e).toMatchObject({ line: 3, path: 'keys."c[mmand"' });
+  // Since #1474's follow-up, an unknown action with no close match is a skipped binding.
+  test("an unknown action whose name is not a bare key is a warning, not a throw", () => {
+    const r = parseConfig(toml("schema = 1", "[keys]", '"c[mmand" = "/"'));
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([
+      { line: 3, path: 'keys."c[mmand"', message: 'unknown action "c[mmand"; skipped' },
+    ]);
   });
 
   // The same crash from the issue's own seed (2487349044): the name reached through dotted keys.
-  test("an unknown action named through dotted keys with a `[` is an error, not a throw", () => {
+  test("an unknown action named through dotted keys with a `[` is a warning, not a throw", () => {
     const r = parseConfig(toml("schema = 1", `'keys'.'mod['."github.com" = "github.com"`));
-    expect(r.errors).toEqual([{ line: 2, path: 'keys."mod["', message: 'unknown action "mod["' }]);
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([
+      { line: 2, path: 'keys."mod["', message: 'unknown action "mod["; skipped' },
+    ]);
   });
 
   test("a TOML syntax error has line and column, and no config", () => {
