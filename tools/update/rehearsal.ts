@@ -25,13 +25,12 @@
  * while UPDATES_ENABLED is true, so a host that serves no manifest fails. Anything else that
  * keeps the install from taking the offered release exits 1. It reads only public files and
  * needs no secret: the GitHub token gh uses lists the releases. Node built-ins and this repository's files only, so the job installs
- * nothing.
+ * nothing. The summary goes to stdout only; the workflow copies it into the job summary.
  */
 
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  appendFileSync,
   chmodSync,
   copyFileSync,
   existsSync,
@@ -414,11 +413,25 @@ async function fetchManifest(url = MANIFEST_URL) {
   return text;
 }
 
+/**
+ * A release file, by curl: it streams the file (about 100 MB) to disk, retries, follows
+ * GitHub's redirect to its download host over https only, and stops after 10 minutes.
+ */
 async function download(url: string, path: string) {
-  // The body is read within the same timeout; a release file is about 100 MB.
-  const res = await fetchWithRetry(url, {}, 600_000);
-  need(res.ok, `${url} answered ${res.status}`);
-  writeFileSync(path, Buffer.from(await res.arrayBuffer()));
+  await run("curl", [
+    "-fsSL",
+    "--retry",
+    "3",
+    "--proto",
+    "=https",
+    "--proto-redir",
+    "=https",
+    "--max-time",
+    "600",
+    "-o",
+    path,
+    url,
+  ]);
 }
 
 const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -648,7 +661,6 @@ async function main() {
   }
   const text = summary(result);
   process.stdout.write(text);
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
   if (result.kind === "failed") process.exitCode = 1;
 }
 

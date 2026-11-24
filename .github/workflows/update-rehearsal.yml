@@ -55,12 +55,14 @@ jobs:
           REPO: ${{ github.repository }}
         run: gh api "repos/$REPO/releases" --paginate --slurp > "$RUNNER_TEMP/releases.json"
 
+      # bash's pipefail keeps the script's exit code through tee.
       - name: Rehearse the update
+        shell: bash
         env:
           REPO: ${{ github.repository }}
         run: >-
           node tools/update/rehearsal.ts run --repo "$REPO" --releases "$RUNNER_TEMP/releases.json"
-          --out "$RUNNER_TEMP/rehearsal"
+          --out "$RUNNER_TEMP/rehearsal" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # The browser's output and the updater's log; the install, the profile and the downloads
       # stay behind.

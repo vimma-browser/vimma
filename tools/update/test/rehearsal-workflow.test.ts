@@ -49,6 +49,9 @@ describe("update rehearsal workflow", () => {
     expect(rehearse).toContain("node tools/update/rehearsal.ts run");
     expect(rehearse).toContain('--releases "$RUNNER_TEMP/releases.json"');
     expect(rehearse).not.toMatch(/TOKEN|github\.token/);
+    // bash's pipefail: the script's exit code survives the tee into the job summary
+    expect(rehearse).toMatch(/^ {8}shell: bash$/m);
+    expect(rehearse).toContain('| tee -a "$GITHUB_STEP_SUMMARY"');
     expect(text.match(/github\.token/g)).toHaveLength(1);
   });
 
