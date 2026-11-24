@@ -64,15 +64,19 @@ import { DocumentHover } from "./hover.mjs";
  *   | { name: "Vimma:PdfZoom" | "Vimma:PdfWhere" | "Vimma:ScrollFraction" | "Vimma:FocusLast"
  *       | "Vimma:SuggestionsOpen" | "Vimma:ScrollPosition" | "Vimma:FindAnchor"
  *       | "Vimma:FindClosed" | "Vimma:FindStep" | "Vimma:GrepEnd" | "Vimma:AgentCards"
- *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown", data?: unknown }} ChildMessage
+ *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown" | "Vimma:Painted", data?: unknown }}
+ *   ChildMessage
  */
 /** @import { BlockMessage } from "./block.mjs" */
 /** @import { PdfOutlineMessage, PdfStateMessage } from "./pdf-view.mjs" */
 
-const lazy = /** @type {Lazy<"setTimeout">} */ ({});
+const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
+/** The longest a page's "Vimma:Painted" waits for its paint (the parent waits 300 ms). */
+const PAINTED_MAX_MS = 1000;
 /** Focus on these moves into another document, whose own child reports. */
 const FRAMES = new Set(["iframe", "frame", "browser"]);
 
@@ -782,6 +786,50 @@ export class VimmaChild extends JSWindowActorChild {
     });
   }
 
+  /**
+   * Resolves once this page has painted since this message came, and that paint has reached the
+   * screen, or after PAINTED_MAX_MS (a page whose refresh does not run). The parent sent the page its new size
+   * before this message, over the same channel, so the next paint is at the new size. A paint
+   * is on screen when the MozAfterPaint of its transaction fires
+   * (nsPresContext::NotifyDidPaintForSubtree, on the compositor's DidComposite); the event goes
+   * to the chrome event handler, which the page cannot reach.
+   * @returns {Promise<void>}
+   */
+  #painted() {
+    const win = this.contentWindow;
+    const handler = this.docShell?.chromeEventHandler;
+    if (!win || !handler) return Promise.resolve();
+    const utils = win.windowUtils;
+    const before = utils.lastTransactionId;
+    return new Promise((resolve) => {
+      let over = false;
+      const done = () => {
+        if (over) return;
+        over = true;
+        lazy.clearTimeout(timer);
+        handler.removeEventListener("MozAfterPaint", onPaint);
+        resolve();
+      };
+      // The parent stops waiting long before this; it only ends a wait nothing else ends, such
+      // as that of a page that is not drawn, whose refresh never runs.
+      const timer = lazy.setTimeout(done, PAINTED_MAX_MS);
+      /** @param {Event} e */
+      const onPaint = (e) => {
+        const id = /** @type {Event & { transactionId: number }} */ (e).transactionId;
+        if (e.isTrusted && id > before) done();
+      };
+      // A transaction without invalidations fires no MozAfterPaint: each refresh checks whether
+      // one was painted since and none waits for the screen any more.
+      const check = () => {
+        if (over) return;
+        if (utils.lastTransactionId > before && !utils.isMozAfterPaintPending) done();
+        else win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
+      };
+      handler.addEventListener("MozAfterPaint", onPaint);
+      win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
+    });
+  }
+
   /** @param {ChildMessage} msg */
   receiveMessage(msg) {
     switch (msg.name) {
@@ -822,6 +870,9 @@ export class VimmaChild extends JSWindowActorChild {
         const pdf = this.#pdf;
         return el?.isConnected ? new Promise((resolve) => pdf.linkPage(el, resolve)) : 0;
       }
+      case "Vimma:Painted":
+        // A hidden window is about to be shown at a new size (private-swap-macos, #773).
+        return this.#painted();
       case "Vimma:ScrollFraction":
         // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16).
         return this.#scroll.fraction();
