@@ -93,7 +93,10 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
 - F5. Reading `config.toml` **never** throws, hangs or changes a built-in prototype; nesting
   deeper than 32 levels is refused; a key, colour or modifier named like an `Object` member
   (`constructor`, `__proto__`) is unknown, never looked up; an accepted config holds only values
-  its schema allows. `ConfigHost` reads only a regular file (a FIFO would block every later
+  its schema allows. Editing it never changes a built-in prototype either: `:siteunbind --save`
+  and `:sitebind --delete` take the table's name from the page's host, which can be
+  `__proto__` (a page at `http://__proto__/`), and edit that table as any other, in tables
+  without a prototype. `ConfigHost` reads only a regular file (a FIFO would block every later
   read), of at most 1 MiB, with a byte cap in case it grows meanwhile, and as strict UTF-8; a
   file it does not read is an error in the status bar and the config in force stays. The poll
   hashes only what its stat found to be a regular file within that limit. Edits of config.toml
@@ -109,6 +112,7 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`huge and deeply nested files are refused or read in bounded time`](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts),
   [`a workspace colour named after an Object member is an error, not a value`](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts),
   [`a prototype member name is never a key or a modifier: constructor, toString, __proto__`](../../packages/vimma-core/test/fuzz/keys.fuzz.test.ts),
+  [`a table named __proto__ never reaches Object.prototype`](../../packages/vimma-core/test/site-keys.test.ts),
   [`nesting deeper than MAX_DEPTH, by dotted keys, headers or values, is refused at its line`](../../packages/vimma-core/test/toml.test.ts)
 - F6. `bookmarks.toml` beside `config.toml` (spec: [bookmarks-file](../specs/bookmarks-file.md),
   mirrored into Places and written back as F7 says, on by default) is a file that may come from

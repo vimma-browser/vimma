@@ -129,8 +129,13 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
     return { error: `config.toml has errors; fix them first (:config): ${where}${what}` };
   }
   const keymap = now.keymap;
-  const doc = /** @type {{ ok: true, value: Record<string, unknown> }} */ (parseToml(base)).value;
-  const sites = isTable(doc.sites) ? doc.sites : {};
+  // parseToml's tables have no prototype, so a table named `__proto__` (a page at
+  // http://__proto__/) is an own key like any other, never Object.prototype; so are the tables
+  // made here that a table's name is looked up in or written to.
+  const parsed = () =>
+    /** @type {{ ok: true, value: Record<string, unknown> }} */ (parseToml(base)).value;
+  const doc = parsed();
+  const sites = isTable(doc.sites) ? doc.sites : Object.create(null);
   const own = isTable(sites[table]) ? /** @type {Record<string, unknown>} */ (sites[table]) : null;
   const list = own && Array.isArray(own.unbind) ? /** @type {string[]} */ (own.unbind) : [];
   const canonical = (/** @type {string} */ k) => {
@@ -251,9 +256,9 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
   }
 
   // The file as it must read now: the old one with only this list (or table) changed.
-  const expected = structuredClone(doc);
+  const expected = parsed();
   const expSites = /** @type {Record<string, unknown>} */ (
-    isTable(expected.sites) ? expected.sites : (expected.sites = {})
+    isTable(expected.sites) ? expected.sites : (expected.sites = Object.create(null))
   );
   const expTable = /** @type {Record<string, unknown>} */ (
     isTable(expSites[table]) ? expSites[table] : (expSites[table] = {})
@@ -264,7 +269,7 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
   if (!after.ok) return leftAlone;
   // The table may be gone only when this edit emptied it; any other loss fails the comparison.
   const emptied = want.length === 0 && Object.keys(expTable).length === 0;
-  if (emptied && !(table in /** @type {Record<string, unknown>} */ (after.value.sites ?? {}))) {
+  if (emptied && !Object.hasOwn(after.value.sites ?? {}, table)) {
     delete expSites[table];
     if (Object.keys(expSites).length === 0 && !("sites" in after.value)) delete expected.sites;
   }
