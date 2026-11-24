@@ -99,8 +99,13 @@ focus.
    so that a click in a code block or a tab strip does not leave the keys there. It is decided
    after the mousedown's own focus change, since the default rule starts from the focused
    element. A click on the area the default rule picks in the top document clears the choice,
-   so that the default rule (with its focused-element and layer steps) applies again; every
-   such click is reported to the parent, so that it also ends a choice held in another frame.
+   and so does a click that focused a smaller scroller inside the area (a list box, a widget
+   with `tabindex`), so that the default rule (with its focused-element and layer steps) applies
+   again; every such click is reported to the parent, so that it also ends a choice held in
+   another frame. The actor's `mousedown` listener is registered with `createActor: false`
+   (`VimmaActors.register`), so a click in a frame whose actor was never created (one never
+   focused) neither picks an area there nor ends another frame's choice; that click focuses the
+   frame, and the scroll keys then go to it first anyway.
 6. **The choice lives in the frame's `PageScroll`, and the parent keeps only whether there is
    one.** `PageScroll.target` tries the chosen area first; it holds the element weakly and drops
    it once it leaves the document, so nothing in the parent goes stale with the page; an area
@@ -131,10 +136,15 @@ focus.
 Two new content-actor messages carry data to the parent, and both are checked there (security
 [13](../security/13-page-modes.md), K15). `Vimma:ScrollAreas` replies with rects and booleans
 that core `parseScrollAreasReply` copies and caps; a malformed reply drops that frame's areas.
+Areas with the same box count once, and which area is chosen is the parent's own record, so a
+frame can neither stack copies of a box in the cycle nor claim a choice it does not hold.
 `Vimma:ScrollAreaChosen` carries one boolean and changes only its own tab: its status bar
-marker, and the choice held in the tab's other frames, which a click in any frame ends. A
-compromised content process can at most move where the scroll keys scroll in its own tab, which
-it could already do by moving focus. An agent's click never moves the target (decision 5). No
+marker, and the choice another document of the tab holds, which a click in any frame ends; only
+that document's existing actor is told, so a click messages no other frame. A compromised content
+process can at most move where the scroll keys scroll in its own tab, which it could already do
+by moving focus, end the user's choice there, or show the marker while nothing is chosen. A
+hostile frame can put its own areas, within its visible rect, in the `gs` cycle, and gets focus
+when the user's `gs` lands on one, as a click in it would give it. An agent's click never moves the target (decision 5). No
 page content reaches the status bar: the marker is a fixed text.
 
 ## Tests
@@ -147,6 +157,10 @@ page content reaches the status bar: the marker is a fixed text.
   `gS_goes_back_and_a_count_picks_the_nth_area`, `every_scroll_key_follows_the_chosen_area`,
   `a_click_in_a_panel_makes_it_the_target`,
   `a_click_in_a_scroller_too_small_to_be_an_area_keeps_the_page`,
+  `a_click_that_focuses_a_small_scroller_keeps_the_keys_on_it`,
+  `a_click_messages_no_frame_but_the_one_holding_a_choice`,
+  `a_frame_that_never_answers_does_not_hold_the_scroll_keys`,
+  `a_frame_that_never_answers_the_pick_does_not_hold_the_scroll_keys`,
   `a_click_the_page_dispatches_does_not_move_the_target`,
   `an_agents_click_in_a_panel_does_not_move_the_target`, `leaving_the_page_ends_the_marker`,
   `a_new_document_starts_from_the_default_rule`, `gs_outlines_the_chosen_area_briefly_in_chrome`,

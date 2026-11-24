@@ -462,23 +462,40 @@ export class PageScroll {
    */
   clicked(node) {
     lazy.setTimeout(() => {
-      const doc = this.#actor.document;
-      const win = this.#actor.contentWindow;
-      if (!doc || !win) return;
-      let el =
-        node && /** @type {Node} */ (node).nodeType === 1 ? /** @type {Element} */ (node) : null;
-      if (!el && node && /** @type {Node} */ (node).nodeType === 3) {
-        el = /** @type {Node} */ (node).parentElement;
+      try {
+        this.#clickedNow(node);
+      } catch {
+        // The actor was destroyed meanwhile (its document went away): nothing to choose.
       }
-      if (el && !el.isConnected) return;
-      const { vw, vh } = viewportSize(win);
-      for (; el; el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)) {
-        if (el !== doc.scrollingElement && this.#isArea(el, vw, vh)) break;
-      }
-      const root = doc.scrollingElement;
-      const area = el ?? (root && scrollsEither(root) ? root : null);
-      this.#onChoice(this.#choose(area));
     }, 0);
+  }
+
+  /** @param {EventTarget | null} node */
+  #clickedNow(node) {
+    const doc = this.#actor.document;
+    const win = this.#actor.contentWindow;
+    if (!doc || !win) return;
+    let el =
+      node && /** @type {Node} */ (node).nodeType === 1 ? /** @type {Element} */ (node) : null;
+    if (!el && node && /** @type {Node} */ (node).nodeType === 3) {
+      el = /** @type {Node} */ (node).parentElement;
+    }
+    if (el && !el.isConnected) return;
+    const { vw, vh } = viewportSize(win);
+    for (; el; el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)) {
+      if (el !== doc.scrollingElement && this.#isArea(el, vw, vh)) break;
+    }
+    const root = doc.scrollingElement;
+    const area = el ?? (root && scrollsEither(root) ? root : null);
+    // A click that focused a smaller scroller inside the area (a list box, a widget with
+    // tabindex) leaves the keys with the default rule, which starts from that focus.
+    const own = this.#defaultTarget(true);
+    if (area && own && own !== area && area.contains(own)) {
+      this.#chosen = null;
+      this.#onChoice(false);
+      return;
+    }
+    this.#onChoice(this.#choose(area));
   }
 
   /**

@@ -76,7 +76,7 @@ export function parseScrollAreasReply(raw) {
 
 /**
  * The areas that count, in reading order: left to right, then top to bottom, and an area before
- * the ones inside it. An area counts when the part of it inside the viewport covers at least
+ * the ones inside it; of several with the same box, the first. An area counts when the part of it inside the viewport covers at least
  * SCROLL_AREA_MIN_SHARE of the viewport, so a short list or a code block in the text is passed
  * over. Rects are in the top frame's CSS pixels.
  * @template {{ rect: Rect }} T
@@ -92,17 +92,35 @@ export function orderScrollAreas(areas, viewport) {
     const h = Math.min(r.y + r.height, viewport.height) - Math.max(r.y, 0);
     return w > 0 && h > 0 ? w * h : 0;
   };
-  return areas
-    .filter((a) => whole > 0 && shown(a.rect) >= SCROLL_AREA_MIN_SHARE * whole)
-    .map((a, i) => ({ a, i }))
-    .sort(
-      (p, q) =>
-        Math.round(p.a.rect.x) - Math.round(q.a.rect.x) ||
-        Math.round(p.a.rect.y) - Math.round(q.a.rect.y) ||
-        q.a.rect.width * q.a.rect.height - p.a.rect.width * p.a.rect.height ||
-        p.i - q.i,
-    )
-    .map((p) => p.a);
+  /** @type {Rect[]} */
+  const kept = [];
+  /** @param {Rect} r */
+  const fresh = (r) => {
+    const same = kept.some(
+      (k) =>
+        Math.abs(k.x - r.x) <= 1 &&
+        Math.abs(k.y - r.y) <= 1 &&
+        Math.abs(k.width - r.width) <= 1 &&
+        Math.abs(k.height - r.height) <= 1,
+    );
+    if (!same) kept.push(r);
+    return !same;
+  };
+  return (
+    areas
+      .filter((a) => whole > 0 && shown(a.rect) >= SCROLL_AREA_MIN_SHARE * whole)
+      // One box, one area: a frame cannot stack copies of a box to take more of the cycle.
+      .filter((a) => fresh(a.rect))
+      .map((a, i) => ({ a, i }))
+      .sort(
+        (p, q) =>
+          Math.round(p.a.rect.x) - Math.round(q.a.rect.x) ||
+          Math.round(p.a.rect.y) - Math.round(q.a.rect.y) ||
+          q.a.rect.width * q.a.rect.height - p.a.rect.width * p.a.rect.height ||
+          p.i - q.i,
+      )
+      .map((p) => p.a)
+  );
 }
 
 /**

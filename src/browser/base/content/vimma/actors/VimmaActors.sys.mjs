@@ -403,18 +403,17 @@ export const VimmaActors = {
   },
 
   /**
-   * Ends the scroll area choice in every frame of `browser` but `except`.
-   * @param {MozBrowser} browser
-   * @param {BrowsingContext | null} except
+   * Ends the scroll area choice held in the document `wg`, if it is still shown. Only that
+   * document's existing actor hears of it: no other frame is messaged, and none gets an actor
+   * for it.
+   * @param {WindowGlobalParent} wg
    */
-  clearScrollAreas(browser, except) {
-    for (const bc of browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []) {
-      if (bc === except) continue;
-      try {
-        actorFor(bc)?.sendAsyncMessage("Vimma:ScrollAreaClear");
-      } catch {
-        // The frame went away: nothing of its choice is left.
-      }
+  clearScrollArea(wg) {
+    if (wg.browsingContext?.currentWindowGlobal !== wg) return;
+    try {
+      wg.getExistingActor(NAME)?.sendAsyncMessage("Vimma:ScrollAreaClear");
+    } catch {
+      // The document went away: nothing of its choice is left.
     }
   },
 

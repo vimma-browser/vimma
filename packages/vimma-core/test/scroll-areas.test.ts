@@ -111,6 +111,13 @@ describe("orderScrollAreas: the areas that count, in reading order", () => {
     ]);
   });
 
+  test("areas with the same box count once, so a frame cannot stack copies of one", () => {
+    const a = { rect: rect(300, 40, 700, 760), key: "first" };
+    const b = { rect: rect(300.4, 40, 700, 760), key: "copy" };
+    const c = { rect: rect(0, 40, 300, 760), key: "tree" };
+    expect(orderScrollAreas([a, b, b, c], viewport).map((x) => x.key)).toEqual(["tree", "first"]);
+  });
+
   test("an area that shows less than a tenth of the viewport is left out", () => {
     const small = { rect: rect(0, 0, 100, 700), key: "small" }; // 70,000 < 80,000
     const enough = { rect: rect(100, 0, 100, 800), key: "enough" }; // 80,000

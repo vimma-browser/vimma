@@ -68,14 +68,21 @@ async function cycleNow(browser, direction, count, flash) {
   runs.set(browser, run);
   const { viewport, areas } = await VimmaActors.scrollAreas(browser);
   if (!viewport || runs.get(browser) !== run) return;
-  const ordered = orderScrollAreas(areas, viewport);
+  // Which area is chosen is the parent's own record, not a frame's say: a frame that claims a
+  // choice it does not hold moves nothing.
+  const holder = chosen.get(browser) ?? null;
+  const ordered = orderScrollAreas(
+    areas.map((a) => ({ ...a, chosen: a.chosen && a.wg === holder })),
+    viewport,
+  );
   const current = currentScrollArea(ordered, VimmaActors.scrollFrameOrder(browser));
   const next = nextScrollArea({ length: ordered.length, current, direction, count });
   const area = next === null ? null : ordered[next];
   if (!area) return;
   const picked = await VimmaActors.pickScrollArea(area.bc, area.wg, area.index);
   if (picked === null || runs.get(browser) !== run) return;
-  VimmaActors.clearScrollAreas(browser, area.bc);
+  const before = chosen.get(browser);
+  if (before && before !== area.wg) VimmaActors.clearScrollArea(before);
   setChosen(browser, picked ? area.wg : null);
   flash(browser, area.rect);
 }
@@ -128,8 +135,10 @@ export const ScrollAreaOps = {
   onReport(bc, wg, isChosen) {
     const browser = browserOf(bc);
     if (!browser || bc.currentWindowGlobal !== wg) return;
-    // A click on the page's own area also ends a choice another frame holds.
-    VimmaActors.clearScrollAreas(browser, bc);
+    // A click anywhere ends a choice another document of the tab holds; only that document is
+    // told, and nothing is sent when none holds one.
+    const before = chosen.get(browser);
+    if (before && before !== wg) VimmaActors.clearScrollArea(before);
     setChosen(browser, isChosen ? wg : null);
   },
 
@@ -150,7 +159,9 @@ export const ScrollAreaOps = {
    */
   status(browser) {
     const wg = browser && chosen.get(browser);
-    // Only while that document is still shown: one in the back-forward cache is not.
-    return !!wg && wg.browsingContext?.currentWindowGlobal === wg;
+    // Only while that document is still shown in this tab: one in the back-forward cache is
+    // not, and a browsing context swap there may leave it in another.
+    const bc = wg?.browsingContext;
+    return !!bc && bc.currentWindowGlobal === wg && bc.top?.embedderElement === browser;
   },
 };

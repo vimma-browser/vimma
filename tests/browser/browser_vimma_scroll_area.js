@@ -85,6 +85,67 @@ function marked() {
   return !!(/** @type {{ scrollArea?: boolean }} */ (VimmaHost.status(window)).scrollArea);
 }
 
+/**
+ * Changes how a frame's Vimma actor answers: `hang` leaves the named messages unanswered for
+ * good (a busy or hostile frame); `count` counts them on the actor (`counted`).
+ * @param {BrowsingContext} bc
+ * @param {string[]} names
+ * @param {"hang" | "count"} how
+ */
+function stubChild(bc, names, how) {
+  return SpecialPowers.spawn(bc, [names, how], (names, how) => {
+    const actor = /** @type {VimmaChildActor & { counted?: number }} */ (
+      /** @type {WindowGlobalChild} */ (content.windowGlobalChild).getActor("Vimma")
+    );
+    const receive = actor.receiveMessage;
+    /** @param {VimmaChildMessage} msg */
+    actor.receiveMessage = (msg) => {
+      if (!names.includes(msg.name)) return receive.call(actor, msg);
+      if (how === "hang") return new Promise(() => {});
+      actor.counted = (actor.counted ?? 0) + 1;
+      return receive.call(actor, msg);
+    };
+  });
+}
+
+/**
+ * How many messages `stubChild(bc, …, "count")` has counted.
+ * @param {BrowsingContext} bc
+ * @returns {Promise<number>}
+ */
+function counted(bc) {
+  return SpecialPowers.spawn(
+    bc,
+    [],
+    () =>
+      /** @type {VimmaChildActor & { counted?: number }} */ (
+        /** @type {WindowGlobalChild} */ (content.windowGlobalChild).getActor("Vimma")
+      ).counted ?? 0,
+  );
+}
+
+/** @param {XULBrowserElement} browser */
+async function frameOf(browser) {
+  const top = /** @type {BrowsingContext} */ (browser.browsingContext);
+  const frame = /** @type {BrowsingContext} */ (top.children[0]);
+  await SpecialPowers.spawn(frame, [], () =>
+    ContentTaskUtils.waitForCondition(
+      () => content.document.readyState === "complete",
+      "the frame has loaded",
+    ),
+  );
+  return { top, frame };
+}
+
+/** @param {XULBrowserElement} browser */
+function treeY(browser) {
+  return SpecialPowers.spawn(
+    browser,
+    [],
+    () => /** @type {HTMLElement} */ (content.document.getElementById("tree")).scrollTop,
+  );
+}
+
 add_task(async function j_scrolls_the_larger_panel_and_gs_moves_it_to_the_other() {
   await withPage(async (browser) => {
     press("j");
@@ -162,6 +223,76 @@ add_task(async function a_click_in_a_scroller_too_small_to_be_an_area_keeps_the_
     await waitForPanels(browser, { tree: 0, main: STEP }, "j scrolls the page panel around it");
     Assert.ok(!marked(), "no marker for a code block");
   });
+});
+
+add_task(async function a_click_that_focuses_a_small_scroller_keeps_the_keys_on_it() {
+  await withPage(async (browser) => {
+    await BrowserTestUtils.synthesizeMouseAtCenter("#widget-text", {}, browser);
+    await TestUtils.waitForCondition(
+      () => SpecialPowers.spawn(browser, [], () => content.document.activeElement?.id === "widget"),
+      "the click focuses the widget",
+    );
+    press("j");
+    await TestUtils.waitForCondition(
+      () =>
+        SpecialPowers.spawn(
+          browser,
+          [],
+          () => /** @type {HTMLElement} */ (content.document.getElementById("widget")).scrollTop,
+        ).then((y) => y === STEP),
+      "j scrolls the focused widget",
+    ).catch(() => {});
+    Assert.deepEqual(await panels(browser), { tree: 0, main: 0 }, "the panels stay");
+    Assert.ok(!marked(), "no marker on an ordinary focused scroller");
+  });
+});
+
+add_task(async function a_click_messages_no_frame_but_the_one_holding_a_choice() {
+  await withPage(async (browser) => {
+    const { top, frame } = await frameOf(browser);
+    await stubChild(frame, ["Vimma:ScrollAreaClear"], "count");
+    await stubChild(top, ["Vimma:ScrollAreaClear"], "count");
+    // Nothing is chosen: these clicks end nothing, so no frame hears of them.
+    await BrowserTestUtils.synthesizeMouseAtCenter("#tree-text", {}, browser);
+    await BrowserTestUtils.synthesizeMouseAtCenter("#tree-text", {}, browser);
+    press("g", "s");
+    await TestUtils.waitForCondition(marked, "gs chose the frame's area");
+    // Now the frame holds the choice: a click in the tree ends it there.
+    await BrowserTestUtils.synthesizeMouseAtCenter("#tree-text", {}, browser);
+    await TestUtils.waitForCondition(
+      async () => (await counted(frame)) >= 1,
+      "the frame holding the choice is told",
+    );
+    Assert.equal(await counted(frame), 1, "the frame heard of the one click that ended its choice");
+    Assert.equal(await counted(top), 0, "the top document, which held nothing, heard nothing");
+  }, PAGE + "?frame");
+});
+
+add_task(async function a_frame_that_never_answers_does_not_hold_the_scroll_keys() {
+  await withPage(async (browser) => {
+    const { frame } = await frameOf(browser);
+    await stubChild(frame, ["Vimma:ScrollAreas"], "hang");
+    press("g", "s");
+    press("j");
+    await TestUtils.waitForCondition(
+      async () => (await treeY(browser)) === STEP,
+      "gs j: the frame is left out and j scrolls the tree",
+    );
+  }, PAGE + "?frame");
+});
+
+add_task(async function a_frame_that_never_answers_the_pick_does_not_hold_the_scroll_keys() {
+  await withPage(async (browser) => {
+    const { frame } = await frameOf(browser);
+    await stubChild(frame, ["Vimma:ScrollAreaPick"], "hang");
+    press("g", "s");
+    press("j");
+    await TestUtils.waitForCondition(
+      async () => (await treeY(browser)) === STEP,
+      "gs j: the pick times out and j scrolls the tree",
+    );
+    Assert.ok(!marked(), "nothing was chosen");
+  }, PAGE + "?frame");
 });
 
 add_task(async function a_click_the_page_dispatches_does_not_move_the_target() {

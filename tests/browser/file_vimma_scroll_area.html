@@ -61,6 +61,11 @@
     </div>
     <div id="main">
       <p id="main-text">The page</p>
+      <!-- A focusable widget that scrolls, too small to be an area: a click focuses it. -->
+      <div id="widget" tabindex="0" style="overflow: auto; height: 80px; width: 200px">
+        <p id="widget-text">Widget</p>
+        <div style="height: 400px"></div>
+      </div>
       <!-- A code block that scrolls sideways: a scroller, but too small to be an area. -->
       <pre id="code" style="overflow-x: auto; width: 200px">
 const aVeryLongLineThatDoesNotFitInTwoHundredPixelsOfWidthAtAll = "and keeps going on";</pre>
