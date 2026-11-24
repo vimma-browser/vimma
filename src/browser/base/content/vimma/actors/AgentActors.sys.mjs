@@ -12,6 +12,7 @@ import { ACTIVATE_CHANGES } from "../core/control.mjs";
 import { actorFor } from "./actor-for.mjs";
 import {
   markOf,
+  newAllowed,
   nextStep,
   noteSkipped,
   noteSubmitting,
@@ -145,11 +146,7 @@ export const AgentActors = {
     const top = browser.browsingContext;
     if (!top || !mark || top.currentWindowGlobal?.innerWindowId !== mark.doc) return false;
     try {
-      mark.allowed = {
-        method: allowed.method,
-        where: whereOf(Services.io.newURI(allowed.action)),
-        channel: 0,
-      };
+      mark.allowed = newAllowed(allowed.method, whereOf(Services.io.newURI(allowed.action)));
     } catch {
       return false;
     }

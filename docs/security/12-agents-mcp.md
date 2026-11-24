@@ -1080,7 +1080,14 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   `formdata` listener, or those of the press): that one is named in the step's place, to the
   asked method and destination alone, as those handlers can change the step's own submission
   anyway. A load the child names that is not a form submission, or goes elsewhere, matches
-  nothing, and the step's own submission is then cancelled too. The call's
+  nothing, and the step's own submission is then cancelled too. A step that does not run names
+  nothing, and only a step sent after the allowance opened can name its request. The child
+  watches only its own frame: a form aimed at another frame of the tab (`target` or
+  `formtarget` naming a frame, `_parent` or `_top` from a subframe) is cancelled even when asked,
+  as no request of that frame is named; one aimed at a new tab goes to a tab with no mark. With
+  Firefox's `dom.forms.submit_async_navigation` set to false by the user (it is true by
+  default), the form's navigation starts at once inside the step, and the child stops watching
+  as soon as the step returns. The call's
   wait for a page counts from when the click or the submission ran in the page's process, not
   from the child's reply before it, so that the allowance is still open when a busy process runs
   the step late; it still ends with the call. A step that starts no load ends its call once the
@@ -1115,7 +1122,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   destination, as the click's would be. A frame of another process in the tab is not ordered with
   that message, but its submissions are never the request the step's child named. A subframe
   that skips the step and is removed before its message is sent leaves the allowance open until
-  the call ends, still only for the request its child named, which it never names after a skip. The result and `:mcp log` name the
+  the call ends, but no request can take it: its child names none for a step that did not run. The result and `:mcp log` name the
   host it was going to. Clicks and fills on one tab run one at a time, so no call takes another's
   allowance. Your activation after the step (a click or a key of yours in that page) and your `f`
   hints end the mark, so your own submissions in an agent tab go through, and so do those of a page

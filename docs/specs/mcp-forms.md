@@ -591,7 +591,9 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     request, triggered from that child's process, because a page's submission to the same method
     and destination, opened after the question allowed it and before the step ran, or opened late
     by Firefox (a copied upload stream, a prefetch in flight, a form of a frame in another
-    process aimed at this one), could otherwise take the allowance.)
+    process aimed at this one), could otherwise take the allowance. A form aimed at another
+    frame of the tab is then cancelled even when asked, because the child names only its own
+    frame's loads, and following another frame's would widen what a page could have named.)
 17. **What cannot be caught.** A page that sends data with `fetch` from a button's click
     listener, without a form submission, cannot be told apart from any other button. Such a click
     is an ordinary `vimma_activate`, whose question names the element's text; the guide says

@@ -71,6 +71,9 @@ const stepOf = (asked) => (isIndex(asked.step) ? asked.step : -1);
  *   test hook names, read only in automation (M28); null otherwise
  */
 
+/** Firefox's own pref: a form's navigation runs in a task of its own (nsDocShell::OnFormSubmit). */
+const ASYNC_SUBMIT_PREF = "dom.forms.submit_async_navigation";
+
 export class AgentPage {
   /** @type {JSWindowActorChild} */
   #actor;
@@ -672,13 +675,24 @@ export class AgentPage {
       onSecurityChange() {},
       onContentBlockingEvent() {},
     };
-    this.#claim = listener;
-    progress.addProgressListener(
-      listener,
-      Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT | Ci.nsIWebProgress.NOTIFY_STATE_REQUEST,
-    );
     try {
-      return send();
+      progress.addProgressListener(
+        listener,
+        Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT | Ci.nsIWebProgress.NOTIFY_STATE_REQUEST,
+      );
+    } catch {
+      return send(); // nothing is named, and the parent lets nothing through
+    }
+    this.#claim = listener;
+    try {
+      const sent = send();
+      // A step that did not run names nothing. With the form's navigation made at once (a user's
+      // `dom.forms.submit_async_navigation` set to false), the step's own load has started
+      // inside `send`, and a submission of a later task must not be named after it.
+      if (sent === false || !Services.prefs.getBoolPref(ASYNC_SUBMIT_PREF, true)) {
+        this.#endClaim();
+      }
+      return sent;
     } finally {
       Services.tm.dispatchToMainThread(() => {
         if (this.#claim === listener) this.#endClaim();

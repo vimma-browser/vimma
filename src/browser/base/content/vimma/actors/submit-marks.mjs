@@ -13,8 +13,10 @@
 /**
  * The one submission a question allowed: `channel` is 0 until the child of the step names the
  * request it started (`Vimma:AgentSubmitting`), and nothing is let through before that; `from`
- * is the remote type of that child's process.
- * @typedef {{ method: string, where: string, channel: number, from?: string }} Allowed
+ * is the remote type of that child's process; `since` is the number of the last step sent before
+ * the allowance opened, so that a late claim of an earlier call's step names nothing.
+ * @typedef {{ method: string, where: string, channel: number, since: number, from?: string }}
+ *   Allowed
  */
 
 /**
@@ -31,6 +33,15 @@ let submitObserver = null;
 
 /** The number of the agent's last click or submission sent to a child (`nextStep`). */
 let stepCount = 0;
+
+/**
+ * A new allowance for `method` to `where`, which only a step sent after it can claim.
+ * @param {string} method @param {string} where
+ * @returns {Allowed}
+ */
+export function newAllowed(method, where) {
+  return { method, where, channel: 0, since: stepCount };
+}
 /**
  * The agent's last click or submission sent to each frame's document, by its window global:
  * its element and its number, which the child says back if it skips it (issue #1028).
@@ -179,7 +190,7 @@ export function setMark(top, doc, allowed) {
   }
   submitMarks.set(top.browserId, {
     doc,
-    allowed: allowed && where ? { method: allowed.method, where, channel: 0 } : null,
+    allowed: allowed && where ? newAllowed(allowed.method, where) : null,
     blocked: [],
   });
 }
@@ -200,6 +211,7 @@ export function noteSubmitting(bc, wg, data) {
   if (!data || typeof data !== "object" || !("step" in data) || !("channel" in data)) return;
   const { step, channel } = data;
   if (typeof step !== "number" || step !== sentSteps.get(wg)?.step) return;
+  if (step <= mark.allowed.since) return;
   if (typeof channel !== "number" || !Number.isSafeInteger(channel) || channel <= 0) return;
   const from = wg.domProcess?.remoteType;
   if (!from) return;
