@@ -1602,6 +1602,18 @@ describe("every chosen text is its own bidi run (mutation-tested)", () => {
     );
   });
 
+  test("a bookmarklet's folder path is its own bidi run in the question (security.md M4)", () => {
+    const run = {
+      tool: "vimma_bookmarklet",
+      label,
+      what: { title: "T", url: "https://a.example/", bookmarklet: "Tools/Dark" },
+    };
+    expect(questionLine(run, { grantMinutes: 10 }).parts).toContainEqual({
+      text: "Tools/Dark",
+      isolate: "auto",
+    });
+  });
+
   test("a step that followed no link is named as itself; :control on needs on first", () => {
     expect(stepText({ tool: "vimma_elements", what: { title: "T", followed: "x.example" } })).toBe(
       'listed the buttons and fields of "T"',
