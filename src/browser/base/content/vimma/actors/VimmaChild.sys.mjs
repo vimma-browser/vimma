@@ -83,6 +83,61 @@ const FRAMES = new Set(["iframe", "frame", "browser"]);
 /** Candidates for `i`; isEditable decides. */
 const TEXT_FIELDS = "input, textarea, [contenteditable]";
 
+/** A character that is not collapsible white space. */
+const NOT_COLLAPSIBLE = /[^ \t\n\r\f]/;
+
+/** Elements that hold no text: the caret goes before them, as HTMLEditor's endOfDocument does. */
+const VOID_LEAVES = new Set(["br", "hr", "img", "input", "wbr", "embed", "video", "audio"]);
+
+/**
+ * Whether `sel` is collapsed at the start of `root`'s text: the state a focus leaves a field in
+ * that neither the user nor the page put a caret in. In an editor (`html`), collapsible white
+ * space before the first block is no text: the focus may put the caret before it.
+ * @param {Selection | null} sel
+ * @param {Element | null} root
+ * @param {boolean} [html]
+ */
+function atStart(sel, root, html = false) {
+  if (!sel || !root || sel.rangeCount !== 1 || !sel.isCollapsed || !sel.anchorNode) return false;
+  if (!root.contains(sel.anchorNode)) return false;
+  const before = root.ownerDocument.createRange();
+  before.setStart(root, 0);
+  before.setEnd(sel.anchorNode, sel.anchorOffset);
+  const text = before.toString();
+  return html ? !NOT_COLLAPSIBLE.test(text) : text === "";
+}
+
+/**
+ * The end of an editor's last leaf, where its text ends (HTMLEditor's
+ * CollapseSelectionToEndOfLastLeafNodeOfDocument, which only acts on a whole editable document):
+ * the end of the last text, inside the last block, not after it, so typed text joins that line.
+ * Collapsible white space between blocks is no leaf.
+ * @param {Element} root
+ * @returns {{ node: Node, offset: number }}
+ */
+function endOfLastLeaf(root) {
+  /** @type {Node} */
+  let node = root;
+  for (;;) {
+    let child = node.lastChild;
+    while (
+      child &&
+      !(
+        child.nodeType === 1 ||
+        (child.nodeType === 3 && NOT_COLLAPSIBLE.test(child.nodeValue ?? ""))
+      )
+    ) {
+      child = child.previousSibling;
+    }
+    if (!child) return { node, offset: node.childNodes.length };
+    if (child.nodeType === 3) return { node: child, offset: /** @type {Text} */ (child).length };
+    if (VOID_LEAVES.has(/** @type {Element} */ (child).localName)) {
+      return { node, offset: Array.prototype.indexOf.call(node.childNodes, child) };
+    }
+    node = child;
+  }
+}
+
 /**
  * The focused element, through open and closed shadow roots.
  * @param {Document} doc
@@ -1318,7 +1373,7 @@ export class VimmaChild extends JSWindowActorChild {
       return true;
     }
     if (el.localName !== "a" && isEditable(describe(el)).editable) {
-      this.#focus(html);
+      this.#focusAtEnd(html);
       return true;
     }
     return asUserGesture(win, () => this.#press(el));
@@ -1527,9 +1582,9 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   /**
-   * Focuses `el` for `i` or `gi`, and puts its caret at the end of its text unless the user has
-   * been in it: a page fills its field from markup with the selection at 0, where a scripted
-   * focus keeps it (#1522).
+   * Focuses `el` for `i`, `gi` or a hint, and puts its caret at the end of its text unless the
+   * user has been in it or the page moved its selection on focus: a page fills its field from
+   * markup with the selection at 0, where a scripted focus keeps it (#1522).
    * @param {HTMLElement} el
    * @returns {boolean} whether it took focus
    */
@@ -1539,12 +1594,16 @@ export class VimmaChild extends JSWindowActorChild {
     if (this.#userFields.has(el)) return true;
     try {
       if (el.localName === "input" || el.localName === "textarea") {
-        // The field's own editor: setSelectionRange throws for an email or number input.
-        /** @type {HTMLInputElement} */ (el).editor?.endOfDocument();
-      } else {
+        // The field's own editor: setSelectionRange throws, and selectionStart is null, for an
+        // email or number input.
+        const editor = /** @type {HTMLInputElement} */ (el).editor;
+        if (!editor || !atStart(editor.selection, editor.rootElement)) return true;
+        editor.endOfDocument();
+      } else if (el.isContentEditable) {
         const sel = this.document.getSelection();
-        sel?.selectAllChildren(el);
-        sel?.collapseToEnd();
+        if (!sel || !atStart(sel, el, true)) return true;
+        const end = endOfLastLeaf(el);
+        sel.collapse(end.node, end.offset);
       }
     } catch {
       // A field the page removed or made read-only while it took focus keeps its caret.

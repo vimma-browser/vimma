@@ -41,7 +41,9 @@ target, a link under a fixed header, links below the fold, an open shadow root),
 - A label follows the link (the location changes); one in the cross-origin frame navigates the
   frame only; one in a shadow root follows too.
 - A label on a button or on a span with a click listener clicks it; mode stays normal.
-- A label on an input focuses it and the tab enters insert (`j` then types).
+- A label on an input focuses it and the tab enters insert (`j` then types). (Since changed: in
+  a field the user has not been in, the caret goes to the end of its text;
+  [insert-focus](insert-focus.md), "Follow-up: the caret on `i`".)
 - `F` labels the 6 links only; a label opens a background tab with that URL, in the same
   container, and the tab itself stays.
 - Typing the first key of the two-key labels leaves only those; `Backspace` brings all back;

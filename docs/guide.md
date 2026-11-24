@@ -649,15 +649,14 @@ other sites. Focusing a checkbox, button or link does not. `Esc` leaves insert: 
 out of the field and the tab is back in normal. `i` enters insert explicitly: it goes back to
 the text field you were last in on the page, or the first text field if that one is gone, or, on
 a page without one (a game), lets every key through. In a field you have not been in yet, such as
-the search field a results page fills with your query, `i` and `gi` put the caret at the end of
-its text, ready to add to it or delete it; in a field you left, the caret is where you left it.
-Insert entered with `i` or `gi` lasts until
-`Esc`, even if the page moves focus itself (a file finder jumping to its result list, a dialog
-taking focus), so the keys you type keep going to the page. Insert entered by clicking or
-tabbing into a field follows the focus: when focus leaves the text fields, the tab is back in
-normal. After `Esc`, a page cannot put you back in insert on its own: a dialog that pulls focus
-back into its field leaves the tab in normal, and you return to typing with `i`, a click into
-the field or `Tab`.
+the search field a results page fills with your query, `i`, `gi` and a hint put the caret at the
+end of its text, ready to add to it or delete it; in a field you left, the caret is where you
+left it. Insert entered with `i` or `gi` lasts until `Esc`, even if the page moves focus itself
+(a file finder jumping to its result list, a dialog taking focus), so the keys you type keep
+going to the page. Insert entered by clicking or tabbing into a field follows the focus: when
+focus leaves the text fields, the tab is back in normal. After `Esc`, a page cannot put you back
+in insert on its own: a dialog that pulls focus back into its field leaves the tab in normal,
+and you return to typing with `i`, a click into the field or `Tab`.
 
 In normal mode, `Esc` also takes focus off whatever `Tab` or a click left focused in the page,
 such as a link or a button, so its focus ring goes away. The page has that `Esc` first: a menu

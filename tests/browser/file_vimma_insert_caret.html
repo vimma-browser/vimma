@@ -16,5 +16,46 @@
 line one
 line two</textarea>
     <div id="editor" contenteditable="true">edited <b>text</b></div>
+    <div id="blocks" contenteditable="true">
+      <p>one</p>
+      <p>two</p>
+    </div>
+    <input id="mail" type="email" value="a@example.com" />
+    <input id="picked" value="pick me" />
+    <textarea id="long" rows="2">
+line 1
+line 2
+line 3
+line 4
+line 5
+line 6
+line 7
+line 8
+line 9
+line 10
+line 11
+line 12
+line 13
+line 14
+line 15
+line 16
+line 17
+line 18
+line 19
+line 20
+line 21
+line 22
+line 23
+line 24
+line 25
+line 26
+line 27
+line 28
+line 29
+line 30</textarea>
+    <script>
+      // A page that selects its field's text when it takes focus, as some search boxes do.
+      document.getElementById("picked").addEventListener("focus", (e) => e.target.select());
+    </script>
   </body>
 </html>
