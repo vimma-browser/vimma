@@ -762,10 +762,11 @@ export class AgentQueue {
 
   /**
    * End every grant (`:mcp revoke`, `ctrl+b shift+a`: decision 22, mcp-grants G4).
-   * @param {number} [now]  grants that ended before it are not counted
+   * @param {number} [now]  grants that ended before it are not counted; without it, every grant
+   *   is (0 is no grant, so it never counts)
    * @returns {number} how many there were
    */
-  revoke(now = -Infinity) {
+  revoke(now = 0) {
     let n = 0;
     for (const c of this.conns.values()) {
       if (c.grant > now) n++;
