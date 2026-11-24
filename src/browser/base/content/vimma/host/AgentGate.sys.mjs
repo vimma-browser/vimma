@@ -460,7 +460,7 @@ export const AgentGate = {
    */
   grantConnection(conn) {
     if (!isBuiltinConn(conn) || !labels.has(conn)) return false;
-    const made = queue.grantConnection(conn, Date.now());
+    const made = queue.grantConnection(conn);
     if (made) changed();
     return made;
   },
