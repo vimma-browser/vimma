@@ -398,15 +398,19 @@ function checkFrame(op, plan, mine) {
 }
 
 /**
- * The pages `win` shows: its selected browser and any other one drawn beside it (split panes),
- * which are the ones whose browsing context is active.
+ * The remote pages `win` shows: its selected browser and any other one drawn beside it (split
+ * panes), which are the ones whose browsing context is active. A page in the parent process
+ * (the start page) is resized with the window's own layout (nsSubDocumentFrame::ReflowFinished)
+ * and drawn in the window's own paint, so it never shows at the old size and is not waited for.
  * @param {BrowserWindow} win
  * @returns {MozBrowser[]}
  */
 function shownBrowsers(win) {
   const g = win.gBrowser;
   if (!g) return [];
-  return g.browsers.filter((b) => b === g.selectedBrowser || b.browsingContext?.isActive);
+  return g.browsers.filter(
+    (b) => b.isRemoteBrowser && (b === g.selectedBrowser || b.browsingContext?.isActive),
+  );
 }
 
 /**

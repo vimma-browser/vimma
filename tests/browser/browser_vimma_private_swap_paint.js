@@ -30,7 +30,7 @@ const PLAIN = ROOT + "file_vimma_plain.html";
 const FRAME = { x: 40, y: 60, width: 900, height: 700 };
 const SMALL = { x: 120, y: 100, width: 700, height: 560 };
 /** How long the page takes to paint after its resize: far more than a swap takes without it. */
-const SLOW_PAINT_MS = 600;
+const SLOW_PAINT_MS = 300;
 
 /** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
@@ -59,6 +59,13 @@ const frameOf = (win) => ({
 
 /** @param {BrowserWindow} win */
 const hidden = (win) => NativeSwap._windowForTests(win).hidden;
+
+/** Two turns of the event loop: past the swap's frame check, a turn after its show. */
+async function settled() {
+  for (let i = 0; i < 2; i++) {
+    await new Promise((r) => Services.tm.dispatchToMainThread(() => r(undefined)));
+  }
+}
 
 /** @param {Window} win @param {{ x: number, y: number, width: number, height: number }} f */
 async function place(win, f) {
@@ -158,6 +165,7 @@ async function enterThenShrink(paintTimeout = 30_000) {
   togglePrivate(window);
   const priv = await opened;
   await until(() => hidden(window) && !hidden(priv), "private is shown in the normal place");
+  await settled();
   await place(priv, SMALL);
   return { tab, priv };
 }
@@ -175,6 +183,7 @@ add_task(async function a_window_shown_at_a_new_size_waits_for_its_page_to_paint
     await SimpleTest.promiseFocus(priv);
     togglePrivate(priv);
     await until(() => hidden(priv) && !hidden(window), "back to the normal window");
+    await settled();
     Assert.deepEqual(frameOf(window), SMALL, "the normal window is at the private window's frame");
     const painted = await paintedAt(tab.linkedBrowser);
     const shown = shownAt.get(window) ?? 0;
@@ -191,18 +200,31 @@ add_task(async function a_window_shown_at_a_new_size_waits_for_its_page_to_paint
   }
 });
 
-add_task(async function a_page_that_does_not_paint_in_time_does_not_hold_the_swap() {
+add_task(async function a_page_that_does_not_paint_does_not_hold_the_swap() {
+  // The page's refresh driver is held, so it neither resizes nor paints: the swap shows the
+  // window anyway once its timeout has passed.
   const { tab, priv } = await enterThenShrink(100);
+  const held = () =>
+    SpecialPowers.spawn(tab.linkedBrowser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
+  const release = () =>
+    SpecialPowers.spawn(tab.linkedBrowser, [], () => content.windowUtils.restoreNormalRefresh());
   try {
-    await slowNextPaint(tab.linkedBrowser);
-    shownAt.clear();
+    await held();
     await SimpleTest.promiseFocus(priv);
     togglePrivate(priv);
+    Assert.ok(hidden(window), "the normal window waits for its page first");
     await until(() => hidden(priv) && !hidden(window), "back to the normal window");
-    const painted = await paintedAt(tab.linkedBrowser);
-    const shown = shownAt.get(window) ?? Infinity;
-    Assert.less(shown, painted, "shown after the timeout, before the slow page painted");
+    await settled();
+    Assert.ok(
+      await SpecialPowers.spawn(
+        tab.linkedBrowser,
+        [],
+        () => content.windowUtils.isTestControllingRefreshes,
+      ),
+      "shown while the page still could not paint",
+    );
   } finally {
+    await release();
     BrowserTestUtils.removeTab(tab);
     await teardown();
   }

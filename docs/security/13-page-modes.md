@@ -162,4 +162,4 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   learns nothing it could not already see (its own resize, its window turning active, and its
   paint; a switch dropped during the wait leaves it resized while hidden), and never which window
   is being shown or that the private workspace is involved.
-  [`a_page_that_does_not_paint_in_time_does_not_hold_the_swap`](../../tests/browser/browser_vimma_private_swap_paint.js)
+  [`a_page_that_does_not_paint_does_not_hold_the_swap`](../../tests/browser/browser_vimma_private_swap_paint.js)
