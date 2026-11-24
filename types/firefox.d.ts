@@ -503,6 +503,8 @@ interface Element {
   /** The slot it is assigned to, in an open or a closed shadow tree. */
   readonly openOrClosedAssignedSlot: HTMLSlotElement | null;
   readonly scrollTopMax: number;
+  /** Negative where the scroll origin is at the bottom, as in a column-reverse flex box. */
+  readonly scrollTopMin: number;
   readonly scrollLeftMax: number;
   /** Negative in a right-to-left scroller, whose scrollLeft runs from it up to 0. */
   readonly scrollLeftMin: number;
