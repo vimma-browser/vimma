@@ -142,6 +142,8 @@ declare const BrowserTestUtils: {
     wantLoad?: WantLoad | null,
     maybeErrorPage?: boolean,
   ): Promise<string>;
+  /** Resolves on the browser's next top-level STATE_STOP (with STATE_IS_NETWORK). */
+  browserStopped(browser: MozBrowser, expectedURI?: string, checkAborts?: boolean): Promise<void>;
   waitForErrorPage(browser: MozBrowser): Promise<string>;
   startLoadingURIString(browser: MozBrowser, uri: string, loadFlags?: number): void;
   waitForNewTab(

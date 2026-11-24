@@ -270,7 +270,12 @@ add_task(async function test_follow_loads_the_href_without_a_click() {
 add_task(async function test_the_load_wait_passes_over_an_initial_document() {
   const tab = BrowserTestUtils.addTab(gBrowser);
   const browser = tab.linkedBrowser;
-  await until(() => !!browser.browsingContext?.currentWindowGlobal, "the tab has a document");
+  // The tab has its initial document as soon as addTab returns, and then loads about:blank into
+  // it, the browser's default src (Tabbrowser #createBrowser sets nodefaultsrc only for other
+  // URLs). That load is still on its way, or under way, when the document appears (#1510), so the
+  // test waits for its STATE_STOP, which clears the tab's isLoadingDocument
+  // (BrowsingContextWebProgress::OnStateChange).
+  await BrowserTestUtils.browserStopped(browser);
   Assert.ok(windowGlobalOf(contextOf(browser)).isInitialDocument, "its initial one");
   Assert.ok(!webProgressOf(browser).isLoadingDocument, "which is not loading");
   // What the tab showed before the step: another document at another URL.
