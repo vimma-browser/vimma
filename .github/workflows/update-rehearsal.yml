@@ -1,0 +1,65 @@
+# The update rehearsal (docs/specs/m6a-updater.md, Tests, "Security rehearsal", decision 23;
+# docs/runbook/ci-update-keys-and-update-host.md, "The update rehearsal"). Once a day, the
+# previous release's tarball, from its GitHub Release, is installed into a new directory and
+# started under Xvfb with a new profile; it must find the release updates.vimma.dev offers,
+# stage it with Firefox's updater (which checks the MAR's signature) and run it after a restart.
+# This is the install side of a release reaching users, run with no person acting.
+#
+# Harmless while updates are not published: the job runs only while UPDATES_ENABLED is true
+# (the variable that makes release.yml ship the MAR and update-publish.yml sign the manifest),
+# and tools/update/rehearsal.ts reports "nothing to rehearse" and passes when the host serves no
+# manifest or one that offers nothing (an update pulled, decision 22).
+#
+# No secret: it downloads public files, and the job token (contents: read) only lists the
+# releases. Nothing to install: the script is Node standard library and this repository's files,
+# on .nvmrc's Node; the runner image has Xvfb and dbus. Scheduled and by hand only: it reads
+# the published releases, which no pull request changes.
+name: update-rehearsal
+
+on:
+  schedule:
+    - cron: "37 8 * * *" # 08:37 UTC daily
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: update-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    name: Update the previous release from updates.vimma.dev
+    if: github.repository == 'vimma-browser/vimma' && vars.UPDATES_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read # the published releases' tags and dates
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        env:
+          YARN_IGNORE_PATH: "1" # its `yarn --version` ignores a .yarnrc yarn-path in the checkout
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # no cache, even when package.json names npm
+
+      - name: Rehearse the update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: node tools/update/rehearsal.ts run --repo "$REPO" --out "$RUNNER_TEMP/rehearsal"
+
+      # The browser's output and the updater's log; the install, the profile and the downloads
+      # stay behind.
+      - name: Keep the logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: update-rehearsal-logs
+          path: ${{ runner.temp }}/rehearsal/logs
+          if-no-files-found: ignore
+          retention-days: 14

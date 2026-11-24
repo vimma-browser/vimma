@@ -52,6 +52,9 @@ maintainer's one click.
   since the first one, and `release.yml` would have nothing to build. To ship a draft once its
   build is green: Releases → the draft → Edit → "Publish release". Publishing builds nothing;
   it starts `aur.yml`, which pushes the AUR package (below, "Release packages").
+  Once a release is published, `update-rehearsal.yml` checks each day that the release before
+  it updates to it from `updates.vimma.dev` (docs/runbook/ci-update-keys-and-update-host.md,
+  "The update rehearsal").
 - **Keep drafts on, also once the release gate opens** (no public release until the maintainer
   has daily-driven Vimma). The gate is the click on "Publish release", not the config. Without
   `"draft"`, release-please would create a published release two hours before its files exist,
