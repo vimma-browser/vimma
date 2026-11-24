@@ -10,6 +10,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { HoverOps } from "./hover-ops.mjs";
+import { ScrollAreaOps } from "./scroll-area-ops.mjs";
 import { describeAction } from "../core/actions.mjs";
 import {
   noTabText,
@@ -748,6 +749,20 @@ export function hostRunners(host, page) {
 }
 
 /**
+ * A scroll key, once a `gs` typed before it has chosen its area (docs/specs/scroll-area.md).
+ * @param {MozBrowser} browser
+ * @param {import("../actors/VimmaActors.sys.mjs").ScrollKind} kind
+ * @param {number} [count]
+ */
+function scrollAfterArea(browser, kind, count) {
+  // At once when no gs runs: a later key's message (f's collection after d) must not overtake it.
+  const wait = ScrollAreaOps.pending(browser);
+  return wait
+    ? wait.then(() => VimmaActors.scroll(browser, kind, count))
+    : VimmaActors.scroll(browser, kind, count);
+}
+
+/**
  * Actions on the focused page (m1-actor-insert-scroll). Runnable only while a content browser
  * with our actor has focus; elsewhere (the URL bar) they count as not runnable, so Esc there
  * still reaches Firefox. Every runnable id is a key of RUNNERS or CONTENT_RUNNERS; whether one
@@ -758,14 +773,17 @@ export function hostRunners(host, page) {
  */
 export function contentRunners(host, page) {
   return Object.freeze({
-    "scroll.down": (b, a) => VimmaActors.scroll(b, "down", a.count),
-    "scroll.up": (b, a) => VimmaActors.scroll(b, "up", a.count),
-    "scroll.left": (b, a) => VimmaActors.scroll(b, "left", a.count),
-    "scroll.right": (b, a) => VimmaActors.scroll(b, "right", a.count),
-    "scroll.half_down": (b, a) => VimmaActors.scroll(b, "half_down", a.count),
-    "scroll.half_up": (b, a) => VimmaActors.scroll(b, "half_up", a.count),
-    "scroll.top": (b) => VimmaActors.scroll(b, "top"),
-    "scroll.bottom": (b) => VimmaActors.scroll(b, "bottom"),
+    "scroll.down": (b, a) => scrollAfterArea(b, "down", a.count),
+    "scroll.up": (b, a) => scrollAfterArea(b, "up", a.count),
+    "scroll.left": (b, a) => scrollAfterArea(b, "left", a.count),
+    "scroll.right": (b, a) => scrollAfterArea(b, "right", a.count),
+    "scroll.half_down": (b, a) => scrollAfterArea(b, "half_down", a.count),
+    "scroll.half_up": (b, a) => scrollAfterArea(b, "half_up", a.count),
+    "scroll.top": (b) => scrollAfterArea(b, "top"),
+    "scroll.bottom": (b) => scrollAfterArea(b, "bottom"),
+    // docs/specs/scroll-area.md: which scroll area the keys above move.
+    "scroll.area_next": (b, a) => host._cycleScrollArea(b, 1, a.count),
+    "scroll.area_prev": (b, a) => host._cycleScrollArea(b, -1, a.count),
     // History and reload act on the focused page's <browser>, so in a split the focused pane's
     // (docs/bindings.md, "Navigation"). In insert mode the keys are the page's (normal-only
     // bindings).

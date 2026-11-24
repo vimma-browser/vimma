@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_scroll_area.js: two scrolling panels as Confluence lays them out,
+   - a page tree on the left and the page on the right, under a header, in a document that does
+   - not scroll. Nothing in them takes focus. With ?frame the right panel is a cross-origin
+   - iframe whose own document scrolls. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma scroll areas</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        font: 16px/1.5 sans-serif;
+      }
+      header {
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 40px;
+      }
+      #tree,
+      #main {
+        position: absolute;
+        top: 40px;
+        bottom: 0;
+        overflow: auto;
+        border: 0;
+      }
+      #tree {
+        left: 0;
+        width: 300px;
+      }
+      #main {
+        left: 300px;
+        right: 0;
+      }
+      /* A replaced element takes its own size, not left and right: set it. */
+      iframe#main {
+        width: calc(100% - 300px);
+        height: calc(100% - 40px);
+      }
+      .tall {
+        height: 5000px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>Space</header>
+    <div id="tree">
+      <p id="tree-text">Page tree</p>
+      <div class="tall"></div>
+    </div>
+    <div id="main">
+      <p id="main-text">The page</p>
+      <div class="tall"></div>
+    </div>
+    <script>
+      // A click the page's own script dispatches, as an agent's press is (untrusted).
+      window.pageClick = (id) => {
+        const el = document.getElementById(id);
+        for (const type of ["mousedown", "mouseup", "click"]) {
+          el.dispatchEvent(new MouseEvent(type, { bubbles: true }));
+        }
+      };
+      // The right panel as a cross-origin frame: the same path on example.org.
+      if (location.search === "?frame") {
+        const frame = document.createElement("iframe");
+        frame.id = "main";
+        frame.src = location.href
+          .replace("https://example.com", "https://example.org")
+          .replace("file_vimma_scroll_area.html?frame", "file_vimma_scroll_area_inner.html");
+        document.getElementById("main").replaceWith(frame);
+      }
+    </script>
+  </body>
+</html>

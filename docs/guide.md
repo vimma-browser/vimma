@@ -13,7 +13,8 @@ Vimma is pre-alpha. The guide describes what works now; known gaps are listed in
 What works today, each with the section that explains it:
 
 - **Vim on the page** ([the two layers](#the-two-layers)): `j`/`k`/`h`/`l` scroll, `d`/`u`
-  half a page, `gg`/`G` top and bottom, `H`/`L` back and forward; `f` link hints (`gF` in a
+  half a page, `gg`/`G` top and bottom, `gs` to choose [which panel](#pages-with-several-scrolling-panels)
+  they move, `H`/`L` back and forward; `f` link hints (`gF` in a
   new tab: in the background, or with an upper-case last key, switching to it); `gh`
   [hovers](#hovering-an-element) what a page shows only under the mouse; `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
   list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
@@ -748,6 +749,24 @@ cancels it.
 "… not implemented yet" in the bottom-right corner for 1.5 s (not while a video or page is
 fullscreen); a single key whose command does not exist reaches the page or Firefox, with no
 message; and the `ctrl+b ?` overlay dims it.
+
+### Pages with several scrolling panels
+
+On pages built from panels that scroll on their own, such as Confluence's page tree beside the
+page, a mail client's folder list or a documentation site's sidebar, you choose which panel the
+scroll keys move. Vim-style, `gs` moves them to the next scroll area and `gS` to the previous
+one, wrapping around; on a page with two panels, `gs` switches between them. A count picks one
+directly: `1gs` is the first area from the left, `2gs` the second. The chosen area is outlined
+for a moment, and the status bar shows `scroll area` while the keys move a panel rather than the
+page's own scroller.
+
+Every scroll key follows the chosen area: `j`, `k`, `h`, `l`, `d`, `u`, `ctrl+d`, `ctrl+u`,
+`ctrl+e`, `ctrl+y`, `gg` and `G`. A click in a panel picks it too, and so does following a link
+in it with `f`; an agent's click never changes where your keys scroll. An area in a frame, from
+the same site or another, is cycled like any other, and choosing it puts the keys in that frame.
+The choice lasts until another `gs`, a click elsewhere, or a new page. Areas are the page itself
+and every panel that shows at least a tenth of the window, in reading order: left to right, then
+top to bottom. `gs` and `gS` can be remapped in `config.toml` like every key.
 
 ### Link hints
 

@@ -18,6 +18,7 @@ import {
 import { INSERT_ENTER } from "../core/editable.mjs";
 import { parseScrollPosition } from "../core/find.mjs";
 import { SCROLL_STEP_DEFAULT, scrollStep } from "../core/scroll.mjs";
+import { parseScrollAreasReply } from "../core/scroll-areas.mjs";
 import { suggestionStep } from "../core/suggestions.mjs";
 import { NAME, actorFor } from "./actor-for.mjs";
 import { pressKeyLater } from "./enter-key.mjs";
@@ -281,6 +282,126 @@ export const VimmaActors = {
         return true;
     }
     return false;
+  },
+
+  /**
+   * The browsing context ids of the frames the scroll keys try, in order (framesFor): the
+   * focused subframe, then the top frame.
+   * @param {MozBrowser} browser
+   * @returns {number[]}
+   */
+  scrollFrameOrder(browser) {
+    return framesFor(browser).map((bc) => bc.id);
+  },
+
+  /**
+   * The scroll areas of the page in `browser` and its frames (docs/specs/scroll-area.md), in
+   * the top frame's CSS pixels: each frame's child finds its own, and the parent offsets and
+   * clips them by the frame rects their embedders report, as collectHints does. Replies are
+   * from content processes: a malformed one, or one that comes too late, drops that frame.
+   * `index` is the area's place in its frame's own list, for pickScrollArea.
+   * @param {MozBrowser} browser
+   * @returns {Promise<{ viewport: Rect | null, areas: { bc: CanonicalBrowsingContext,
+   *   wg: WindowGlobalParent, frame: number, index: number, rect: Rect, current: boolean,
+   *   chosen: boolean }[] }>}
+   */
+  async scrollAreas(browser) {
+    /** @type {Rect | null} */
+    let viewport = null;
+    /** @type {{ bc: CanonicalBrowsingContext, wg: WindowGlobalParent, frame: number,
+     *   index: number, rect: Rect, current: boolean, chosen: boolean }[]} */
+    const out = [];
+    const frameTimeout = Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT);
+    /** Each frame at most once, whatever its embedder reports. */
+    const visited = new Set();
+    /**
+     * @param {CanonicalBrowsingContext} bc
+     * @param {Rect} clip  the frame's viewport in top-frame pixels, clipped by its ancestors
+     * @param {{ x: number, y: number }} origin  its viewport origin in top-frame pixels
+     * @param {number} depth
+     */
+    const visit = async (bc, clip, origin, depth) => {
+      if (visited.has(bc.id)) return;
+      visited.add(bc.id);
+      const wg = bc.currentWindowGlobal;
+      const actor = actorFor(bc);
+      if (!wg || !actor) return;
+      /** @type {unknown} */
+      let raw;
+      /** @type {number | undefined} */
+      let timer;
+      try {
+        /** @type {Promise<null>} */
+        const late = new Promise((resolve) => {
+          timer = setTimeout(resolve, depth === 0 ? HINT_TOP_TIMEOUT_MS : frameTimeout, null);
+        });
+        raw = await Promise.race([actor.sendQuery("Vimma:ScrollAreas"), late]);
+      } catch {
+        return; // the frame navigated or its process went away
+      } finally {
+        clearTimeout(timer);
+      }
+      // From a content process, which may be compromised: a fresh, checked copy or nothing.
+      const reply = parseScrollAreasReply(raw);
+      if (!reply || bc.currentWindowGlobal !== wg) return;
+      if (depth === 0) viewport = reply.viewport;
+      reply.areas.forEach((a, index) => {
+        const rect = intersect(offset(a.rect, origin), clip);
+        if (rect)
+          out.push({ bc, wg, frame: bc.id, index, rect, current: a.current, chosen: a.chosen });
+      });
+      if (depth >= MAX_FRAME_DEPTH) return;
+      await Promise.all(
+        reply.frames.map((f) => {
+          // Only a frame this document embeds: a content process names no other.
+          const child = bc.children.find((c) => c.id === f.id);
+          if (!child) return null;
+          const rect = offset(f.rect, origin);
+          const clipped = intersect(rect, clip);
+          return clipped && visit(child, clipped, { x: rect.x, y: rect.y }, depth + 1);
+        }),
+      );
+    };
+    const top = browser.browsingContext;
+    if (top) {
+      await visit(top, { x: 0, y: 0, width: Infinity, height: Infinity }, { x: 0, y: 0 }, 0);
+    }
+    return { viewport, areas: out };
+  },
+
+  /**
+   * Makes area `index` of the frame's document the one the scroll keys move, while the frame
+   * still shows that document (docs/specs/scroll-area.md).
+   * @param {CanonicalBrowsingContext} bc
+   * @param {WindowGlobalParent} wg
+   * @param {number} index
+   * @returns {Promise<boolean | null>} whether an area is chosen there (false: the default
+   *   rule's own area), null when it did not happen
+   */
+  async pickScrollArea(bc, wg, index) {
+    if (bc.currentWindowGlobal !== wg) return null;
+    try {
+      const reply = await actorFor(bc)?.sendQuery("Vimma:ScrollAreaPick", { index });
+      return typeof reply === "boolean" ? reply : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Ends the scroll area choice in every frame of `browser` but `except`.
+   * @param {MozBrowser} browser
+   * @param {BrowsingContext | null} except
+   */
+  clearScrollAreas(browser, except) {
+    for (const bc of browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []) {
+      if (bc === except) continue;
+      try {
+        actorFor(bc)?.sendAsyncMessage("Vimma:ScrollAreaClear");
+      } catch {
+        // The frame went away: nothing of its choice is left.
+      }
+    }
   },
 
   /**

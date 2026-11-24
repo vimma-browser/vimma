@@ -87,6 +87,8 @@ Navigation
   scroll_half_up            u, ctrl+u                                            Scroll half a page up
   scroll_top                gg                                                   Scroll to top
   scroll_bottom             G                                                    Scroll to bottom
+  scroll_area_next          gs                                                   Scroll keys: next scroll area (a count: the Nth)
+  scroll_area_prev          gS                                                   Scroll keys: previous scroll area
   history_back              alt+left, H, ctrl+o, ctrl+[                          Go back
   history_forward           alt+right, L, ctrl+i, ctrl+]                         Go forward
   reload                    f5, ctrl+r, r, R [pdf]                               Reload page
@@ -422,6 +424,8 @@ Navigation
   scroll_half_up            u, ctrl+u                                            Scroll half a page up
   scroll_top                gg                                                   Scroll to top
   scroll_bottom             G                                                    Scroll to bottom
+  scroll_area_next          gs                                                   Scroll keys: next scroll area (a count: the Nth)
+  scroll_area_prev          gS                                                   Scroll keys: previous scroll area
   history_back              meta+left, meta+[, H, ctrl+o, ctrl+[                 Go back
   history_forward           meta+right, meta+], L, ctrl+i, ctrl+]                Go forward
   reload                    f5, ctrl+r, r, R [pdf]                               Reload page

@@ -74,6 +74,7 @@ import { contentRunners, hostRunners } from "./runners.mjs";
 import { HostServices } from "./host-services.mjs";
 import { dropOutlineAsk } from "./outline-ops.mjs";
 import { HoverOps } from "./hover-ops.mjs";
+import { SCROLL_AREA_FLASH_MS, ScrollAreaOps } from "./scroll-area-ops.mjs";
 
 // Defined with the code that uses them; importers reach them here, as before the runners moved.
 export { CONFIG_EDIT_TOPIC, CONFIG_RELOAD_TOPIC } from "./runners.mjs";
@@ -1016,7 +1017,7 @@ export const VimmaHost = {
    *   update?: import("../core/updates.mjs").UpdateNotice | null,
    *   element?: import("../core/statusbar.mjs").ElementStatus | null,
    *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null,
-   *   hover?: import("../core/statusbar.mjs").HoverStatus | null,
+   *   hover?: import("../core/statusbar.mjs").HoverStatus | null, scrollArea?: boolean,
    *   pdf?: import("../core/pdf.mjs").PdfState | null,
    *   downloads?: import("../core/downloads.mjs").DownloadSegment | null }}
    */
@@ -1044,6 +1045,8 @@ export const VimmaHost = {
       element: state.element.status(),
       // docs/specs/hover.md decision 8: `hover · Settings`.
       hover: HoverOps.status(browser),
+      // docs/specs/scroll-area.md behaviour 6: `scroll area` while gs or a click chose one.
+      scrollArea: ScrollAreaOps.status(browser),
       // docs/specs/follow-link-switch.md decision 8: `sd background · sD go there`.
       hint: state.hint
         ? state.hint.hs
@@ -2219,6 +2222,32 @@ export const VimmaHost = {
   },
 
   /**
+   * `gs` / `gS` (docs/specs/scroll-area.md): the scroll keys move the next or previous scroll
+   * area of the tab, or with a count the Nth, outlined for a moment over the page.
+   * @param {MozBrowser} browser
+   * @param {1 | -1} direction
+   * @param {number | undefined} count
+   */
+  _cycleScrollArea(browser, direction, count) {
+    const state = stateOfBrowser(browser);
+    if (!state) return;
+    ScrollAreaOps.cycle(browser, direction, count, (b, box) =>
+      state.hintOverlay.flashArea(b, box, SCROLL_AREA_FLASH_MS),
+    ).catch((e) => console.error("vimma: gs", e));
+  },
+
+  /**
+   * A frame's click chose a scroll area, or its choice ended (Vimma:ScrollAreaChosen,
+   * docs/specs/scroll-area.md).
+   * @param {CanonicalBrowsingContext} bc
+   * @param {WindowGlobalParent} wg
+   * @param {boolean} chosen
+   */
+  onScrollAreaChosen(bc, wg, chosen) {
+    ScrollAreaOps.onReport(bc, wg, chosen);
+  },
+
+  /**
    * The user's hover ended in a frame by itself (Vimma:HoverEnded, docs/specs/hover.md).
    * @param {WindowGlobalParent} wg  the frame's document
    */
@@ -2232,6 +2261,7 @@ export const VimmaHost = {
    */
   onFrameGone(wg) {
     HoverOps.onEnded(wg);
+    ScrollAreaOps.onFrameGone(wg);
     for (const win of windows) states.get(win)?.element.onFrameGone(wg);
   },
 
@@ -2580,6 +2610,12 @@ function releaseHoverOnClose(e) {
   const tab = /** @type {MozTabbrowserTab} */ (e.target);
   if (tab?.linkedBrowser) HoverOps.release(tab.linkedBrowser);
 }
+
+// A tab's scroll area choice redraws its window's status bar (docs/specs/scroll-area.md).
+ScrollAreaOps.onChange((browser) => {
+  const state = stateOfBrowser(browser);
+  if (state) VimmaHost._emit(state);
+});
 
 // A tab's hover changing redraws its window's status bar (docs/specs/hover.md decision 8).
 HoverOps.onChange((browser) => {

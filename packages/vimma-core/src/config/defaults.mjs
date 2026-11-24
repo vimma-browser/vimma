@@ -280,6 +280,8 @@ const modal = {
     "<C-y>": "scroll.up",
     gg: "scroll.top",
     G: "scroll.bottom",
+    gs: "scroll.area_next",
+    gS: "scroll.area_prev",
     H: "history.back",
     L: "history.forward",
     "<C-o>": "history.back",

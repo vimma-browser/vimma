@@ -167,3 +167,16 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   paint; a switch dropped during the wait leaves it resized while hidden), and never which window
   is being shown or that the private workspace is involved.
   [`a_page_that_does_not_paint_does_not_hold_the_swap`](../../tests/browser/browser_vimma_private_swap_paint.js)
+
+- K15. Which scroll area the scroll keys move ([scroll-area](../specs/scroll-area.md)) **must**
+  change only through the user: `gs` and `gS`, or a trusted `mousedown` (a real click, or the
+  user's `f`, which the actor dispatches from system code). An agent's press is untrusted and
+  **must not** move it. Each frame's `Vimma:ScrollAreas` reply **must** be parsed in the parent
+  (`parseScrollAreasReply`: finite rects, at most 32 areas and 16 subframes per frame, a subframe
+  only among the frame's own children) and a malformed one drops that frame;
+  `Vimma:ScrollAreaChosen` carries one boolean and **must** change only its own tab's status bar
+  marker, from that frame's current document. The marker is a fixed text, so no page text
+  reaches the status bar through it.
+  [`a_click_the_page_dispatches_does_not_move_the_target`](../../tests/browser/browser_vimma_scroll_area.js),
+  [`anything malformed drops the reply`](../../packages/vimma-core/test/scroll-areas.test.ts),
+  [`at most a frame's share of areas and subframes is kept`](../../packages/vimma-core/test/scroll-areas.test.ts)
