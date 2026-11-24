@@ -853,7 +853,7 @@ const TRANSIENT =
   /HTTP 5\d\d|unexpected end of JSON input|invalid character|unexpected EOF|connection reset|i\/o timeout|TLS handshake timeout|dial tcp|ECONNRESET|ETIMEDOUT/i;
 
 /** How gh is run and how a retry waits; the defaults run the real gh and wait. */
-type Gh = { run?: (args: string[]) => string; sleep?: (ms: number) => Promise<void> };
+export type Gh = { run?: (args: string[]) => string; sleep?: (ms: number) => Promise<void> };
 
 const runGh = (args: string[]) =>
   execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 << 20 });
@@ -867,7 +867,7 @@ const wait = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
  * @param what what is read, for the error
  * @param check throws unless `data` has the shape the caller reads
  */
-async function ghRead<T>(
+export async function ghRead<T>(
   args: string[],
   what: string,
   check: (data: unknown) => T,

@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PRs 1 to 4, sub-PR 5's e2e scenarios, and the nightly's signed MAR, release and manifest implemented, the last off until `NIGHTLY_RELEASE_ENABLED` is set (decision 42), and its skip of unchanged days (decision 44); the security rehearsal waits for the release gate (decision 23), tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PRs 1 to 4, sub-PR 5's e2e scenarios, and the nightly's signed MAR, release and manifest implemented, the last off until `NIGHTLY_RELEASE_ENABLED` is set (decision 42), and its skip of unchanged days (decision 44); the security rehearsal's scheduled install check implemented (`update-rehearsal.yml`), and the rehearsal's chain from advisory to release with no person acting still to run (decision 23), tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -1283,6 +1283,18 @@ Written first and seen to fail.
   docs/runbook/ci-update-keys-and-update-host.md, "Checking an update on real installs". The
   rehearsal itself, the release chain with no person acting and a scheduled job that installs and
   checks the previous release, is still to be run.)
+
+  (Since changed: the scheduled job is `update-rehearsal.yml`, daily and by hand, running
+  `tools/update/rehearsal.ts`. It installs the release before the one the served manifest
+  offers, from its GitHub Release, and checks that it offers, stages and, after a restart, runs
+  the offered build, because the apply is the step a user sees and costs seconds more. It runs
+  only while `UPDATES_ENABLED` is true, because before updates are published there is nothing to
+  check, and there a host that serves no manifest fails it; it passes with "nothing to rehearse"
+  when the manifest offers nothing, because a pulled update (decision 22) is a choice rather
+  than a failure. A manifest still
+  offering an older release 6 hours after a newer one was published fails it, because
+  `update-publish.yml` takes minutes and a missing manifest leaves every install behind. The
+  chain from advisory to release with no person acting is still to be run.)
 
 ## Docs and changelog
 

@@ -391,6 +391,7 @@ hold secrets are in security.md §10 and §14.
 | `release-please.yml`       | `main`                      | Keeps the release pull request; on merge, tags and starts the release; auto-merges it after a security bump.                          |
 | `release.yml`              | Started by release-please   | Full builds for Linux and macOS, packages, signatures, SBOM, upload to the draft release.                                             |
 | `update-publish.yml`       | A published release         | Signs the update manifest and the package repositories' metadata and publishes them to updates.vimma.dev.                             |
+| `update-rehearsal.yml`     | Daily                       | Installs the previous release and checks it takes the release updates.vimma.dev offers.                                               |
 | `aur.yml`                  | A published release         | Pushes `vimma-bin` to the AUR; skipped until the `AUR_SSH_KEY` secret exists.                                                         |
 | `homebrew.yml`             | A published release         | Pushes the cask to the Homebrew tap.                                                                                                  |
 | `site-dispatch.yml`        | Bindings change, releases   | Tells vimma.dev to sync the key list or the latest release.                                                                           |
