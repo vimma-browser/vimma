@@ -18,6 +18,7 @@ import {
   OFF_NOTICE_MS,
   offerAssets,
   parseManifest,
+  OMARCHY_UPDATE_FILE,
   REPOSITORY_FILES,
   savedKey,
   savedOffer,
@@ -1185,6 +1186,32 @@ describe("updateSteps (:update and about:vimma)", () => {
     expect(s.text).not.toMatch(/curl|makepkg/);
     expect(s.note).toBeUndefined();
     expect(s.link).toBe(offer.detailsUrl);
+  });
+
+  // Omarchy's pacman hook aborts a direct `pacman -Syu` (#1550): there the package upgrades with
+  // `omarchy update`, which runs pacman past its own guard. Fixed strings either way.
+  test("pacman on Omarchy: omarchy update, never pacman -Syu or the guard's bypass", () => {
+    const s = updateSteps("pacman", hashed, { ...where, omarchy: true });
+    expect(s.commands).toEqual(["omarchy update"]);
+    expect(s.text).toMatch(/pacman repository/);
+    expect(s.text).toMatch(/Omarchy/);
+    expect(JSON.stringify(s)).not.toMatch(/pacman -Syu|OMARCHY_ALLOW_DIRECT_PACMAN|curl/);
+    expect(s.note).toBeUndefined();
+    expect(s.link).toBe(offer.detailsUrl);
+    // Elsewhere, and when the check did not run, pacman's own upgrade stays.
+    for (const omarchy of [false, undefined]) {
+      expect(updateSteps("pacman", hashed, { ...where, omarchy }).commands).toEqual([
+        "sudo pacman -Syu",
+      ]);
+    }
+    // Only the pacman package: Omarchy says nothing about another install's command.
+    expect(updateSteps("aur", hashed, { ...where, omarchy: true }).commands).toEqual([
+      "yay -Syu vimma-bin",
+    ]);
+  });
+
+  test("Omarchy is told by the fixed path of its update command", () => {
+    expect(OMARCHY_UPDATE_FILE).toBe("/usr/bin/omarchy-update");
   });
 
   // The .deb and .rpm are the same file from a release and from a repository, so the repository's

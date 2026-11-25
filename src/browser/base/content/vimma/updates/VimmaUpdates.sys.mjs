@@ -30,6 +30,7 @@ import {
   OFF_NOTICE_MS,
   offNotice,
   parseManifest,
+  OMARCHY_UPDATE_FILE,
   REPOSITORY_FILES,
   savedKey,
   savedOffer,
@@ -83,7 +84,10 @@ const INTERVAL_PREF = "app.update.interval";
 /** Test-only, honoured only in automation: extra pinned keys, and the install type. */
 const TEST_KEYS_PREF = "vimma.update.testKeys";
 const TEST_TYPE_PREF = "vimma.update.installType";
-/** Test-only, honoured only in automation: a directory standing in for `/` (REPOSITORY_FILES). */
+/**
+ * Test-only, honoured only in automation: a directory standing in for `/` (REPOSITORY_FILES,
+ * OMARCHY_UPDATE_FILE).
+ */
 const TEST_REPO_ROOT_PREF = "vimma.update.testRepoRoot";
 /**
  * The `.deb` and `.rpm` hint's line pointing at the guide's repository section (spec
@@ -310,6 +314,18 @@ async function repositories(type) {
     exists(REPOSITORY_FILES.zypper),
   ]);
   return { apt, dnf, zypper };
+}
+
+/**
+ * Whether the pacman package runs on Omarchy (#1550): whether OMARCHY_UPDATE_FILE exists, never
+ * what it holds. Read at each look, like the repository files, and under the same test root.
+ * @param {InstallType} type
+ * @returns {Promise<boolean>}
+ */
+async function onOmarchy(type) {
+  if (type !== "pacman") return false;
+  const root = inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";
+  return IOUtils.exists(`${root}${OMARCHY_UPDATE_FILE}`).catch(() => false);
 }
 
 /** @returns {PinnedKey[]} */
@@ -1198,6 +1214,7 @@ export const VimmaUpdates = {
     const where = await installInfo();
     const { offer } = state;
     const repos = offer ? await repositories(where.type) : {};
+    const omarchy = offer ? await onOmarchy(where.type) : false;
     return {
       enabled: enabled(),
       from: offFrom(),
@@ -1219,6 +1236,7 @@ export const VimmaUpdates = {
                     ...where,
                     writable: firefoxMode() ? firefox().canApply : undefined,
                     repos,
+                    omarchy,
                     repoHint: Services.prefs.getBoolPref(REPO_HINT_PREF, false),
                   }),
           }

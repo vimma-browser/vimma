@@ -534,6 +534,15 @@ add_task(async function package_repositories_get_the_upgrade_command() {
   Assert.ok(text.includes("Vimma's pacman repository"), "pacman: the install type");
   Assert.ok(text.includes("sudo pacman -Syu"), "pacman: its upgrade command");
   Assert.ok(!text.includes("curl "), "pacman: no download command");
+  Assert.ok(!text.includes("omarchy update"), "pacman off Omarchy: no omarchy update");
+  // Omarchy's pacman hook aborts a direct `pacman -Syu` (#1550); its own command upgrades.
+  await make("/usr/bin/omarchy-update");
+  text = await stepsFor("pacman");
+  Assert.ok(text.includes("omarchy update"), "pacman on Omarchy: omarchy update");
+  Assert.ok(!text.includes("pacman -Syu"), "pacman on Omarchy: no direct pacman upgrade");
+  Assert.ok(!text.includes("OMARCHY_ALLOW_DIRECT_PACMAN"), "pacman on Omarchy: no guard bypass");
+  text = await stepsFor("aur");
+  Assert.ok(text.includes("yay -Syu vimma-bin"), "aur on Omarchy: its own command");
 
   text = await stepsFor("deb");
   Assert.ok(text.includes("sudo apt install ./vimma_9.9.9_amd64.deb"), "deb: the download");
