@@ -156,6 +156,17 @@ curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add 
 `--lsign-key` names the key's full fingerprint, so it fails unless the key downloaded is
 Vimma's. `sudo pacman -Syu` updates Vimma from then on.
 
+**On Omarchy:** Omarchy upgrades the system through `omarchy update`, so the last step uses it:
+
+```sh
+curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
+  && sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390 \
+  && { grep -q '^\[vimma\]' /etc/pacman.conf || printf '\n[vimma]\nSigLevel = Required\nServer = https://updates.vimma.dev/arch/$arch\n' | sudo tee -a /etc/pacman.conf >/dev/null; } \
+  && omarchy update && sudo pacman -S --needed vimma-bin
+```
+
+`omarchy update` updates Vimma from then on, with the rest of the system.
+
 **Debian 12+, Ubuntu 22.04+:**
 
 ```sh

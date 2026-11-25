@@ -69,6 +69,16 @@ curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add 
   && sudo pacman -Syu vimma-bin
 ```
 
+**On Omarchy:** Omarchy upgrades the system through `omarchy update`, so the last step uses it;
+`omarchy update` updates Vimma from then on.
+
+```sh
+curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
+  && sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390 \
+  && { grep -q '^\[vimma\]' /etc/pacman.conf || printf '\n[vimma]\nSigLevel = Required\nServer = https://updates.vimma.dev/arch/$arch\n' | sudo tee -a /etc/pacman.conf >/dev/null; } \
+  && omarchy update && sudo pacman -S --needed vimma-bin
+```
+
 **Debian 12+, Ubuntu 22.04+:** apt shows no fingerprint; the guide's step by step shows how to
 check it first. `sudo apt update && sudo apt upgrade` updates Vimma from then on.
 
