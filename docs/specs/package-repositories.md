@@ -1,8 +1,6 @@
 # Spec: package-repositories
 
-Status: accepted (sub-PR 1, the signer, the repository tool and the smoke test, sub-PR 2,
-package signing, and sub-PR 3, publishing, implemented; sub-PR 4, the browser's hints, built;
-the certificate committed; the repositories are not published yet) ·
+Status: implemented (the repositories are published from release 0.1.24) ·
 Area: `tools/package/repos.ts` (new), `tools/package/repos-smoke.sh` (new),
 `tools/package/package.ts`, `.github/workflows/release.yml`,
 `.github/workflows/update-publish.yml`, `.github/workflows/pkgbuild.yml`,
@@ -524,6 +522,9 @@ smoke test", the last item below).
     `PACKAGE_REPOS_ENABLED` is a repository variable that a browser build cannot read, and until
     the maintainer sets it, the line and the setup commands would point users at a repository
     that does not exist; a build released in between still shows a command that works.
+    (Since changed: the repositories are published from release 0.1.24, so Delivery step 5
+    removed `vimma.feature.packageRepos`; the line shows for every `.deb` or `.rpm` without its
+    repository file.)
 26. **An `.rpm` hint names only the package managers whose repository file exists.** With
     `/etc/yum.repos.d/vimma.repo` alone the hint is `sudo dnf upgrade vimma`, with
     `/etc/zypp/repos.d/vimma.repo` alone `sudo zypper up vimma`, and with both, both. Reason: a

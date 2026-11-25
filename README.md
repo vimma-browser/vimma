@@ -52,11 +52,14 @@ The docs, every key and the install page are at **[vimma.dev](https://vimma.dev)
 Vimma runs on Linux x86_64 and on macOS 15 or later with Apple Silicon. Download the files from the
 [latest release](https://github.com/vimma-browser/vimma/releases/latest).
 
-**Arch Linux:** run this as your normal user (not root), from any directory. It builds in
-`~/.cache/vimma-build`, and the same command updates Vimma.
+**Debian, Ubuntu, Fedora, openSUSE, Arch Linux:** set up Vimma's signed package repository
+once, and `apt upgrade`, `dnf upgrade`, `zypper up` or `pacman -Syu` then updates Vimma with the
+rest of the system. The guide's [Package repositories](docs/guide.md#package-repositories) has
+the commands for each and the key's fingerprint. On Debian or Ubuntu:
 
 ```sh
-mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si
+curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources
+sudo apt update && sudo apt install vimma
 ```
 
 **macOS, with Homebrew:** install from Vimma's own tap; `brew upgrade --cask vimma` updates it.
@@ -70,20 +73,22 @@ other app. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma
 For release 0.1.10 or earlier, or a CI test build, which are not notarised, the
 guide's [macOS](docs/guide.md#macos) section has the steps to open it the first time.
 
-**Debian 12+, Ubuntu 22.04+:** download `vimma_X.Y.Z_amd64.deb`, then
-`sudo apt install ./vimma_X.Y.Z_amd64.deb`.
+**Without the repository:** each release also has `vimma_X.Y.Z_amd64.deb` for Debian 12+ and
+Ubuntu 22.04+ and `vimma-X.Y.Z-1.x86_64.rpm` for Fedora and openSUSE; the guide's
+[Installing](docs/guide.md#installing) section has the commands. On Arch Linux, the release's
+`PKGBUILD` builds the package; run this as your normal user (not root), from any directory, and
+again to update:
 
-**Fedora, openSUSE:** download `vimma-X.Y.Z-1.x86_64.rpm`, then
-`sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm` on Fedora, or
-`sudo zypper install --allow-unsigned-rpm ./vimma-X.Y.Z-1.x86_64.rpm` on openSUSE. The package
-carries no OpenPGP signature; check it with `SHA256SUMS` and cosign instead, as the guide shows.
+```sh
+mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si
+```
 
 **Any other distribution:** download `vimma-X.Y.Z-x86_64.AppImage`, then
 `chmod +x vimma-X.Y.Z-x86_64.AppImage && ./vimma-X.Y.Z-x86_64.AppImage`.
 
 `X.Y.Z` is the Vimma version. The status bar says when a new release is out. The AppImage and the
-tarball then update themselves; for the other packages, `:update` shows the command for your
-install ([Updates](docs/guide.md#updates)). The guide's [Installing](docs/guide.md#installing)
+tarball then update themselves, and a repository install updates with the system; for the other
+packages, `:update` shows the command for your install ([Updates](docs/guide.md#updates)). The guide's [Installing](docs/guide.md#installing)
 section has the tarball and how to verify a download with `sha256sum` and cosign.
 
 ## Why
@@ -100,16 +105,18 @@ the hours slip by. It also happens to start with _Vim_.
 
 ## Status
 
-Early, with regular releases for Linux x86_64 and macOS on Apple Silicon. Each
+Alpha, with regular releases for Linux x86_64 and macOS on Apple Silicon. Each
 [release](https://github.com/vimma-browser/vimma/releases) has a tarball, an AppImage, a `.deb`,
 an `.rpm` for Fedora and openSUSE, an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also
-installs as a Homebrew cask ([Install](#install)). Each carries `vimma-ctl`, the client for
+installs as a Homebrew cask ([Install](#install)); signed apt, dnf, zypper and pacman
+repositories carry every release. Each carries `vimma-ctl`, the client for
 scripts and agents, so it updates with the browser ([where it is](docs/guide.md#installing)); you
 can also [build Vimma from source](CONTRIBUTING.md#build-and-run).
 
 Vimma checks a signed update file every 12 hours and shows a newer release in the status bar. The
 AppImage and the tarball install the update themselves, once it matches what Vimma's own key
-signed, and run it from the next start; the other packages show the command to run
+signed, and run it from the next start; a repository install updates with the system, and the
+other packages show the command to run
 ([Updates](docs/guide.md#updates)). Vimma's chat window runs Claude Code, Codex and Gemini CLI on
 their own login ([quick start](docs/guide.md#using-an-agent-cli-in-the-chat-window)). What does
 not work yet is in [limits.md](docs/limits.md).

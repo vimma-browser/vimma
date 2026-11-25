@@ -1224,36 +1224,26 @@ describe("updateSteps (:update and about:vimma)", () => {
     expect(apt.commands).toEqual(updateSteps("rpm", hashed, where).commands);
   });
 
-  test("a .deb without it keeps the download command", () => {
+  // Decision 22: a .deb or .rpm without its repository keeps the download command and gets one
+  // line pointing at the guide's repository section.
+  test("without the repository, the download command and one line to the guide", () => {
     const none = updateSteps("deb", hashed, { ...where, repos: {} });
     expect(none).toEqual(updateSteps("deb", hashed, where));
     expect(none.commands[0]).toMatch(
       /sha512sum -c - && sudo apt install \.\/vimma_0\.3\.1_amd64\.deb$/,
     );
-    expect(none.note).toBeUndefined();
-  });
-
-  // Decision 22: one line pointing at the guide's repository section, shown only once that
-  // section exists (decision 25: vimma.feature.packageRepos, until the repositories are live).
-  test("without the repository, the download command and, when asked, one line to the guide", () => {
     for (const type of ["deb", "rpm"] as const) {
       const plain = updateSteps(type, hashed, where);
-      const hinted = updateSteps(type, hashed, { ...where, repoHint: true });
-      expect(hinted.commands).toEqual(plain.commands);
-      expect(hinted.text).toBe(plain.text);
-      expect(hinted.note).toMatch(/the guide's “Package repositories”/);
-      expect(hinted.note).not.toMatch(/\n/);
-      expect(plain.note).toBeUndefined();
+      expect(plain.note).toMatch(/the guide's “Package repositories”/);
+      expect(plain.note).not.toMatch(/\n/);
       // With the repository set up there is nothing to point at.
       const set = { apt: true, dnf: true, zypper: true };
-      expect(updateSteps(type, hashed, { ...where, repos: set, repoHint: true }).note).toBe(
-        undefined,
-      );
+      expect(updateSteps(type, hashed, { ...where, repos: set }).note).toBeUndefined();
     }
-    expect(updateSteps("deb", hashed, { ...where, repoHint: true }).note).toMatch(/\bapt\b/);
-    expect(updateSteps("rpm", hashed, { ...where, repoHint: true }).note).toMatch(/dnf.*zypper/);
+    expect(updateSteps("deb", hashed, where).note).toMatch(/\bapt\b/);
+    expect(updateSteps("rpm", hashed, where).note).toMatch(/dnf.*zypper/);
     for (const type of ["tarball", "appimage", "pacman", "aur", "flatpak"] as const) {
-      expect(updateSteps(type, hashed, { ...where, repoHint: true }).note).toBeUndefined();
+      expect(updateSteps(type, hashed, where).note).toBeUndefined();
     }
   });
 

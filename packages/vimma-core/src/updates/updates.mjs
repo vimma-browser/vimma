@@ -845,13 +845,14 @@ export function appImageOwnership({ installType, marker, appImage, appDir, greDi
  * @param {Offer} offer
  * @param {{ installDir: string, appImage: string | null, writable?: boolean,
  *   marker?: string | null, appDir?: string | null, forced?: boolean,
- *   repos?: Repositories, repoHint?: boolean }} where
+ *   repos?: Repositories }} where
  *   `writable`: false when Vimma cannot write a tarball's directory, so Firefox's updater cannot
  *   apply there (Behaviour 2); `appImage`, `appDir`: `$APPIMAGE` and `$APPDIR`; `marker`: the
  *   `is-packaged-app` file's text; `forced`: a test set the install type. An AppImage's command
  *   names `$APPIMAGE` only when this Vimma is that AppImage (appImageOwnership, #1196).
- *   `repos`: which of REPOSITORY_FILES exist; `repoHint`: a `.deb` or `.rpm` without its
- *   repository adds the `note` that points at the guide's repository section
+ *   `repos`: which of REPOSITORY_FILES exist; a `.deb` or `.rpm` without its repository gets
+ *   the `note` that points at the guide's repository section (spec package-repositories,
+ *   decision 22)
  * @returns {{ text: string, commands: string[], link: string, note?: string }}
  */
 export function updateSteps(type, offer, where) {
@@ -871,14 +872,11 @@ export function updateSteps(type, offer, where) {
   const assets = offer.assets ?? {};
   const repos = where.repos ?? {};
   /** @param {string} managers */
-  const repoNote = (managers) =>
-    where.repoHint === true
-      ? {
-          note:
-            `To have ${managers} upgrade Vimma with the rest of the system, set up its ` +
-            "repository once: the guide's “Package repositories” shows how.",
-        }
-      : {};
+  const repoNote = (managers) => ({
+    note:
+      `To have ${managers} upgrade Vimma with the rest of the system, set up its ` +
+      "repository once: the guide's “Package repositories” shows how.",
+  });
   switch (type) {
     // Spec package-repositories, decision 18: the package manager's own upgrade, a fixed command.
     case "pacman":
