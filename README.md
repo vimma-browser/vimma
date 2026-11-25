@@ -55,37 +55,42 @@ package key's fingerprint is `110649CB2BC11400828DD0D497FD3D2B24AD4390`; the gui
 [Package repositories](docs/guide.md#package-repositories) has every step in detail, how to check
 the key, and how to remove a repository.
 
-**Arch Linux (pacman):** import and trust the key:
+Each command below sets up the repository and installs Vimma, stops at the first step that
+fails, and can be run again; the guide's [Step by step](docs/guide.md#step-by-step) does the same
+one step at a time.
+
+**Arch Linux:** `--lsign-key` names the key's full fingerprint, so it fails unless the key
+downloaded is Vimma's. `sudo pacman -Syu` updates Vimma from then on.
 
 ```sh
-curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add -
-sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390
+curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
+  && sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390 \
+  && { grep -q '^\[vimma\]' /etc/pacman.conf || printf '\n[vimma]\nSigLevel = Required\nServer = https://updates.vimma.dev/arch/$arch\n' | sudo tee -a /etc/pacman.conf >/dev/null; } \
+  && sudo pacman -Syu vimma-bin
 ```
 
-add the repository to `/etc/pacman.conf`:
-
-```ini
-[vimma]
-SigLevel = Required
-Server = https://updates.vimma.dev/arch/$arch
-```
-
-then install with `sudo pacman -Syu vimma-bin`. `sudo pacman -Syu` updates it.
-
-**Debian 12+, Ubuntu 22.04+ (apt):** add the repository, check the key's fingerprint as the
-guide shows, then install; `sudo apt update && sudo apt upgrade` updates it.
+**Debian 12+, Ubuntu 22.04+:** apt shows no fingerprint; the guide's step by step shows how to
+check it first. `sudo apt update && sudo apt upgrade` updates Vimma from then on.
 
 ```sh
-curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources
-sudo apt update && sudo apt install vimma
+curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources >/dev/null \
+  && sudo apt update && sudo apt install vimma
 ```
 
-**Fedora (dnf), openSUSE (zypper):** add the repository and install; the package manager shows
-the key's fingerprint and asks once. `sudo dnf upgrade` or `sudo zypper up` updates it.
+**Fedora:** dnf shows the key's fingerprint and asks once; compare it with the one above.
+`sudo dnf upgrade` updates Vimma from then on.
 
 ```sh
-sudo dnf config-manager addrepo --from-repofile=https://updates.vimma.dev/rpm/vimma.repo && sudo dnf install vimma
-sudo zypper addrepo --refresh --gpgcheck-strict https://updates.vimma.dev/rpm/vimma.repo && sudo zypper refresh && sudo zypper install vimma
+sudo dnf config-manager addrepo --overwrite --from-repofile=https://updates.vimma.dev/rpm/vimma.repo \
+  && sudo dnf install vimma
+```
+
+**openSUSE:** zypper shows the key's fingerprint and asks once; compare it with the one above.
+`sudo zypper up` updates Vimma from then on.
+
+```sh
+{ zypper lr vimma >/dev/null 2>&1 || sudo zypper addrepo --refresh --gpgcheck-strict https://updates.vimma.dev/rpm/vimma.repo; } \
+  && sudo zypper refresh && sudo zypper install vimma
 ```
 
 **macOS, with Homebrew:** install from Vimma's own tap; `brew upgrade --cask vimma` updates it.
@@ -99,10 +104,20 @@ other app. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma
 For release 0.1.10 or earlier, or a CI test build, which are not notarised, the
 guide's [macOS](docs/guide.md#macos) section has the steps to open it the first time.
 
-**Direct downloads:** each [release](https://github.com/vimma-browser/vimma/releases/latest)
-also has an AppImage for any distribution, a tarball, `vimma_X.Y.Z_amd64.deb`,
-`vimma-X.Y.Z-1.x86_64.rpm` and a `PKGBUILD` for Arch Linux, which builds the package; run it as
-your normal user (not root), from any directory, and again to update:
+**Other distributions:** the AppImage runs on any of them; this downloads the latest one into
+`~/Applications` and starts it:
+
+```sh
+v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+  && mkdir -p ~/Applications && cd ~/Applications \
+  && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-x86_64.AppImage \
+  && chmod +x vimma-$v-x86_64.AppImage && ./vimma-$v-x86_64.AppImage
+```
+
+Each [release](https://github.com/vimma-browser/vimma/releases/latest) also has a tarball, a
+`.deb`, an `.rpm` and a `PKGBUILD` for Arch Linux; the guide's
+[Release files](docs/guide.md#release-files) has one command for each. The `PKGBUILD` builds the
+package; run this as your normal user (not root), from any directory, and again to update:
 
 ```sh
 mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si

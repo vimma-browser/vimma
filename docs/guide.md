@@ -140,6 +140,54 @@ repositories carry every published release for Linux x86_64, never a pre-release
 files themselves download from the GitHub Release, and the signed package list pins each one's
 checksum.
 
+One command sets up the repository and installs Vimma; each stops at the first step that fails
+and can be run again. To do it one step at a time instead, see [Step by step](#step-by-step)
+below.
+
+**Arch Linux:**
+
+```sh
+curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
+  && sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390 \
+  && { grep -q '^\[vimma\]' /etc/pacman.conf || printf '\n[vimma]\nSigLevel = Required\nServer = https://updates.vimma.dev/arch/$arch\n' | sudo tee -a /etc/pacman.conf >/dev/null; } \
+  && sudo pacman -Syu vimma-bin
+```
+
+`--lsign-key` names the key's full fingerprint, so it fails unless the key downloaded is
+Vimma's. `sudo pacman -Syu` updates Vimma from then on.
+
+**Debian 12+, Ubuntu 22.04+:**
+
+```sh
+curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources >/dev/null \
+  && sudo apt update && sudo apt install vimma
+```
+
+apt shows no fingerprint; [Step by step](#step-by-step) shows how to check it before the first
+install. `sudo apt update && sudo apt upgrade` updates Vimma from then on.
+
+**Fedora:**
+
+```sh
+sudo dnf config-manager addrepo --overwrite --from-repofile=https://updates.vimma.dev/rpm/vimma.repo \
+  && sudo dnf install vimma
+```
+
+dnf shows the key's fingerprint and asks once whether to import it: compare it with the one
+above. `sudo dnf upgrade` updates Vimma from then on.
+
+**openSUSE:**
+
+```sh
+{ zypper lr vimma >/dev/null 2>&1 || sudo zypper addrepo --refresh --gpgcheck-strict https://updates.vimma.dev/rpm/vimma.repo; } \
+  && sudo zypper refresh && sudo zypper install vimma
+```
+
+zypper shows the key's fingerprint and asks once whether to trust it: compare it with the one
+above. `sudo zypper up` updates Vimma from then on.
+
+##### Step by step
+
 **Arch Linux (pacman).** Import the key and sign it locally, so that pacman trusts it:
 
 ```sh
@@ -233,6 +281,53 @@ version; for a Mac, see [macOS](#macos) below):
 | `vimma-X.Y.Z-1.x86_64.rpm`        | the commands in [Fedora and openSUSE](#fedora-and-opensuse) below       |
 | `vimma-X.Y.Z-x86_64.AppImage`     | `chmod +x vimma-X.Y.Z-x86_64.AppImage && ./vimma-X.Y.Z-x86_64.AppImage` |
 | `vimma-X.Y.Z-linux-x86_64.tar.xz` | `tar -xJf vimma-X.Y.Z-linux-x86_64.tar.xz && ./vimma/vimma`             |
+
+To download and install the latest release's file in one command, each of these first asks
+GitHub for the latest version and stops at the first step that fails:
+
+- AppImage, into `~/Applications`, then started:
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && mkdir -p ~/Applications && cd ~/Applications \
+    && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-x86_64.AppImage \
+    && chmod +x vimma-$v-x86_64.AppImage && ./vimma-$v-x86_64.AppImage
+  ```
+
+- Tarball, unpacked into `~/.local/opt/vimma`, then started:
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && mkdir -p ~/.local/opt && cd ~/.local/opt \
+    && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-linux-x86_64.tar.xz \
+    && tar -xJf vimma-$v-linux-x86_64.tar.xz && ./vimma/vimma
+  ```
+
+- `.deb` (Debian 12+, Ubuntu 22.04+):
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && cd "$(mktemp -d)" && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma_${v}_amd64.deb \
+    && sudo apt install ./vimma_${v}_amd64.deb
+  ```
+
+- `.rpm` on Fedora:
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && cd "$(mktemp -d)" && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-1.x86_64.rpm \
+    && sudo dnf install ./vimma-$v-1.x86_64.rpm
+  ```
+
+- `.rpm` on openSUSE, importing Vimma's package key first (it prints the key's fingerprint;
+  compare it with the one in [Package repositories](#package-repositories)):
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && cd "$(mktemp -d)" && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-1.x86_64.rpm \
+    && curl -fsSLO https://updates.vimma.dev/vimma-packages.asc && gpg --show-keys vimma-packages.asc \
+    && sudo rpm --import vimma-packages.asc && sudo zypper install ./vimma-$v-1.x86_64.rpm
+  ```
 
 Each of them, and the Mac's `.dmg`, also carries `vimma-ctl`, the client for
 [scripting](#scripting-with-vimma-ctl) and [agents](#connecting-an-agents-tool), next to the
