@@ -199,8 +199,8 @@ const isRemoteBrowserTarget = (target) =>
  * @property {(e: FocusEvent) => void} onFocusIn  keeps focusNow and focusBefore
  * @property {Element | null} dialogOpener  what had focus when the last dialog opened
  * @property {() => void} onDialogOpen  records dialogOpener
- * @property {() => void} onDialogClose  focus left on nothing by a closed dialog goes back to the
- *   hidden address bar it was opened from, else to the page
+ * @property {(e: Event) => void} onDialogClose  focus left on nothing by a closed dialog goes
+ *   back to the hidden address bar it was opened from, else to the page
  * @property {ReturnType<typeof createDispatcher>} dispatcher
  * @property {HelpOverlay} help
  * @property {Notice} notice  "<action>: not implemented yet" (m2-tab-keys)
