@@ -306,11 +306,8 @@ the [user guide](guide.md); planned work is on the
 - Vimma's package repositories (apt, dnf, zypper and pacman) carry x86_64 packages only, and
   published releases only: a pre-release is never in them. A `.deb` or `.rpm` installed from the
   release file instead is not updated by `apt upgrade`, `dnf upgrade` or `zypper up` until the
-  repository is set up. From 0.1.24 the `.rpm` is signed, and the zypper command `:update` shows
-  for such a file still passes `--allow-unsigned-rpm`, which does not cover a signature whose
-  key zypper has not imported: it stops at "Signature verification failed" until
-  `sudo rpm --import https://updates.vimma.dev/vimma-packages.asc` is run
-  ([#1547](https://github.com/vimma-browser/vimma/issues/1547)).
+  repository is set up. The `.rpm` of a release before 0.1.24 has no signature, and zypper
+  installs it only with `--allow-unsigned-rpm`.
 - The `.deb`, the `.rpm`, the AppImage and the Arch package mark themselves as package-manager installs, so,
   like Firefox's own packages, they do not warn when the kernel blocks the unprivileged user
   namespaces the content sandbox uses (as Ubuntu 24.04's AppArmor policy does for the AppImage

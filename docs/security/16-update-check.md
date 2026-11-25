@@ -312,9 +312,10 @@ _Pages_ and _extensions_ cannot reach it.
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
   checked: every download uses `curl -f` (an HTTP error stops it) and `--proto =https`, and when
   the signed manifest gives the file's SHA-512, `sha512sum -c` checks it before `apt`, `dnf`,
-  `zypper`, `tar` or `mv` runs. The `.rpm`'s zypper command passes `--allow-unsigned-rpm`, so
-  for it that check is the only one, as it is for the `.deb` (from 0.1.24 the `.rpm` is signed,
-  and the command stops at zypper's signature check until the package key is imported, #1547). A tarball is downloaded to a file and checked before it is unpacked, never piped
+  `zypper`, `tar` or `mv` runs. The `.rpm` carries Vimma's package signature (from 0.1.24), which
+  zypper refuses without the key even with `--allow-unsigned-rpm`, so its zypper command first
+  runs `sudo rpm --import https://updates.vimma.dev/vimma-packages.asc`, a fixed URL; after
+  the SHA-512 check, zypper then checks the package's signature too. A tarball is downloaded to a file and checked before it is unpacked, never piped
   into `tar`. Asset hashes are read only from the signed manifest, only as 128 lower-case hex
   digits, and a saved result keeps only well-formed ones. **⚠ limit:** the release `PKGBUILD`'s
   command still fetches `latest/download/PKGBUILD` without a hash of its own; `makepkg` checks

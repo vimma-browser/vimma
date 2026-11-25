@@ -319,14 +319,13 @@ GitHub for the latest version and stops at the first step that fails:
     && sudo dnf install ./vimma-$v-1.x86_64.rpm
   ```
 
-- `.rpm` on openSUSE, importing Vimma's package key first (it prints the key's fingerprint;
-  compare it with the one in [Package repositories](#package-repositories)):
+- `.rpm` on openSUSE, importing Vimma's package key first (to see its fingerprint before you
+  trust it, use the steps in [Fedora and openSUSE](#fedora-and-opensuse)):
 
   ```sh
   v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
     && cd "$(mktemp -d)" && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-1.x86_64.rpm \
-    && curl -fsSLO https://updates.vimma.dev/vimma-packages.asc && gpg --show-keys vimma-packages.asc \
-    && sudo rpm --import vimma-packages.asc && sudo zypper install ./vimma-$v-1.x86_64.rpm
+    && sudo rpm --import https://updates.vimma.dev/vimma-packages.asc && sudo zypper install ./vimma-$v-1.x86_64.rpm
   ```
 
 Each of them, and the Mac's `.dmg`, also carries `vimma-ctl`, the client for
@@ -5624,19 +5623,19 @@ Except for the AppImage and such a tarball, it installs nothing; it tells you.
   and is checked against the SHA-512 the signed file gives for it (`sha512sum -c`) before
   anything is installed or replaced, so a file changed on the release page stops the command.
 
-  | Installed with            | `:update` shows                                                                                                                                                                                            |
-  | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | The release's `PKGBUILD`  | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`                                            |
-  | AUR `vimma-bin`           | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                                                             |
-  | `.deb`                    | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`; one line points at [the repository](#package-repositories)                                                    |
-  | `.rpm`                    | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE); one line points at [the repository](#package-repositories) |
-  | A package repository      | `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade vimma`, `sudo zypper up vimma` or `sudo pacman -Syu`                                                                                              |
-  | Tarball                   | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                       |
-  | AppImage                  | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                                                                       |
-  | Flatpak (once on Flathub) | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice                                                  |
-  | Homebrew (macOS)          | `brew upgrade --cask vimma`                                                                                                                                                                                |
-  | `.dmg` (macOS)            | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos)                                           |
-  | A build from source       | nothing: source builds never check (pull and rebuild)                                                                                                                                                      |
+  | Installed with            | `:update` shows                                                                                                                                                                                                                                                                             |
+  | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | The release's `PKGBUILD`  | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`                                                                                                                             |
+  | AUR `vimma-bin`           | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                                                                                                                                              |
+  | `.deb`                    | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`; one line points at [the repository](#package-repositories)                                                                                                                                     |
+  | `.rpm`                    | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora), or import Vimma's package key with `sudo rpm --import https://updates.vimma.dev/vimma-packages.asc` and `sudo zypper install` it (openSUSE); one line points at [the repository](#package-repositories) |
+  | A package repository      | `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade vimma`, `sudo zypper up vimma` or `sudo pacman -Syu`                                                                                                                                                                               |
+  | Tarball                   | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                                                                                                        |
+  | AppImage                  | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                                                                                                                                                        |
+  | Flatpak (once on Flathub) | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice                                                                                                                                   |
+  | Homebrew (macOS)          | `brew upgrade --cask vimma`                                                                                                                                                                                                                                                                 |
+  | `.dmg` (macOS)            | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos)                                                                                                                            |
+  | A build from source       | nothing: source builds never check (pull and rebuild)                                                                                                                                                                                                                                       |
 
   A `.deb` or `.rpm` installed from [Vimma's repository](#package-repositories) is the same
   file as the release's, so `:update` tells them apart by the repository's own setup file (`/etc/apt/sources.list.d/vimma.sources`

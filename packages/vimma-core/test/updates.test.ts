@@ -1050,8 +1050,9 @@ describe("updateSteps (:update and about:vimma)", () => {
   });
 
   // One .rpm serves Fedora and openSUSE (spec rpm-package): a command for each one's package
-  // manager. zypper refuses an unsigned package unless told; SHA256SUMS' cosign signature and
-  // the signed manifest's SHA-512 are what vouch for it, as for the .deb.
+  // manager. The .rpm carries Vimma's package signature (spec package-repositories, decision
+  // 9), which zypper refuses without the key, even with --allow-unsigned-rpm: the command
+  // imports the key first.
   test("rpm: download and check it, then install it with dnf or zypper", () => {
     const s = updateSteps("rpm", hashed, where);
     expect(s.text).toMatch(/dnf.*Fedora.*zypper.*openSUSE/);
@@ -1060,7 +1061,8 @@ describe("updateSteps (:update and about:vimma)", () => {
       ` && echo '${H("d")}  vimma-0.3.1-1.x86_64.rpm' | sha512sum -c -`;
     expect(s.commands).toEqual([
       `${fetch} && sudo dnf install ./vimma-0.3.1-1.x86_64.rpm`,
-      `${fetch} && sudo zypper install --allow-unsigned-rpm ./vimma-0.3.1-1.x86_64.rpm`,
+      `${fetch} && sudo rpm --import https://updates.vimma.dev/vimma-packages.asc` +
+        " && sudo zypper install ./vimma-0.3.1-1.x86_64.rpm",
     ]);
     const pre = { ...offer, displayVersion: "0.4.0-rc.1" };
     for (const c of updateSteps("rpm", pre, where).commands) {

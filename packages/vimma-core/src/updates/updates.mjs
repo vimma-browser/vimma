@@ -837,6 +837,9 @@ export function appImageOwnership({ installType, marker, appImage, appDir, greDi
   return { ok: true, path: /** @type {string} */ (appImage) };
 }
 
+/** Vimma's package signing key (spec package-repositories), a fixed URL. */
+const PACKAGE_KEY_URL = "https://updates.vimma.dev/vimma-packages.asc";
+
 /**
  * How to update this install to `offer` (`:update`, about:vimma): a sentence, the exact
  * commands, and the release page. Versions come from a verified manifest and are SemVer
@@ -935,16 +938,17 @@ export function updateSteps(type, offer, where) {
           link,
         };
       }
-      // A release's .rpm installed by hand (spec rpm-package): zypper refuses a package whose
-      // OpenPGP signature it cannot check unless told; the SHA-512 from the signed manifest
-      // checks it instead.
+      // A release's .rpm installed by hand (spec rpm-package). From 0.1.24 it carries Vimma's
+      // package signature (spec package-repositories, decision 9), and zypper refuses a signature
+      // whose key it lacks even with --allow-unsigned-rpm, so the key is imported first; the
+      // SHA-512 from the signed manifest checks the file itself.
       const file = `vimma-${v.replace("-", "~")}-1.x86_64.rpm`;
       const fetch = fetchChecked(`${dl}/${file}`, file, assets.rpm);
       return {
         text: "Download the new .rpm and install it over this one, with dnf on Fedora or zypper on openSUSE:",
         commands: [
           `${fetch} && sudo dnf install ./${file}`,
-          `${fetch} && sudo zypper install --allow-unsigned-rpm ./${file}`,
+          `${fetch} && sudo rpm --import ${PACKAGE_KEY_URL} && sudo zypper install ./${file}`,
         ],
         link,
         ...repoNote("dnf or zypper"),
