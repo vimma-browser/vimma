@@ -218,6 +218,24 @@ add_task(async function a_broken_line_keeps_the_old_config_and_shows_file_and_li
   await resetConfig();
 });
 
+// #1528 follow-up: the status bar counts skipped bindings as warnings, not errors; the file applied.
+add_task(async function skipped_bindings_count_as_warnings() {
+  await writeConfig(
+    [
+      "[keys]",
+      'summon_hologram = "prefix+h"',
+      'teleport_tab = "prefix+j"',
+      'new_tab = "prefix+t"',
+    ].join("\n"),
+  );
+  await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", "the file applies");
+  await until(
+    () => segText("error")?.startsWith("2 warnings: config.toml:2: keys.summon_hologram:"),
+    "the count says warnings",
+  );
+  await resetConfig();
+});
+
 // #742: a provider naming a CLI this build does not know (a newer build's config, or dotfiles
 // shared between versions) is left out with a notice; the rest of the file applies.
 add_task(async function an_unknown_agent_cli_skips_its_provider_and_the_file_applies() {

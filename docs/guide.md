@@ -50,6 +50,8 @@ What works today, each with the section that explains it:
 - **[Sleeping tabs](#sleeping-tabs):** a tab you have not looked at for two hours unloads its
   page and keeps its place, history and scroll position; selecting it loads it again. Tabs on
   screen, playing sound or sharing a camera stay loaded, and `[tabs] sleep_after` sets the time.
+  `:sleep` puts this workspace's other tabs to sleep at once, and `z` in the side panel the
+  highlighted or marked ones.
 - **[Downloads from the keyboard](#downloads):** `ctrl+b d` lists them with live progress, and
   one key opens a file, shows it in its folder, pauses, retries, removes or deletes it, or allows
   a blocked one through Firefox's own warning; the status bar shows `↓ 42%` while they run and
@@ -649,13 +651,15 @@ CodeMirror, Ace, ProseMirror, Quill), fields inside web components and inside fr
 other sites. Focusing a checkbox, button or link does not. `Esc` leaves insert: it takes focus
 out of the field and the tab is back in normal. `i` enters insert explicitly: it goes back to
 the text field you were last in on the page, or the first text field if that one is gone, or, on
-a page without one (a game), lets every key through. Insert entered with `i` or `gi` lasts until
-`Esc`, even if the page moves focus itself (a file finder jumping to its result list, a dialog
-taking focus), so the keys you type keep going to the page. Insert entered by clicking or
-tabbing into a field follows the focus: when focus leaves the text fields, the tab is back in
-normal. After `Esc`, a page cannot put you back in insert on its own: a dialog that pulls focus
-back into its field leaves the tab in normal, and you return to typing with `i`, a click into
-the field or `Tab`.
+a page without one (a game), lets every key through. In a field you have not been in yet, such as
+the search field a results page fills with your query, `i`, `gi` and a hint put the caret at the
+end of its text, ready to add to it or delete it; in a field you left, the caret is where you
+left it. Insert entered with `i` or `gi` lasts until `Esc`, even if the page moves focus itself
+(a file finder jumping to its result list, a dialog taking focus), so the keys you type keep
+going to the page. Insert entered by clicking or tabbing into a field follows the focus: when
+focus leaves the text fields, the tab is back in normal. After `Esc`, a page cannot put you back
+in insert on its own: a dialog that pulls focus back into its field leaves the tab in normal,
+and you return to typing with `i`, a click into the field or `Tab`.
 
 In normal mode, `Esc` also takes focus off whatever `Tab` or a click left focused in the page,
 such as a link or a button, so its focus ring goes away. The page has that `Esc` first: a menu
@@ -3755,6 +3759,7 @@ highlighted and its number coloured; a tab playing sound shows `♪`, one from a
 | `V`                     | Start a range: `j` / `k` stretch it, and `V` or `space` marks every row in it.                                                                                                                             |
 | `x`                     | Close the highlighted tab; the highlight moves to the next row and the panel stays open, so `x x x` closes three.                                                                                          |
 | `m`                     | Move the highlighted tab to another workspace: the workspace picker opens, `Enter` (or `m`) on a workspace asks first, then moves it ([below](#moving-a-tab-from-the-side-panel)).                         |
+| `z`                     | Put the highlighted tab to sleep, or the marked tabs when you have marked some; the rows turn muted and the panel stays open ([Sleeping tabs](#sleeping-tabs)).                                            |
 | `ctrl+shift+t`          | Reopen the last closed tab, as in Firefox.                                                                                                                                                                 |
 | `ctrl+b )` / `ctrl+b (` | Switch workspace; the panel stays open and lists that one (its marks are dropped).                                                                                                                         |
 | `I`                     | Close the panel and focus the address bar.                                                                                                                                                                 |
@@ -4614,6 +4619,23 @@ sleep = false                 # this site's tabs, its subdomains' too, never sle
 
 A change applies at the next check after the file is read, and never wakes a tab.
 
+**Putting tabs to sleep yourself.** To free memory now rather than in two hours:
+
+| Command          | What it does                                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `:sleep`         | Puts this workspace's tabs to sleep, however recently you saw them, and says how many: `4 tabs asleep; 2 stay awake: on screen`.    |
+| `:sleep all`     | The same for every workspace of every window.                                                                                       |
+| `:sleep N`       | Puts tab N (the number `alt+N` and `{N}gt` use) to sleep, even a pinned tab or one whose site has `sleep = false`: `Tab 4 asleep`.  |
+| `z` (side panel) | Puts the highlighted tab to sleep, or the marked ones when you have marked some, as `:sleep N` does for each. The panel stays open. |
+
+They keep the other rules: a tab on screen stays (`Tab 2 is on screen`), and so does a tab playing
+sound or sharing a camera, the agent workspace's tabs while an agent is connected, and a page that
+would ask before you leave it (`Tab 4 stays awake: it would ask before leaving`). In a private
+window they say `Private tabs do not sleep`. The action is `sleep_tabs`, with no key of its own:
+bind one in `[keys]` of `config.toml`, and change `z` under `[modal.panel]`, as every key, the
+prefix and the leader can be remapped. A key bound to `sleep_tabs` takes a count as `{N}gt`
+does: `3` and the key is `:sleep 3`.
+
 ## Add-ons
 
 Add-ons work as in Firefox. Install them from [addons.mozilla.org](https://addons.mozilla.org)
@@ -4901,6 +4923,7 @@ give the rest.
 | `:tabrename [name]`                   | Renames the tab; without a name, opens the rename prompt.                                                                                      |
 | `:ls`                                 | Opens [tab search](#tab-search-and-tab-rename).                                                                                                |
 | `:tab N`, `:tabnext N`, `:tab $`      | Goes to tab N of this workspace, as `{N}gt`; `$` the last, alone the next. Typed in full.                                                      |
+| `:sleep`, `:sleep all`, `:sleep N`    | Puts this workspace's tabs, every workspace's, or tab N to [sleep](#sleeping-tabs) at once.                                                    |
 | `:tabsearch [text]`, `:ts`, `:b`      | Opens tab search with the text already typed.                                                                                                  |
 | `:grep text`, `:grep`                 | Opens [live grep](#live-grep) with that text; alone, with the last query.                                                                      |
 | `:vsplit`/`:vs`, `:split`/`:sp`       | Splits the pane right / down, as `ctrl+b v` / `ctrl+b -`.                                                                                      |
@@ -5025,9 +5048,13 @@ One plain file holds your settings and keys; every key, the prefix and the leade
 - **Old files:** a `schema = …` line is ignored.
 - **Newer files:** a setting this version does not know, such as one a newer Vimma added, is
   skipped and named in the status bar (`unknown key "…"; skipped`), and the rest of the file
-  applies. A key close to a real one (`steps` for `step`) is an error with the suggestion, and so
-  are, as before, an unknown action in `[keys]` or a mode in `[unbind]`, an unknown colour in
-  `[theme.colors]`, an unknown key in a `[[routes]]` rule, and a value only a newer version
+  applies. So is a binding to an action this version does not have, in `[keys]` or a
+  `[modal.<mode>]` table (`unknown action "…"; skipped`): your other keys still work. With more
+  than one, the status bar counts them as warnings (`2 warnings: …`), apart from errors, which it
+  shows first (`1 error, 2 warnings: …`). A name
+  close to a real one (`steps` for `step`, `new_tabb` for `new_tab`) is an error with the
+  suggestion, and so are malformed keys for a known action, an unknown mode in `[unbind]`, an unknown colour
+  in `[theme.colors]`, an unknown key in a `[[routes]]` rule, and a value only a newer version
   accepts.
 
 ### Keys and modes

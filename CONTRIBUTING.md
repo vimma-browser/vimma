@@ -11,9 +11,10 @@ How to build, run and test Vimma, and how changes get in. For why Vimma exists, 
 - About 35 GB of free disk space, as measured on one machine: `engine/` 27 GB (source and the
   full build), the sccache compiler cache 6.8 GB, toolchains in `~/.mozbuild` 3.1 GB and the
   Firefox source download in `.surfer/` 0.8 GB.
-- Node.js 22.18 or later in the 22 line, or 24.3 or later: they run the TypeScript tools under
-  `tools/` without a flag or a warning ([ADR-025](docs/adr/025-typescript-for-tools.md)); `.nvmrc`
-  pins the version CI uses. git.
+- Node.js 22.18 or later in the 22 line, or 24.3 or later in the 24 line: they run the TypeScript
+  tools under `tools/` without a flag or a warning ([ADR-025](docs/adr/025-typescript-for-tools.md)).
+  Node 26 fails `npm run import` (issue #1538), which stops up front on it. `.nvmrc` pins the
+  version CI uses. git.
 - Python 3.10 to 3.14: the range `engine/mach` declares it supports. A newer Python breaks mach in
   places; Python 3.15 cannot parse the test manifests.
 - Time: the first full build took 39 min on a 16-thread Ryzen with 58 GB RAM. The Firefox source
@@ -200,9 +201,10 @@ Mac is not supported.
 - **Tools.** Xcode's command line tools (`xcode-select --install`), Python 3 and
   `brew install gnu-tar gnupg`: Surfer unpacks the Firefox source with GNU tar (`gtar`) on macOS,
   and the source check needs `gpgv`.
-- **Node.js** 22.18 or later in the 22 line, or 24.3 or later: they run the `.ts` tools without
-  a flag or a warning ([ADR-025](docs/adr/025-typescript-for-tools.md)). `.nvmrc` pins the
-  version CI uses.
+- **Node.js** 22.18 or later in the 22 line, or 24.3 or later in the 24 line: they run the `.ts`
+  tools without a flag or a warning ([ADR-025](docs/adr/025-typescript-for-tools.md)). Homebrew's
+  `node` is 26, which `npm run import` refuses (issue #1538): use `.nvmrc`'s through nvm. `.nvmrc`
+  pins the version CI uses.
 
 ```sh
 npm ci

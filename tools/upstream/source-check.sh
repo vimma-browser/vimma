@@ -47,13 +47,20 @@ hasher=$!
 # The pristine copies of the patched files, for the fuzz re-export.
 patched=()
 while read -r f; do patched+=(--extract "$f"); done < <(python3 "$here/patch-check.py" --list-files)
+# This shell holds the FIFO's write end until the stream is through: the hasher's open() returns
+# here, and it reads to the end of the stream whatever becomes of tee. With tee as its only
+# writer, a tee that never opened the FIFO left the hasher blocked in open(), and this script in
+# `wait`, for ever (#1523). tee writes through the descriptor, not the path.
+exec 3> "$scratch/tarball.fifo"
 set +e
-curl -fsSL --retry 3 "$base/$name" | tee "$scratch/tarball.fifo" |
+# ${a[@]+"${a[@]}"}: an empty array under `set -u` is an error before bash 4.4 (macOS's bash).
+curl -fsSL --retry 3 "$base/$name" | tee /dev/fd/3 |
   python3 "$here/patch-check.py" --tarball - --drain \
     --json patch-check.json --markdown patch-check.md \
-    --extract browser/app/profile/firefox.js --extract modules/libpref/init/all.js "${patched[@]}" \
-    --extract-to "$scratch/upstream"
+    --extract browser/app/profile/firefox.js --extract modules/libpref/init/all.js \
+    ${patched[@]+"${patched[@]}"} --extract-to "$scratch/upstream"
 status=${PIPESTATUS[2]}
+exec 3>&-
 wait "$hasher"
 set -e
 

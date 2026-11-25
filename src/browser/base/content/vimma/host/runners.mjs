@@ -64,6 +64,7 @@ import {
 import { restartAsking } from "./restart.mjs";
 import { runRoute } from "./route-ops.mjs";
 import { runSiteKeys } from "./site-keys-ops.mjs";
+import { sleepCommand } from "./sleep-ops.mjs";
 import {
   closeTab,
   newTab,
@@ -328,6 +329,17 @@ export function hostRunners(host, page) {
     // Firefox's alt+9: the workspace's last visible tab (docs/specs/firefox-keys.md).
     "tab.goto_last": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
     "tab.close": (/** @type {WindowState} */ s) => closeTab(s.win),
+    // `:sleep [all|N]` (docs/specs/tab-sleep.md Behaviour 9-13); the notice says what it did.
+    "tab.sleep": (
+      /** @type {WindowState} */ s,
+      /** @type {Action} */ a,
+      /** @type {string | undefined} */ text,
+    ) => {
+      sleepCommand(s.win, a, text).then(
+        (said) => s.notice.show(said),
+        (e) => console.error("vimma: :sleep", e),
+      );
+    },
     // The focused pane; the last pane closes the tab (`:q`, prefix+x; m4-split-panes).
     "pane.close": paneRunner(closePane, emit),
     "pane.split_vertical": paneRunner(splitPane, emit),
@@ -529,6 +541,10 @@ export function hostRunners(host, page) {
       if (!s.bookmarks.isOpen) s.panel.action(a);
     },
     "panel.visual": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
+      if (!s.bookmarks.isOpen) s.panel.action(a);
+    },
+    // tab-sleep Behaviour 12: `z` in the side panel; nothing in the bookmarks panel.
+    "panel.sleep": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
       if (!s.bookmarks.isOpen) s.panel.action(a);
     },
     // `m`: the bookmarks panel's move to a folder, or the side panel's move to a workspace.

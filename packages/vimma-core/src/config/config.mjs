@@ -7,7 +7,7 @@
  * See docs/specs/m5-core-config-and-theme.md (v1) and docs/specs/m3-m4-core-prep.md (v2).
  * Core does no I/O: the host passes file contents.
  */
-import { closest, resolveActionName } from "../keys/actions.mjs";
+import { closest, removedAction, resolveActionName, suggestAction } from "../keys/actions.mjs";
 import { BOOKMARKS_TOOLBAR_SETTINGS } from "../ui/bookmarks-toolbar.mjs";
 import {
   DEFAULT_CONFIG,
@@ -81,6 +81,7 @@ import { hasControl } from "../text/strings.mjs";
  * @property {string} [suggestion]
  * @property {string} [file]         the file it is in, when not the config file the list is about
  *   (bookmarks.toml's errors, docs/specs/bookmarks-file.md)
+ * @property {boolean} [warning]     left out of a file that applies, not a reason it was refused
  */
 
 /**
@@ -532,6 +533,38 @@ function validate(raw, warnings = []) {
         table(path, v);
       } else {
         unknownKey(path, key, [...MODES, "pdf", ...MODAL_KEYS]);
+      }
+    }
+  }
+
+  // An action this build does not know, with no close match, is most likely one a newer Vimma
+  // added: only that binding is left out, as for an unknown key (#1474). A near miss of a real
+  // action and a removed action stay errors (compileKeymap gives the suggestion or the reason),
+  // and so does malformed key notation, a bad value like any other.
+  /** @param {string} name */
+  const newerAction = (name) =>
+    !resolveActionName(name) && !removedAction(name) && !suggestAction(name);
+  if (isTable(raw.keys)) {
+    for (const [name, v] of Object.entries(raw.keys)) {
+      if (name === "prefix" || resolveActionName(name)) continue;
+      const path = ["keys", name];
+      if ((TOP_KEYS.includes(name) && isTable(v)) || strayCheck({ [name]: v })) {
+        // A misplaced table's line (#1270) or an update opt-out: unknownKey's errors.
+        unknownKey(path, name, []);
+        continue;
+      }
+      if (!newerAction(name)) continue;
+      warnings.push({ path, message: `unknown action "${name}"; skipped` });
+      delete raw.keys[name];
+    }
+  }
+  if (isTable(raw.modal)) {
+    for (const [mode, t] of Object.entries(raw.modal)) {
+      if (!isKeymapTable(mode) || !isTable(t)) continue;
+      for (const [text, v] of Object.entries(t)) {
+        if (typeof v !== "string" || v.startsWith(":") || !newerAction(v)) continue;
+        warnings.push({ path: ["modal", mode, text], message: `unknown action "${v}"; skipped` });
+        delete t[text];
       }
     }
   }

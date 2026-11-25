@@ -19,6 +19,7 @@ import { existsSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { nodeProblem } from "../import/check-node.ts";
 import {
   assertLane,
   copyEngine,
@@ -71,6 +72,9 @@ export function diskReport(engine: string): string {
 
 /** @param root this worktree */
 async function main(root: string) {
+  // Before the engine copy, not when the import inside it fails half-done (issue #1538).
+  const problem = nodeProblem(process.version);
+  if (problem) throw new Error(problem);
   const { values } = parseArgs({
     options: {
       source: { type: "string" },

@@ -47,7 +47,9 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
    loads, `./x.ts` (`allowImportingTsExtensions`; the configuration has `noEmit`), and a test
    checks that every relative import in `tools/**/*.ts` names a file that exists.
 3. `package.json` asks for Node `^22.18.0 || >=24.3.0`: the versions measured above to run `.ts`
-   with no flag and no warning.
+   with no flag and no warning. (Since changed: `^22.18.0 || ^24.3.0`, because Node 26 rejects
+   the `fs.rmdir` option surfer's branding patch depends on, issue #1538;
+   `tools/import/check-node.ts` stops `npm run import` and `npm run lane:setup` on any other Node.)
 4. `.ts` files get what `.mjs` files get: `npm run typecheck` checks them (their tests too, unlike
    the `.mjs` tests, issue #947. Since changed: the `.mjs` tests are checked as well, except the
    key guard's own test), Vitest collects `tools/**/test/**/*.test.ts`, eslint applies the

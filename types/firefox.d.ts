@@ -1325,6 +1325,9 @@ interface HTMLTextAreaElement {
 // rather than give null.
 interface nsIEditor {
   readonly selectionController: nsISelectionController;
+  readonly selection: Selection;
+  readonly rootElement: Element;
+  endOfDocument(): void;
 }
 // engine/dom/base/nsISelectionController.idl
 interface nsISelectionController {
@@ -2589,6 +2592,7 @@ interface nsIAppStartup extends nsISupports {
 // engine/widget/nsIBaseWindow.idl
 interface nsIBaseWindow extends nsISupports {
   visibility: boolean;
+  destroy(): void;
 }
 // engine/widget/nsIClipboardHelper.idl: `context` is the window context that copies, so a
 // private window's copy is marked private.

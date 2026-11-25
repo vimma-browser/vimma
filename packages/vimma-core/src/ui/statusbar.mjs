@@ -354,6 +354,19 @@ export function displayUrl(url, { keepHttp = false } = {}) {
 const chars = (n) => `${n} ${n === 1 ? "char" : "chars"}`;
 
 /**
+ * "2 errors", "2 warnings", or for a mix both ("1 error, 2 warnings"): a warning's file still
+ * applied, so a count of errors alone would claim more went wrong than did.
+ * @param {readonly ConfigError[]} list
+ */
+function problemCount(list) {
+  const w = list.filter((e) => e.warning).length;
+  const n = list.length - w;
+  const errs = `${n} ${n === 1 ? "error" : "errors"}`;
+  const warns = `${w} ${w === 1 ? "warning" : "warnings"}`;
+  return w === 0 ? errs : n === 0 ? warns : `${errs}, ${warns}`;
+}
+
+/**
  * @param {Partial<Segment> & { id: string, text: string, fg: string, priority: number }} s
  * @returns {Segment}
  */
@@ -536,13 +549,13 @@ export function statusSegments(input) {
     right.push(seg({ id: "loading", text, fg: "--vimma-fg-dim", side: "right", priority: 6 }));
   }
   if (configErrors.length) {
-    const e = /** @type {ConfigError} */ (configErrors[0]);
+    // An error first when there is one: it is what kept something from applying.
+    const e = /** @type {ConfigError} */ (configErrors.find((x) => !x.warning) ?? configErrors[0]);
     const first = formatConfigError(e, e.file ?? configFile);
-    const n = configErrors.length;
     right.push(
       seg({
         id: "error",
-        text: n > 1 ? `${n} errors: ${first}` : first,
+        text: configErrors.length > 1 ? `${problemCount(configErrors)}: ${first}` : first,
         fg: "--vimma-text-error",
         side: "right",
         priority: 2,

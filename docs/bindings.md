@@ -37,6 +37,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Move the tab left                                                  | `move_tab_left`   | `ctrl+shift+pageup`                               |
 | Move the tab right                                                 | `move_tab_right`  | `ctrl+shift+pagedown`                             |
 | Reopen the last closed tab                                         | `restore_tab`     | `ctrl+shift+t`                                    |
+| Put this workspace's tabs to sleep (:sleep; :sleep all, :sleep N)  | `sleep_tabs`      | —                                                 |
 | Jump to a tab by its label in the tab line (with a count: tab N)   | `tabline_hint`    | `gb`                                              |
 | Show / hide the tab line                                           | `toggle_tabline`  | —                                                 |
 
@@ -291,6 +292,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Mark or unmark the selected tab                                                                  | `panel_mark`             | `space [panel]`  |
 | Start a range of rows to mark, or mark it                                                        | `panel_visual`           | `V [panel]`      |
 | Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder              | `panel_move_tab`         | `m [panel]`      |
+| Put the selected tab, or the marked tabs, to sleep                                               | `panel_sleep`            | `z [panel]`      |
 | Close the tab the window shows, not the highlighted row's; the panel stays open                  | `panel_close_active_tab` | —                |
 | Select row 1                                                                                     | `panel_select_1`         | —                |
 | Select row 2                                                                                     | `panel_select_2`         | —                |
