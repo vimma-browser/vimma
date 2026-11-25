@@ -479,6 +479,13 @@ smoke test", the last item below).
     the upgrade command does nothing without the repository, and the download command works
     either way. Rejected: a second marker for repository installs, because the package file is
     identical. The check reads only whether those paths exist, never their content.
+    (Since changed: on Omarchy, the pacman package's hint is `omarchy update`, because the
+    omarchy package's pacman hook (`00-omarchy-update-guard.hook`) aborts a direct
+    `pacman -Syu` whenever any package has an update, and `omarchy update` runs that upgrade
+    past its guard. The update check tells Omarchy by whether `/usr/bin/omarchy-update`, the
+    command the same package installs, exists, never by its content; elsewhere the hint stays
+    `sudo pacman -Syu`. Both are fixed strings, and the hint never names the guard's bypass
+    variable. [#1550](https://github.com/vimma-browser/vimma/issues/1550).)
 
 ### Host, retention and key lifetime
 

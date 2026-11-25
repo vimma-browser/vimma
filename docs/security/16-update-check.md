@@ -150,7 +150,12 @@ _Pages_ and _extensions_ cannot reach it.
   [`not an AppImage install: nothing to replace`](../../packages/vimma-core/test/appimage-update.test.ts),
   [`a_flatpak_is_told_to_run_flatpak_update`](../../tests/browser/browser_vimma_update_notices.js)
   The package from Vimma's pacman repository ([package-repositories](../specs/package-repositories.md)
-  decision 18; marker `vimma-package=pacman`) gets only `sudo pacman -Syu`. A `.deb` or `.rpm`
+  decision 18; marker `vimma-package=pacman`) gets only `sudo pacman -Syu`, or on Omarchy only
+  `omarchy update`, since Omarchy's pacman hook aborts a direct `pacman -Syu`: the update check
+  asks **only** whether `/usr/bin/omarchy-update` (`OMARCHY_UPDATE_FILE` in vimma-core) exists,
+  for the pacman install type alone, **never** reads it, and sends nothing; a file planted there
+  (which only root can write) switches between two fixed commands, and neither names the
+  guard's bypass variable. A `.deb` or `.rpm`
   is the same file from a release and from that spec's apt or rpm repository, so the update
   check tells them apart by the repository's setup file, at three fixed paths
   (`/etc/apt/sources.list.d/vimma.sources`, `/etc/yum.repos.d/vimma.repo`,
@@ -162,11 +167,13 @@ _Pages_ and _extensions_ cannot reach it.
   write) changes which fixed command shows, never what it runs; the package manager then checks
   the repository's OpenPGP signatures, not Vimma. Without the file the download command of UP8
   stays, with one fixed line of text pointing at the guide's repository section
-  (package-repositories decision 22). The test-only pref `vimma.update.testRepoRoot`, which moves the three paths
+  (package-repositories decision 22). The test-only pref `vimma.update.testRepoRoot`, which moves these four paths
   under a test directory, is read **only** in automation (the module's `inAutomation()`,
   `Cu.isInAutomation`), as `vimma.update.installType` is.
   [`the_update_checks_test_prefs_are_read_only_in_automation`](../../tests/browser/browser_vimma_security_invariants.js),
   [`install type pacman from vimma-package=pacman`](../../packages/vimma-core/test/updates.test.ts),
+  [`pacman on Omarchy: omarchy update, never pacman -Syu or the guard's bypass`](../../packages/vimma-core/test/updates.test.ts),
+  [`Omarchy is told by the fixed path of its update command`](../../packages/vimma-core/test/updates.test.ts),
   [`the repository files are the fixed paths each setup writes`](../../packages/vimma-core/test/updates.test.ts),
   [`a .deb with the repository set up gets apt's upgrade command`](../../packages/vimma-core/test/updates.test.ts),
   [`a .rpm with the repository set up gets dnf's and zypper's`](../../packages/vimma-core/test/updates.test.ts),

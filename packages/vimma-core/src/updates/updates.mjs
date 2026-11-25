@@ -56,6 +56,13 @@ export const REPOSITORY_FILES = Object.freeze({
   zypper: "/etc/zypp/repos.d/vimma.repo",
 });
 /** @typedef {{ apt?: boolean, dnf?: boolean, zypper?: boolean }} Repositories */
+/**
+ * Omarchy's update command, which the omarchy package installs with the pacman hook that aborts
+ * a direct `pacman -Syu` (#1550). Its existence, never its content, says the pacman package
+ * upgrades with `omarchy update`, the command Omarchy's own docs give: the hint names a command
+ * that is there to run, whichever Omarchy release added the guard.
+ */
+export const OMARCHY_UPDATE_FILE = "/usr/bin/omarchy-update";
 
 /**
  * Where the Homebrew cask installs Vimma, and the Caskroom folder it keeps beside it (spec
@@ -855,14 +862,15 @@ export const PACKAGE_KEY_SHA256 =
  * @param {Offer} offer
  * @param {{ installDir: string, appImage: string | null, writable?: boolean,
  *   marker?: string | null, appDir?: string | null, forced?: boolean,
- *   repos?: Repositories }} where
+ *   repos?: Repositories, omarchy?: boolean }} where
  *   `writable`: false when Vimma cannot write a tarball's directory, so Firefox's updater cannot
  *   apply there (Behaviour 2); `appImage`, `appDir`: `$APPIMAGE` and `$APPDIR`; `marker`: the
  *   `is-packaged-app` file's text; `forced`: a test set the install type. An AppImage's command
  *   names `$APPIMAGE` only when this Vimma is that AppImage (appImageOwnership, #1196).
  *   `repos`: which of REPOSITORY_FILES exist; a `.deb` or `.rpm` without its repository gets
  *   the `note` that points at the guide's repository section (spec package-repositories,
- *   decision 22)
+ *   decision 22);
+ *   `omarchy`: OMARCHY_UPDATE_FILE exists, so the pacman package's command is `omarchy update`
  * @returns {{ text: string, commands: string[], link: string, note?: string }}
  */
 export function updateSteps(type, offer, where) {
@@ -889,7 +897,16 @@ export function updateSteps(type, offer, where) {
   });
   switch (type) {
     // Spec package-repositories, decision 18: the package manager's own upgrade, a fixed command.
+    // On Omarchy, its pacman hook aborts a direct `pacman -Syu`, and `omarchy update` runs that
+    // upgrade past the guard (#1550); never the guard's bypass variable.
     case "pacman":
+      if (where.omarchy === true) {
+        return {
+          text: "On Omarchy, upgrade Vimma with the rest of the system from its pacman repository:",
+          commands: ["omarchy update"],
+          link,
+        };
+      }
       return {
         text: "Upgrade Vimma with the rest of the system from its pacman repository:",
         commands: ["sudo pacman -Syu"],
