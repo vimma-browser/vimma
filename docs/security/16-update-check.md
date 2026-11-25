@@ -161,9 +161,8 @@ _Pages_ and _extensions_ cannot reach it.
   the manifest, the files or the marker, so a file planted in `/etc` (which only root can
   write) changes which fixed command shows, never what it runs; the package manager then checks
   the repository's OpenPGP signatures, not Vimma. Without the file the download command of UP8
-  stays, and while `vimma.feature.packageRepos` is on (off by default until the repositories
-  are published, package-repositories decision 25) one line of text points at the guide's
-  repository section. The test-only pref `vimma.update.testRepoRoot`, which moves the three paths
+  stays, with one fixed line of text pointing at the guide's repository section
+  (package-repositories decision 22). The test-only pref `vimma.update.testRepoRoot`, which moves the three paths
   under a test directory, is read **only** in automation (the module's `inAutomation()`,
   `Cu.isInAutomation`), as `vimma.update.installType` is.
   [`the_update_checks_test_prefs_are_read_only_in_automation`](../../tests/browser/browser_vimma_security_invariants.js),
@@ -171,8 +170,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`the repository files are the fixed paths each setup writes`](../../packages/vimma-core/test/updates.test.ts),
   [`a .deb with the repository set up gets apt's upgrade command`](../../packages/vimma-core/test/updates.test.ts),
   [`a .rpm with the repository set up gets dnf's and zypper's`](../../packages/vimma-core/test/updates.test.ts),
-  [`a .deb without it keeps the download command`](../../packages/vimma-core/test/updates.test.ts),
-  [`without the repository, the download command and, when asked, one line to the guide`](../../packages/vimma-core/test/updates.test.ts),
+  [`without the repository, the download command and one line to the guide`](../../packages/vimma-core/test/updates.test.ts),
   [`package_repositories_get_the_upgrade_command`](../../tests/browser/browser_vimma_update_check.js)
 
 - UP7. A manifest is **only** signed by `update-publish.yml` run from `main`, and **only** for a
@@ -314,8 +312,14 @@ _Pages_ and _extensions_ cannot reach it.
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
   checked: every download uses `curl -f` (an HTTP error stops it) and `--proto =https`, and when
   the signed manifest gives the file's SHA-512, `sha512sum -c` checks it before `apt`, `dnf`,
-  `zypper`, `tar` or `mv` runs. The `.rpm`'s zypper command passes `--allow-unsigned-rpm`, so
-  for it that check is the only one, as it is for the `.deb`. A tarball is downloaded to a file and checked before it is unpacked, never piped
+  `zypper`, `tar` or `mv` runs. The `.rpm` carries Vimma's package signature (from 0.1.24), which
+  zypper refuses without the key even with `--allow-unsigned-rpm`, so its zypper command first
+  downloads the key from a fixed URL with the same `curl` options, checks it with `sha256sum -c`
+  against `PACKAGE_KEY_SHA256`, which the build pins (a test compares it with
+  `configs/package-signing/vimma-packages.asc`), and only then runs `sudo rpm --import`. rpm
+  trusts an imported key for every repository, so the update host alone **never** chooses that
+  key; replacing it (package-repositories decision 23) needs a browser release, as the manifest
+  keys do. After the SHA-512 check, zypper then checks the package's signature too. A tarball is downloaded to a file and checked before it is unpacked, never piped
   into `tar`. Asset hashes are read only from the signed manifest, only as 128 lower-case hex
   digits, and a saved result keeps only well-formed ones. **⚠ limit:** the release `PKGBUILD`'s
   command still fetches `latest/download/PKGBUILD` without a hash of its own; `makepkg` checks
@@ -324,6 +328,7 @@ _Pages_ and _extensions_ cannot reach it.
   the repository's OpenPGP signatures and the checksums its signed metadata pins.
   [`every download fails on an HTTP error and refuses anything but https (V-07)`](../../packages/vimma-core/test/updates.test.ts),
   [`rpm: download and check it, then install it with dnf or zypper`](../../packages/vimma-core/test/updates.test.ts),
+  [`the pinned package key is the committed configs/package-signing/vimma-packages.asc`](../../packages/vimma-core/test/updates.test.ts),
   [`the checked commands run: a matching file installs, a different one stops before`](../../packages/vimma-core/test/updates.test.ts),
   [`reads each package's size and SHA-512 (the release pipeline's asset elements)`](../../packages/vimma-core/test/updates.test.ts),
   [`offerAssets keeps only well-formed entries (a saved result read back)`](../../packages/vimma-core/test/updates.test.ts),

@@ -270,10 +270,11 @@ of the same commit read it too, so a tree without it could not be released anywa
   installs, and its generator accepts only `owner/name` for the repository and
   `[A-Za-z0-9._-]` for the desktop file ID, the two values it places in shell words. It is built
   and installed with `makepkg -si` on Arch Linux before anything is signed. The `.rpm` for
-  Fedora and openSUSE carries no OpenPGP signature of its own (no key exists to sign it with):
-  `SHA256SUMS` and its cosign bundle cover it as they cover the `.deb`, which is why the
-  documented zypper command passes `--allow-unsigned-rpm` and dnf skips its OpenPGP check for a
-  local file by default. Its spec is generated, and its generator accepts only an absolute path
+  Fedora and openSUSE built while `PACKAGE_REPOS_ENABLED` is not `true` (every release before
+  0.1.24) carries no OpenPGP signature of its own: `SHA256SUMS` and its cosign bundle cover it
+  as they cover the `.deb`, which is why the zypper command for such a file passes
+  `--allow-unsigned-rpm`, and dnf skips its OpenPGP check for a local file by default. Its spec
+  is generated, and its generator accepts only an absolute path
   of `[A-Za-z0-9._/-]` for the staged root and the output directory, `[A-Za-z0-9._+-]` for the
   bundled library names and a maintainer line without `%`, the values it places in a shell
   command or in text rpm expands as macros. It is built by `rpmbuild`

@@ -101,6 +101,11 @@ whose libraries they install by hand.
    manifest. Reason: a signing key would need its own custody and a published public key for
    one package format, the cost decision 20 of [m6a-updater](m6a-updater.md) weighed for an apt
    repository. Its consequence is the `--allow-unsigned-rpm` in every zypper command.
+   (Since changed: [package-repositories](package-repositories.md) signs the `.rpm` with
+   Vimma's package key from release 0.1.24 and publishes an rpm repository for dnf and zypper,
+   whose setup commands need no `--allow-unsigned-rpm`. A signed release file installed by hand
+   needs the key imported (`rpm --import`) instead, since the flag does not cover a signature
+   whose key zypper lacks; `:update`'s zypper command imports it before installing.)
 7. **Release `1`, xz payload.** Every Vimma version is packaged once, so its Release is always
    `1`; the payload is xz (`w6.xzdio`), as the `.deb`, which every supported Fedora and openSUSE
    reads.

@@ -17,6 +17,7 @@ import {
   offNotice,
   OFF_NOTICE_MS,
   offerAssets,
+  PACKAGE_KEY_SHA256,
   parseManifest,
   REPOSITORY_FILES,
   savedKey,
@@ -1050,23 +1051,37 @@ describe("updateSteps (:update and about:vimma)", () => {
   });
 
   // One .rpm serves Fedora and openSUSE (spec rpm-package): a command for each one's package
-  // manager. zypper refuses an unsigned package unless told; SHA256SUMS' cosign signature and
-  // the signed manifest's SHA-512 are what vouch for it, as for the .deb.
+  // manager. The .rpm carries Vimma's package signature (spec package-repositories, decision
+  // 9), which zypper refuses without the key, even with --allow-unsigned-rpm: the command
+  // imports the key first.
   test("rpm: download and check it, then install it with dnf or zypper", () => {
     const s = updateSteps("rpm", hashed, where);
     expect(s.text).toMatch(/dnf.*Fedora.*zypper.*openSUSE/);
     const fetch =
       `${curl} -o vimma-0.3.1-1.x86_64.rpm ${dl}/vimma-0.3.1-1.x86_64.rpm` +
       ` && echo '${H("d")}  vimma-0.3.1-1.x86_64.rpm' | sha512sum -c -`;
+    // The key is pinned by its SHA-256, because rpm trusts an imported key for every repository:
+    // the update host alone must not choose it.
+    const key =
+      "curl -fsSL --proto =https -o vimma-packages.asc https://updates.vimma.dev/vimma-packages.asc" +
+      ` && echo '${PACKAGE_KEY_SHA256}  vimma-packages.asc' | sha256sum -c -` +
+      " && sudo rpm --import vimma-packages.asc";
     expect(s.commands).toEqual([
       `${fetch} && sudo dnf install ./vimma-0.3.1-1.x86_64.rpm`,
-      `${fetch} && sudo zypper install --allow-unsigned-rpm ./vimma-0.3.1-1.x86_64.rpm`,
+      `${fetch} && ${key} && sudo zypper install ./vimma-0.3.1-1.x86_64.rpm`,
     ]);
     const pre = { ...offer, displayVersion: "0.4.0-rc.1" };
     for (const c of updateSteps("rpm", pre, where).commands) {
       expect(c).toContain("./vimma-0.4.0~rc.1-1.x86_64.rpm");
       expect(c).not.toContain("sha512sum");
     }
+  });
+
+  test("the pinned package key is the committed configs/package-signing/vimma-packages.asc", () => {
+    const committed = readFileSync(
+      new URL("../../../configs/package-signing/vimma-packages.asc", import.meta.url),
+    );
+    expect(PACKAGE_KEY_SHA256).toBe(createHash("sha256").update(committed).digest("hex"));
   });
 
   // Behaviour 2: Firefox's updater cannot apply in a directory Vimma cannot write.
@@ -1224,36 +1239,26 @@ describe("updateSteps (:update and about:vimma)", () => {
     expect(apt.commands).toEqual(updateSteps("rpm", hashed, where).commands);
   });
 
-  test("a .deb without it keeps the download command", () => {
+  // Decision 22: a .deb or .rpm without its repository keeps the download command and gets one
+  // line pointing at the guide's repository section.
+  test("without the repository, the download command and one line to the guide", () => {
     const none = updateSteps("deb", hashed, { ...where, repos: {} });
     expect(none).toEqual(updateSteps("deb", hashed, where));
     expect(none.commands[0]).toMatch(
       /sha512sum -c - && sudo apt install \.\/vimma_0\.3\.1_amd64\.deb$/,
     );
-    expect(none.note).toBeUndefined();
-  });
-
-  // Decision 22: one line pointing at the guide's repository section, shown only once that
-  // section exists (decision 25: vimma.feature.packageRepos, until the repositories are live).
-  test("without the repository, the download command and, when asked, one line to the guide", () => {
     for (const type of ["deb", "rpm"] as const) {
       const plain = updateSteps(type, hashed, where);
-      const hinted = updateSteps(type, hashed, { ...where, repoHint: true });
-      expect(hinted.commands).toEqual(plain.commands);
-      expect(hinted.text).toBe(plain.text);
-      expect(hinted.note).toMatch(/the guide's “Package repositories”/);
-      expect(hinted.note).not.toMatch(/\n/);
-      expect(plain.note).toBeUndefined();
+      expect(plain.note).toMatch(/the guide's “Package repositories”/);
+      expect(plain.note).not.toMatch(/\n/);
       // With the repository set up there is nothing to point at.
       const set = { apt: true, dnf: true, zypper: true };
-      expect(updateSteps(type, hashed, { ...where, repos: set, repoHint: true }).note).toBe(
-        undefined,
-      );
+      expect(updateSteps(type, hashed, { ...where, repos: set }).note).toBeUndefined();
     }
-    expect(updateSteps("deb", hashed, { ...where, repoHint: true }).note).toMatch(/\bapt\b/);
-    expect(updateSteps("rpm", hashed, { ...where, repoHint: true }).note).toMatch(/dnf.*zypper/);
+    expect(updateSteps("deb", hashed, where).note).toMatch(/\bapt\b/);
+    expect(updateSteps("rpm", hashed, where).note).toMatch(/dnf.*zypper/);
     for (const type of ["tarball", "appimage", "pacman", "aur", "flatpak"] as const) {
-      expect(updateSteps(type, hashed, { ...where, repoHint: true }).note).toBeUndefined();
+      expect(updateSteps(type, hashed, where).note).toBeUndefined();
     }
   });
 
