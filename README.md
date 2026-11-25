@@ -50,14 +50,8 @@ The docs, every key and the install page are at **[vimma.dev](https://vimma.dev)
 ## Install
 
 Vimma runs on Linux x86_64 and on macOS 15 or later with Apple Silicon. On Linux, Vimma's signed
-package repositories let the system's own upgrade command update Vimma with everything else. The
-package key's fingerprint is `110649CB2BC11400828DD0D497FD3D2B24AD4390`; the guide's
-[Package repositories](docs/guide.md#package-repositories) has every step in detail, how to check
-the key, and how to remove a repository.
-
-Arch Linux takes three short steps; on the other distributions one command sets up the repository
-and installs Vimma. Each command stops at the first step that fails and can be run again; the
-guide's [Step by step](docs/guide.md#step-by-step) splits them further.
+package repository lets the system's own upgrade command update Vimma with everything else; the
+package key's fingerprint is `110649CB2BC11400828DD0D497FD3D2B24AD4390`.
 
 **Arch Linux and Omarchy:**
 
@@ -82,30 +76,6 @@ Step 3 has no `-y` or `-u`, so it never makes a partial upgrade, and Omarchy's u
 it through; the system update in step 2 is your usual one. Updates afterwards:
 `sudo pacman -Syu`, or `omarchy update` on Omarchy.
 
-**Debian 12+, Ubuntu 22.04+:** apt shows no fingerprint; the guide's step by step shows how to
-check it first. `sudo apt update && sudo apt upgrade` updates Vimma from then on.
-
-```sh
-curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources >/dev/null \
-  && sudo apt update && sudo apt install vimma
-```
-
-**Fedora:** dnf shows the key's fingerprint and asks once; compare it with the one above.
-`sudo dnf upgrade` updates Vimma from then on.
-
-```sh
-sudo dnf config-manager addrepo --overwrite --from-repofile=https://updates.vimma.dev/rpm/vimma.repo \
-  && sudo dnf install vimma
-```
-
-**openSUSE:** zypper shows the key's fingerprint and asks once; compare it with the one above.
-`sudo zypper up` updates Vimma from then on.
-
-```sh
-{ zypper lr vimma >/dev/null 2>&1 || sudo zypper addrepo --refresh --gpgcheck-strict https://updates.vimma.dev/rpm/vimma.repo; } \
-  && sudo zypper refresh && sudo zypper install vimma
-```
-
 **macOS, with Homebrew:** install from Vimma's own tap; `brew upgrade --cask vimma` updates it.
 
 ```sh
@@ -117,30 +87,11 @@ other app. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma
 For release 0.1.10 or earlier, or a CI test build, which are not notarised, the
 guide's [macOS](docs/guide.md#macos) section has the steps to open it the first time.
 
-**Other distributions:** the AppImage runs on any of them; this downloads the latest one into
-`~/Applications` and starts it:
-
-```sh
-v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
-  && mkdir -p ~/Applications && cd ~/Applications \
-  && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-x86_64.AppImage \
-  && chmod +x vimma-$v-x86_64.AppImage && ./vimma-$v-x86_64.AppImage
-```
-
-Each [release](https://github.com/vimma-browser/vimma/releases/latest) also has a tarball, a
-`.deb`, an `.rpm` and a `PKGBUILD` for Arch Linux; the guide's
-[Release files](docs/guide.md#release-files) has one command for each. The `PKGBUILD` builds the
-package; run this as your normal user (not root), from any directory, and again to update:
-
-```sh
-mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si
-```
-
-`X.Y.Z` is the Vimma version. The status bar says when a new release is out. The AppImage and the
-tarball then update themselves, and a repository install updates with the system; for the other
-files, `:update` shows the command for your install ([Updates](docs/guide.md#updates)). The
-guide's [Installing](docs/guide.md#installing) section has the commands for each file and how to
-verify a download with `sha256sum` and cosign.
+**Debian, Ubuntu, Fedora, openSUSE and other distributions:** the commands for each, and for
+the AppImage, tarball, `.deb`, `.rpm` and `PKGBUILD` downloads, are at
+[vimma.dev/install](https://vimma.dev/install/) and in the guide's
+[Installing](docs/guide.md#installing) section. The status bar says when a new release is out,
+and `:update` shows the command for your install ([Updates](docs/guide.md#updates)).
 
 ## Why
 

@@ -1391,12 +1391,12 @@ describe("the documented Arch Linux command", () => {
   /** @param path relative to the repository root */
   const doc = (path: string) => readFileSync(defined(DOCS[path], path), "utf8");
 
-  it.each([
-    "README.md",
-    "docs/guide.md",
-    "docs/specs/m6a-updater.md",
-    "docs/specs/m6-packaging.md",
-  ])("%s gives the command the PKGBUILD's header gives", (path) => {
-    expect(doc(path).replace(/\n\s*/g, " ")).toContain(PKGBUILD_INSTALL_COMMAND);
-  });
+  // README.md shows only the Arch repository and Homebrew, and links the rest (the guide and
+  // vimma.dev/install), so it no longer carries the PKGBUILD command.
+  it.each(["docs/guide.md", "docs/specs/m6a-updater.md", "docs/specs/m6-packaging.md"])(
+    "%s gives the command the PKGBUILD's header gives",
+    (path) => {
+      expect(doc(path).replace(/\n\s*/g, " ")).toContain(PKGBUILD_INSTALL_COMMAND);
+    },
+  );
 });
