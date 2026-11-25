@@ -201,7 +201,7 @@ Server = https://updates.vimma.dev/arch/$arch
 `SigLevel = Required` makes pacman refuse the package list, not only a package, when its
 signature is missing; pacman's default would accept a package list served without one.
 
-and install the package:
+Then install the package:
 
 ```sh
 sudo pacman -Syu vimma-bin

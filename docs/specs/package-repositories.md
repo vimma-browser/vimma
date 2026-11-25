@@ -388,8 +388,8 @@ smoke test", the last item below).
     repository of `PKGBUILD`s, because pacman has no such repository type.
     (Since changed: the guide's `[vimma]` section sets `SigLevel = Required`, because under the
     default `Required DatabaseOptional` pacman accepts a `vimma.db` served without its `.sig`
-    (Research), which would let a tampered host hold users on an older signed release; Behaviour
-    4's snippet gains that line.)
+    (Research), which would let a tampered host hold users on an older signed release; the guide's
+    snippet adds that line to Behaviour 4's.)
 11. **Metadata only on the update host; package requests redirect to the GitHub Release.** The
     host serves `/apt/`, `/rpm/` and `/arch/x86_64/` metadata, `vimma-packages.asc` and the setup
     files. Its `_redirects` file sends package requests to
