@@ -140,32 +140,32 @@ repositories carry every published release for Linux x86_64, never a pre-release
 files themselves download from the GitHub Release, and the signed package list pins each one's
 checksum.
 
-One command sets up the repository and installs Vimma; each stops at the first step that fails
-and can be run again. To do it one step at a time instead, see [Step by step](#step-by-step)
-below.
+Arch Linux takes three short steps; on the other distributions one command sets up the
+repository and installs Vimma. Each command stops at the first step that fails and can be run
+again. To split them further, see [Step by step](#step-by-step) below.
 
-**Arch Linux:**
+**Arch Linux and Omarchy:**
 
-```sh
-curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
-  && sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390 \
-  && { grep -q '^\[vimma\]' /etc/pacman.conf || printf '\n[vimma]\nSigLevel = Required\nServer = https://updates.vimma.dev/arch/$arch\n' | sudo tee -a /etc/pacman.conf >/dev/null; } \
-  && sudo pacman -Syu vimma-bin
-```
+1. Set up the repository (the same on Arch and Omarchy). `--lsign-key` names the key's full
+   fingerprint, so it fails unless the key downloaded is Vimma's:
 
-`--lsign-key` names the key's full fingerprint, so it fails unless the key downloaded is
-Vimma's. `sudo pacman -Syu` updates Vimma from then on.
+   ```sh
+   curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
+     && sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390 \
+     && { grep -q '^\[vimma\]' /etc/pacman.conf || printf '\n[vimma]\nSigLevel = Required\nServer = https://updates.vimma.dev/arch/$arch\n' | sudo tee -a /etc/pacman.conf >/dev/null; }
+   ```
 
-**On Omarchy:** Omarchy upgrades the system through `omarchy update`, so the last step uses it:
+2. Update the system the way you usually do, which also reads the new repository:
+   `sudo pacman -Syu` (on Omarchy: `omarchy update`).
+3. Install Vimma:
 
-```sh
-curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
-  && sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390 \
-  && { grep -q '^\[vimma\]' /etc/pacman.conf || printf '\n[vimma]\nSigLevel = Required\nServer = https://updates.vimma.dev/arch/$arch\n' | sudo tee -a /etc/pacman.conf >/dev/null; } \
-  && omarchy update && sudo pacman -S --needed vimma-bin
-```
+   ```sh
+   sudo pacman -S --needed vimma-bin
+   ```
 
-`omarchy update` updates Vimma from then on, with the rest of the system.
+Step 3 has no `-y` or `-u`, so it never makes a partial upgrade, and Omarchy's update guard lets
+it through; the system update in step 2 is your usual one. Updates afterwards:
+`sudo pacman -Syu`, or `omarchy update` on Omarchy.
 
 **Debian 12+, Ubuntu 22.04+:**
 
