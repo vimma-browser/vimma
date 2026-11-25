@@ -17,6 +17,7 @@ import {
   offNotice,
   OFF_NOTICE_MS,
   offerAssets,
+  PACKAGE_KEY_SHA256,
   parseManifest,
   REPOSITORY_FILES,
   savedKey,
@@ -1059,16 +1060,28 @@ describe("updateSteps (:update and about:vimma)", () => {
     const fetch =
       `${curl} -o vimma-0.3.1-1.x86_64.rpm ${dl}/vimma-0.3.1-1.x86_64.rpm` +
       ` && echo '${H("d")}  vimma-0.3.1-1.x86_64.rpm' | sha512sum -c -`;
+    // The key is pinned by its SHA-256, because rpm trusts an imported key for every repository:
+    // the update host alone must not choose it.
+    const key =
+      "curl -fsSL --proto =https -o vimma-packages.asc https://updates.vimma.dev/vimma-packages.asc" +
+      ` && echo '${PACKAGE_KEY_SHA256}  vimma-packages.asc' | sha256sum -c -` +
+      " && sudo rpm --import vimma-packages.asc";
     expect(s.commands).toEqual([
       `${fetch} && sudo dnf install ./vimma-0.3.1-1.x86_64.rpm`,
-      `${fetch} && sudo rpm --import https://updates.vimma.dev/vimma-packages.asc` +
-        " && sudo zypper install ./vimma-0.3.1-1.x86_64.rpm",
+      `${fetch} && ${key} && sudo zypper install ./vimma-0.3.1-1.x86_64.rpm`,
     ]);
     const pre = { ...offer, displayVersion: "0.4.0-rc.1" };
     for (const c of updateSteps("rpm", pre, where).commands) {
       expect(c).toContain("./vimma-0.4.0~rc.1-1.x86_64.rpm");
       expect(c).not.toContain("sha512sum");
     }
+  });
+
+  test("the pinned package key is the committed configs/package-signing/vimma-packages.asc", () => {
+    const committed = readFileSync(
+      new URL("../../../configs/package-signing/vimma-packages.asc", import.meta.url),
+    );
+    expect(PACKAGE_KEY_SHA256).toBe(createHash("sha256").update(committed).digest("hex"));
   });
 
   // Behaviour 2: Firefox's updater cannot apply in a directory Vimma cannot write.

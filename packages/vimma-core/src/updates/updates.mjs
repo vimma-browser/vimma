@@ -839,6 +839,13 @@ export function appImageOwnership({ installType, marker, appImage, appDir, greDi
 
 /** Vimma's package signing key (spec package-repositories), a fixed URL. */
 const PACKAGE_KEY_URL = "https://updates.vimma.dev/vimma-packages.asc";
+/**
+ * SHA-256 of `configs/package-signing/vimma-packages.asc` (a test compares them). rpm trusts an
+ * imported key for every repository, so the update host alone must not choose which key the
+ * `.rpm` hint imports; replacing the key (package-repositories decision 23) needs a release.
+ */
+export const PACKAGE_KEY_SHA256 =
+  "d07a9bf4df39da55e2110fa50f903ed6cb65bd808fc6a7fc3e341454a220e700";
 
 /**
  * How to update this install to `offer` (`:update`, about:vimma): a sentence, the exact
@@ -940,7 +947,7 @@ export function updateSteps(type, offer, where) {
       }
       // A release's .rpm installed by hand (spec rpm-package). From 0.1.24 it carries Vimma's
       // package signature (spec package-repositories, decision 9), and zypper refuses a signature
-      // whose key it lacks even with --allow-unsigned-rpm, so the key is imported first; the
+      // whose key it lacks even with --allow-unsigned-rpm, so the pinned key is imported first; the
       // SHA-512 from the signed manifest checks the file itself.
       const file = `vimma-${v.replace("-", "~")}-1.x86_64.rpm`;
       const fetch = fetchChecked(`${dl}/${file}`, file, assets.rpm);
@@ -948,7 +955,9 @@ export function updateSteps(type, offer, where) {
         text: "Download the new .rpm and install it over this one, with dnf on Fedora or zypper on openSUSE:",
         commands: [
           `${fetch} && sudo dnf install ./${file}`,
-          `${fetch} && sudo rpm --import ${PACKAGE_KEY_URL} && sudo zypper install ./${file}`,
+          `${fetch} && curl -fsSL --proto =https -o vimma-packages.asc ${PACKAGE_KEY_URL}` +
+            ` && echo '${PACKAGE_KEY_SHA256}  vimma-packages.asc' | sha256sum -c -` +
+            ` && sudo rpm --import vimma-packages.asc && sudo zypper install ./${file}`,
         ],
         link,
         ...repoNote("dnf or zypper"),

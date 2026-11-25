@@ -314,8 +314,12 @@ _Pages_ and _extensions_ cannot reach it.
   the signed manifest gives the file's SHA-512, `sha512sum -c` checks it before `apt`, `dnf`,
   `zypper`, `tar` or `mv` runs. The `.rpm` carries Vimma's package signature (from 0.1.24), which
   zypper refuses without the key even with `--allow-unsigned-rpm`, so its zypper command first
-  runs `sudo rpm --import https://updates.vimma.dev/vimma-packages.asc`, a fixed URL; after
-  the SHA-512 check, zypper then checks the package's signature too. A tarball is downloaded to a file and checked before it is unpacked, never piped
+  downloads the key from a fixed URL with the same `curl` options, checks it with `sha256sum -c`
+  against `PACKAGE_KEY_SHA256`, which the build pins (a test compares it with
+  `configs/package-signing/vimma-packages.asc`), and only then runs `sudo rpm --import`. rpm
+  trusts an imported key for every repository, so the update host alone **never** chooses that
+  key; replacing it (package-repositories decision 23) needs a browser release, as the manifest
+  keys do. After the SHA-512 check, zypper then checks the package's signature too. A tarball is downloaded to a file and checked before it is unpacked, never piped
   into `tar`. Asset hashes are read only from the signed manifest, only as 128 lower-case hex
   digits, and a saved result keeps only well-formed ones. **⚠ limit:** the release `PKGBUILD`'s
   command still fetches `latest/download/PKGBUILD` without a hash of its own; `makepkg` checks
@@ -324,6 +328,7 @@ _Pages_ and _extensions_ cannot reach it.
   the repository's OpenPGP signatures and the checksums its signed metadata pins.
   [`every download fails on an HTTP error and refuses anything but https (V-07)`](../../packages/vimma-core/test/updates.test.ts),
   [`rpm: download and check it, then install it with dnf or zypper`](../../packages/vimma-core/test/updates.test.ts),
+  [`the pinned package key is the committed configs/package-signing/vimma-packages.asc`](../../packages/vimma-core/test/updates.test.ts),
   [`the checked commands run: a matching file installs, a different one stops before`](../../packages/vimma-core/test/updates.test.ts),
   [`reads each package's size and SHA-512 (the release pipeline's asset elements)`](../../packages/vimma-core/test/updates.test.ts),
   [`offerAssets keeps only well-formed entries (a saved result read back)`](../../packages/vimma-core/test/updates.test.ts),
