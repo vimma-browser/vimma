@@ -29,8 +29,8 @@ import {
   judgeManifest,
   OFF_NOTICE_MS,
   offNotice,
-  parseManifest,
   OMARCHY_UPDATE_FILE,
+  parseManifest,
   REPOSITORY_FILES,
   savedKey,
   savedOffer,
@@ -230,6 +230,11 @@ function inAutomation() {
   return Cu.isInAutomation === true;
 }
 
+/** The directory standing in for `/` in a test, read only in automation; "" otherwise. */
+function testRepoRoot() {
+  return inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";
+}
+
 function notify() {
   for (const fn of listeners) {
     try {
@@ -305,7 +310,7 @@ async function detectInstall() {
  */
 async function repositories(type) {
   if (type !== "deb" && type !== "rpm") return {};
-  const root = inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";
+  const root = testRepoRoot();
   /** @param {string} path */
   const exists = (path) => IOUtils.exists(`${root}${path}`).catch(() => false);
   const [apt, dnf, zypper] = await Promise.all([
@@ -324,7 +329,7 @@ async function repositories(type) {
  */
 async function onOmarchy(type) {
   if (type !== "pacman") return false;
-  const root = inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";
+  const root = testRepoRoot();
   return IOUtils.exists(`${root}${OMARCHY_UPDATE_FILE}`).catch(() => false);
 }
 

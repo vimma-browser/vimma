@@ -858,7 +858,7 @@ export function appImageOwnership({ installType, marker, appImage, appDir, greDi
  *   `is-packaged-app` file's text; `forced`: a test set the install type. An AppImage's command
  *   names `$APPIMAGE` only when this Vimma is that AppImage (appImageOwnership, #1196).
  *   `repos`: which of REPOSITORY_FILES exist; `repoHint`: a `.deb` or `.rpm` without its
- *   repository adds the `note` that points at the guide's repository section
+ *   repository adds the `note` that points at the guide's repository section;
  *   `omarchy`: OMARCHY_UPDATE_FILE exists, so the pacman package's command is `omarchy update`
  * @returns {{ text: string, commands: string[], link: string, note?: string }}
  */
