@@ -176,9 +176,20 @@ export function newWindowState(host, win, keymap, env) {
       state.focusNow = el;
     },
     dialogOpener: null,
+    // An element of a dialog that closed just before this one opened is no opener (focusin from
+    // a dialog's frame reaches the window, so it can be in the frame's document): the opener
+    // onDialogClose handed on from that dialog is kept.
     onDialogOpen: () => {
       const el = win.document.activeElement;
-      state.dialogOpener = el?.closest("dialog, .dialogOverlay") ? state.focusBefore : el;
+      const opener = el?.closest("dialog, .dialogOverlay") ? state.focusBefore : el;
+      if (
+        !opener ||
+        opener.ownerDocument !== win.document ||
+        opener.closest("dialog, .dialogOverlay")
+      ) {
+        return;
+      }
+      state.dialogOpener = opener;
     },
     // SubDialog gives focus back on close to what had it when the first dialog opened
     // (SubDialog.sys.mjs, `_onDialogClose` and `_topLevelPrevActiveElement`). One of Vimma's
@@ -188,31 +199,51 @@ export function newWindowState(host, win, keymap, env) {
     // hidden toolbar's address bar refuses that direct focus too; focusOpener reveals it first.
     // A window that is not the active one when its dialog closes (another window in front, or a
     // window manager slow to give the activation back) is looked at once it is active again,
-    // after the focus manager has given its focused element the focus back (#1423).
-    onDialogClose: () => {
-      win.setTimeout(() => {
-        const opener = state.dialogOpener;
-        state.dialogOpener = null;
-        const doc = win.document;
-        const check = () => {
-          const lost = () => {
-            const el = doc.activeElement;
-            return (
-              !el ||
-              el === doc.documentElement ||
-              el === doc.body ||
-              !el.isConnected ||
-              !el.checkVisibility()
-            );
+    // after the focus manager has given its focused element the focus back (#1423). A window
+    // dialog (gDialogBox) sits in a modal <dialog> that keeps the rest of the window inert until
+    // its `close`, after the dialog's frame has unloaded (gDialogBox.open): the focus is looked
+    // at only then. A window dialog opening as soon as one closes (a caller asking again straight
+    // after the answer) inherits the first's opener until it closes.
+    /** @param {Event} e */
+    onDialogClose: (e) => {
+      const opener = state.dialogOpener;
+      state.dialogOpener = null;
+      const modal = /** @type {HTMLDialogElement | null | undefined} */ (
+        /** @type {Element | null} */ (e.target)?.closest?.("dialog")
+      );
+      const doc = win.document;
+      const check = () => {
+        if (modal?.open) {
+          state.dialogOpener ??= opener;
+          // Never outlives that dialog, should it close without its own dialogclose.
+          const drop = () => {
+            if (state.dialogOpener === opener) state.dialogOpener = null;
           };
-          if (!lost()) return;
-          // SubDialog's own focus() on it failed; focusOpener reveals a hidden address bar.
-          if (opener?.isConnected) focusOpener(win, opener);
-          if (lost()) win.gBrowser?.selectedBrowser.focus();
+          modal.addEventListener("close", drop, { once: true });
+          return;
+        }
+        const lost = () => {
+          const el = doc.activeElement;
+          return (
+            !el ||
+            el === doc.documentElement ||
+            el === doc.body ||
+            !el.isConnected ||
+            !el.checkVisibility()
+          );
         };
-        if (doc.hasFocus()) check();
-        else win.addEventListener("activate", () => win.setTimeout(check, 0), { once: true });
-      }, 0);
+        if (!lost()) return;
+        // SubDialog's own focus() on it failed; focusOpener reveals a hidden address bar.
+        if (opener?.isConnected) focusOpener(win, opener);
+        if (lost()) win.gBrowser?.selectedBrowser.focus();
+      };
+      const settle = () =>
+        win.setTimeout(() => {
+          if (doc.hasFocus()) check();
+          else win.addEventListener("activate", () => win.setTimeout(check, 0), { once: true });
+        }, 0);
+      if (modal?.open) modal.addEventListener("close", settle, { once: true });
+      else settle();
     },
     dispatcher: createDispatcher(keymap),
     help: new HelpOverlay(win, keymap, env.runnable, () => state.firefoxKeys?.status().on ?? []),
