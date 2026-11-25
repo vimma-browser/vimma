@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.24](https://github.com/vimma-browser/vimma/compare/v0.1.23...v0.1.24) (2026-11-25)
+## [Unreleased]
+
+## [0.1.24](https://github.com/vimma-browser/vimma/compare/v0.1.23...v0.1.24) · Firefox 161.0 (2026-11-25)
 
 
 ### Added
@@ -253,11 +255,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
-* firefox 160.0 (MFSA 2026-125) ([#872](https://github.com/vimma-browser/vimma/issues/872)) ([9c7eaa7](https://github.com/vimma-browser/vimma/commit/9c7eaa709f0c9a98242256b0c5d8f009a5c61084))
-* firefox 160.0.1 (MFSA 2026-130) ([#1260](https://github.com/vimma-browser/vimma/issues/1260)) ([d7366e9](https://github.com/vimma-browser/vimma/commit/d7366e9b1851f6e612e66d892cc1e7d3e6019392))
-* firefox 161.0 (MFSA 2026-131) ([#1535](https://github.com/vimma-browser/vimma/issues/1535)) ([f609e95](https://github.com/vimma-browser/vimma/commit/f609e95b5f369eb2034edf82a4ea31d56dee0a29))
-
-## [Unreleased]
+* Firefox 160.0 ([MFSA 2026-125](https://www.mozilla.org/en-US/security/advisories/mfsa2026-125/)) ([#872](https://github.com/vimma-browser/vimma/issues/872)) ([9c7eaa7](https://github.com/vimma-browser/vimma/commit/9c7eaa709f0c9a98242256b0c5d8f009a5c61084))
+* Firefox 160.0.1 ([MFSA 2026-130](https://www.mozilla.org/en-US/security/advisories/mfsa2026-130/)) ([#1260](https://github.com/vimma-browser/vimma/issues/1260)) ([d7366e9](https://github.com/vimma-browser/vimma/commit/d7366e9b1851f6e612e66d892cc1e7d3e6019392))
+* Firefox 161.0 ([MFSA 2026-131](https://www.mozilla.org/en-US/security/advisories/mfsa2026-131/)) ([#1535](https://github.com/vimma-browser/vimma/issues/1535)) ([f609e95](https://github.com/vimma-browser/vimma/commit/f609e95b5f369eb2034edf82a4ea31d56dee0a29))
 
 ## [0.1.23](https://github.com/vimma-browser/vimma/compare/v0.1.22...v0.1.23) · Firefox 160.0.1 (2026-11-24)
 
