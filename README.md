@@ -76,6 +76,13 @@ Step 3 has no `-y` or `-u`, so it never makes a partial upgrade, and Omarchy's u
 it through; the system update in step 2 is your usual one. Updates afterwards:
 `sudo pacman -Syu`, or `omarchy update` on Omarchy.
 
+Without the repository, build the same `vimma-bin` package from the release's `PKGBUILD`; run it
+again for each new release:
+
+```sh
+mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si
+```
+
 **macOS, with Homebrew:** install from Vimma's own tap; `brew upgrade --cask vimma` updates it.
 
 ```sh
@@ -88,7 +95,7 @@ For release 0.1.10 or earlier, or a CI test build, which are not notarised, the
 guide's [macOS](docs/guide.md#macos) section has the steps to open it the first time.
 
 **Debian, Ubuntu, Fedora, openSUSE and other distributions:** the commands for each, and for
-the AppImage, tarball, `.deb`, `.rpm` and `PKGBUILD` downloads, are at
+the AppImage, tarball, `.deb` and `.rpm` downloads, are at
 [vimma.dev/install](https://vimma.dev/install/) and in the guide's
 [Installing](docs/guide.md#installing) section. The status bar says when a new release is out,
 and `:update` shows the command for your install ([Updates](docs/guide.md#updates)).
