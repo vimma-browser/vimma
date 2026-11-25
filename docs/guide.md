@@ -5,7 +5,7 @@ you move through your code. This guide walks you through it in the order you wil
 first launch, the two key layers, then tabs, panes, workspaces and the settings that make it
 yours.
 
-Vimma is pre-alpha. The guide describes what works now; known gaps are listed in
+Vimma is in alpha. The guide describes what works now; known gaps are listed in
 [limits.md](limits.md).
 
 ## Features at a glance
@@ -67,8 +67,9 @@ What works today, each with the section that explains it:
   asks once per session whether to show the update command, and `:update` shows the exact
   commands for how you installed it. The AppImage replaces its own file with a newer release
   checked against the signed update file, and runs it from the next start; a tarball built with
-  Firefox's updater installs a signed update at its next start. Once a security release is in
-  place it asks once per session to restart, and `:restart` restarts into it.
+  Firefox's updater installs a signed update at its next start. Vimma's signed apt, dnf, zypper
+  and pacman [repositories](#package-repositories) update it with the rest of the system. Once a
+  security release is in place it asks once per session to restart, and `:restart` restarts into it.
 - **Firefox underneath** ([privacy defaults](#privacy-defaults)): the same user agent and
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
   uploads; Safe Browsing on; a site's permissions shown and changed from the keyboard with
@@ -118,6 +119,167 @@ details, and [bindings.md](bindings.md) lists every action's config name with it
 
 ### Installing
 
+On Arch Linux, Debian, Ubuntu, Fedora and openSUSE, Vimma's package repository keeps Vimma up to
+date: you set it up once, and from then on the system's own upgrade command updates Vimma with
+everything else ([Package repositories](#package-repositories)). Every release is also a
+set of files to download and install by hand ([Release files](#release-files)), and macOS has a
+`.dmg` and a Homebrew cask ([macOS](#macos)).
+
+#### Package repositories
+
+Vimma publishes signed repositories for pacman, apt, dnf and zypper on `updates.vimma.dev`. Each
+package manager checks a signature made with Vimma's package key before it installs anything, and
+refuses a package or a package list that the key did not sign. The key's fingerprint is
+
+```text
+1106 49CB 2BC1 1400 828D  D0D4 97FD 3D2B 24AD 4390
+```
+
+Compare it with what dnf, zypper or `pacman-key` shows before you accept the key. The
+repositories carry every published release for Linux x86_64, never a pre-release; the package
+files themselves download from the GitHub Release, and the signed package list pins each one's
+checksum.
+
+Arch Linux takes three short steps; on the other distributions one command sets up the
+repository and installs Vimma. Each command stops at the first step that fails and can be run
+again. To split them further, see [Step by step](#step-by-step) below.
+
+**Arch Linux and Omarchy:**
+
+1. Set up the repository (the same on Arch and Omarchy). `--lsign-key` names the key's full
+   fingerprint, so it fails unless the key downloaded is Vimma's:
+
+   ```sh
+   curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
+     && sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390 \
+     && { grep -q '^\[vimma\]' /etc/pacman.conf || printf '\n[vimma]\nSigLevel = Required\nServer = https://updates.vimma.dev/arch/$arch\n' | sudo tee -a /etc/pacman.conf >/dev/null; }
+   ```
+
+2. Update the system the way you usually do, which also reads the new repository:
+   `sudo pacman -Syu` (on Omarchy: `omarchy update`).
+3. Install Vimma:
+
+   ```sh
+   sudo pacman -S --needed vimma-bin
+   ```
+
+Step 3 has no `-y` or `-u`, so it never makes a partial upgrade, and Omarchy's update guard lets
+it through; the system update in step 2 is your usual one. Updates afterwards:
+`sudo pacman -Syu`, or `omarchy update` on Omarchy.
+
+**Debian 12+, Ubuntu 22.04+:**
+
+```sh
+curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources >/dev/null \
+  && sudo apt update && sudo apt install vimma
+```
+
+apt shows no fingerprint; [Step by step](#step-by-step) shows how to check it before the first
+install. `sudo apt update && sudo apt upgrade` updates Vimma from then on.
+
+**Fedora:**
+
+```sh
+sudo dnf config-manager addrepo --overwrite --from-repofile=https://updates.vimma.dev/rpm/vimma.repo \
+  && sudo dnf install vimma
+```
+
+dnf shows the key's fingerprint and asks once whether to import it: compare it with the one
+above. `sudo dnf upgrade` updates Vimma from then on.
+
+**openSUSE:**
+
+```sh
+{ zypper lr vimma >/dev/null 2>&1 || sudo zypper addrepo --refresh --gpgcheck-strict https://updates.vimma.dev/rpm/vimma.repo; } \
+  && sudo zypper refresh && sudo zypper install vimma
+```
+
+zypper shows the key's fingerprint and asks once whether to trust it: compare it with the one
+above. `sudo zypper up` updates Vimma from then on.
+
+##### Step by step
+
+**Arch Linux (pacman).** Import the key and sign it locally, so that pacman trusts it:
+
+```sh
+curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add -
+sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390
+```
+
+`--lsign-key` names the full fingerprint, so it fails unless the key you downloaded is that key.
+Then add the repository at the end of `/etc/pacman.conf`:
+
+```ini
+[vimma]
+SigLevel = Required
+Server = https://updates.vimma.dev/arch/$arch
+```
+
+`SigLevel = Required` makes pacman refuse the package list, not only a package, when its
+signature is missing; pacman's default would accept a package list served without one.
+
+Then install the package:
+
+```sh
+sudo pacman -Syu vimma-bin
+```
+
+No build runs on your machine. From then on, `sudo pacman -Syu` updates Vimma. The package has
+the name of the release `PKGBUILD`'s, `vimma-bin`, so a `vimma-bin` you built from a `PKGBUILD`
+moves to the repository's on the next `sudo pacman -Syu`, with nothing to remove first.
+
+**Debian 12+, Ubuntu 22.04+ (apt).** One file sets it up. It carries the key inside it, so apt
+trusts the key for this repository only, never for the rest of the system:
+
+```sh
+curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources
+```
+
+apt does not show the fingerprint, so check it before the first update; this prints it:
+
+```sh
+sed -n 's/^ \.\?//p' /etc/apt/sources.list.d/vimma.sources | gpg --show-keys
+```
+
+Then install Vimma:
+
+```sh
+sudo apt update && sudo apt install vimma
+```
+
+From then on, `sudo apt update && sudo apt upgrade` updates Vimma with the rest of the system.
+
+**Fedora (dnf).**
+
+```sh
+sudo dnf config-manager addrepo --from-repofile=https://updates.vimma.dev/rpm/vimma.repo
+sudo dnf install vimma
+```
+
+dnf shows the key's fingerprint and asks once whether to import it. From then on,
+`sudo dnf upgrade` updates Vimma.
+
+**openSUSE (zypper).**
+
+```sh
+sudo zypper addrepo --refresh --gpgcheck-strict https://updates.vimma.dev/rpm/vimma.repo
+sudo zypper refresh && sudo zypper install vimma
+```
+
+zypper shows the key's fingerprint and asks once whether to trust it. `--gpgcheck-strict` makes
+it check each package's own signature as well as the package list's. From then on,
+`sudo zypper up` updates Vimma.
+
+**Removing a repository.** Remove Vimma as usual (`sudo pacman -R vimma-bin`,
+`sudo apt remove vimma`, `sudo dnf remove vimma` or `sudo zypper remove vimma`), then the
+repository: delete the `[vimma]` section from `/etc/pacman.conf` and run
+`sudo pacman-key --delete 110649CB2BC11400828DD0D497FD3D2B24AD4390`, delete
+`/etc/apt/sources.list.d/vimma.sources` or `/etc/yum.repos.d/vimma.repo`, or run
+`sudo zypper removerepo vimma`. dnf and zypper keep the key in the rpm database;
+`sudo rpm -e gpg-pubkey-24ad4390` removes it.
+
+#### Release files
+
 Each [GitHub Release](https://github.com/vimma-browser/vimma/releases) is titled with both
 versions, such as `Vimma 0.5.2 · Firefox 158.0`, and its notes link the Mozilla security
 advisories of the Firefox it moves to. It carries, for Linux x86_64 (`X.Y.Z` is the Vimma
@@ -125,11 +287,57 @@ version; for a Mac, see [macOS](#macos) below):
 
 | File                              | Install                                                                 |
 | --------------------------------- | ----------------------------------------------------------------------- |
+| `PKGBUILD` (Arch Linux)           | the command in [Arch Linux](#arch-linux) below                          |
 | `vimma_X.Y.Z_amd64.deb`           | `sudo apt install ./vimma_X.Y.Z_amd64.deb` (Debian 12+, Ubuntu 22.04+)  |
 | `vimma-X.Y.Z-1.x86_64.rpm`        | the commands in [Fedora and openSUSE](#fedora-and-opensuse) below       |
 | `vimma-X.Y.Z-x86_64.AppImage`     | `chmod +x vimma-X.Y.Z-x86_64.AppImage && ./vimma-X.Y.Z-x86_64.AppImage` |
 | `vimma-X.Y.Z-linux-x86_64.tar.xz` | `tar -xJf vimma-X.Y.Z-linux-x86_64.tar.xz && ./vimma/vimma`             |
-| `PKGBUILD` (Arch Linux)           | the command in [Arch Linux](#arch-linux) below                          |
+
+To download and install the latest release's file in one command, each of these first asks
+GitHub for the latest version and stops at the first step that fails:
+
+- AppImage, into `~/Applications`, then started:
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && mkdir -p ~/Applications && cd ~/Applications \
+    && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-x86_64.AppImage \
+    && chmod +x vimma-$v-x86_64.AppImage && ./vimma-$v-x86_64.AppImage
+  ```
+
+- Tarball, unpacked into `~/.local/opt/vimma`, then started:
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && mkdir -p ~/.local/opt && cd ~/.local/opt \
+    && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-linux-x86_64.tar.xz \
+    && tar -xJf vimma-$v-linux-x86_64.tar.xz && ./vimma/vimma
+  ```
+
+- `.deb` (Debian 12+, Ubuntu 22.04+):
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && cd "$(mktemp -d)" && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma_${v}_amd64.deb \
+    && sudo apt install ./vimma_${v}_amd64.deb
+  ```
+
+- `.rpm` on Fedora:
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && cd "$(mktemp -d)" && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-1.x86_64.rpm \
+    && sudo dnf install ./vimma-$v-1.x86_64.rpm
+  ```
+
+- `.rpm` on openSUSE, importing Vimma's package key first (to see its fingerprint before you
+  trust it, use the steps in [Fedora and openSUSE](#fedora-and-opensuse)):
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && cd "$(mktemp -d)" && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-1.x86_64.rpm \
+    && sudo rpm --import https://updates.vimma.dev/vimma-packages.asc && sudo zypper install ./vimma-$v-1.x86_64.rpm
+  ```
 
 Each of them, and the Mac's `.dmg`, also carries `vimma-ctl`, the client for
 [scripting](#scripting-with-vimma-ctl) and [agents](#connecting-an-agents-tool), next to the
@@ -152,9 +360,10 @@ but never make it your default browser on their own
 (`vimma-X.Y.Z.cdx.json`) and cosign signatures (`*.sigstore.json`); how to check them is in
 [the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging) ("Verify a release").
 
-**Updating.** Install the newer release the way you installed this one: on Arch Linux, run the
-install command again; otherwise, install the newer `.deb`, `.rpm`, AppImage or
-tarball over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
+**Updating.** An install from a [package repository](#package-repositories) updates with the
+system's upgrade command. Otherwise, install the newer release the way you installed this one:
+with the release `PKGBUILD`, run its command again; for a `.deb`, `.rpm`, AppImage or tarball,
+install the newer file over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
 command for your install ([Updates](#updates)); Vimma 0.1.1 never does, so update it this way once.
 An AppImage from a release that includes the self-update replaces its own file when a newer
 release is out; the next start runs it. A tarball from a release built with Firefox's updater
@@ -166,20 +375,98 @@ Firefox's updater ([Updates](#updates)).
 build takes about 40 minutes on a 16-thread machine and needs about 35 GB of disk space
 (`engine/` 27 GB, the sccache compiler cache 6.8 GB, `~/.mozbuild` 3.1 GB, `.surfer/` 0.8 GB).
 
-#### Fedora and openSUSE
+#### Arch Linux
 
-One `.rpm` installs on both, and its package manager pulls in the libraries it needs:
+The [pacman repository](#package-repositories) installs the prebuilt `vimma-bin` package, and
+`sudo pacman -Syu` updates it. Without the repository, each release
+carries a `PKGBUILD` for the same `vimma-bin` package. It needs no other file: it
+downloads the release tarball, checks it against the SHA-256 written into it, and installs Vimma
+to `/opt/vimma` with `vimma`, `vimma-open` and `vimma-ctl` on your `PATH`, a desktop entry and
+icons. Run
+this as your normal user, from any directory:
 
 ```sh
-sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm                           # Fedora
-sudo zypper install --allow-unsigned-rpm ./vimma-X.Y.Z-1.x86_64.rpm   # openSUSE
+mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si
+```
+
+`makepkg -si` installs the libraries Vimma needs with pacman, asks for your password to install
+the package, and refuses to run as root. A first install and every update use the same
+command: it builds in `~/.cache/vimma-build`, so it leaves nothing in the directory you run it
+from, fetches the newest release's `PKGBUILD` each time, and pacman replaces the installed
+version. The folder holds the build files and the last package built (about 450 MB during a
+build), and you can delete it at any time. `:update` shows this command when a new release is
+out ([Updates](#updates)). `sudo pacman -R vimma-bin` removes Vimma; your profile stays in your
+home directory.
+
+A release is built and its files are uploaded before it is published, so a published release
+has its `PKGBUILD` from the start. If `curl` prints `curl: (22) The requested URL returned
+error: 404`, the files are missing (no release is published yet, or one went out without them);
+`curl` then exits, the `PKGBUILD` you already have stays as it was and `makepkg` does not run.
+Try again later.
+
+To check the `PKGBUILD` before you build it, download it with the release's checksums and their
+signature, verify the signature with [cosign](https://github.com/sigstore/cosign), then the
+checksum:
+
+```sh
+mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build
+base=https://github.com/vimma-browser/vimma/releases/latest/download
+curl -fL -O "$base/PKGBUILD" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sigstore.json"
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS   # PKGBUILD: OK
+makepkg -si
+```
+
+The `PKGBUILD` pins the SHA-256 of the tarball it downloads, so checking the `PKGBUILD` covers
+what it installs. Every Linux file of the release is in `SHA256SUMS`, and the macOS `.dmg` and
+Homebrew cask in `SHA256SUMS-macos` ("Verify a release" in
+[the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging)).
+
+The package marks itself as installed by a package manager (`/opt/vimma/is-packaged-app`), as
+Firefox's own distribution packages do; the `.deb`, the `.rpm` and the AppImage carry the same
+file in `usr/lib/vimma/`, and only the tarball has none. The file tells Vimma's update check which
+commands to show, so a `.deb` is updated with apt and an `.rpm` with dnf or zypper, never by
+unpacking a tarball over the files the package manager owns. Like Firefox's packages, a marked install does not show Firefox's warning that "some
+security features may offer less protection" when your kernel does not allow unprivileged user
+namespaces, which the content sandbox uses. On Ubuntu 24.04 that means the `.deb` and the
+AppImage run with a weaker content sandbox without saying so; the tarball still shows the warning
+([limits.md](limits.md#platforms-and-packaging)).
+There is no AUR package for now. The AUR does not accept new account registrations at the
+moment, and a package needs an account to own it, so `vimma-bin` cannot be published there yet.
+On Arch, the pacman repository or the release's `PKGBUILD` above installs and updates Vimma.
+The same package goes to the AUR as `vimma-bin`, for AUR helpers such as `yay -S vimma-bin`,
+once registration opens again.
+
+#### Fedora and openSUSE
+
+The [rpm repository](#package-repositories) is the way to get updates with `dnf upgrade` or
+`zypper up`. To install the release's file instead: one `.rpm` installs on both, and its package
+manager pulls in the libraries it needs:
+
+```sh
+sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm      # Fedora
+sudo zypper install ./vimma-X.Y.Z-1.x86_64.rpm   # openSUSE, once the key is imported (below)
+```
+
+On openSUSE, import Vimma's package key once first, checking that the fingerprint printed is
+the one in [Package repositories](#package-repositories):
+
+```sh
+curl -fsSLO https://updates.vimma.dev/vimma-packages.asc
+gpg --show-keys vimma-packages.asc
+sudo rpm --import vimma-packages.asc
 ```
 
 It installs to `/usr/lib/vimma`, with `vimma`, `vimma-open` and `vimma-ctl` in `/usr/bin`, as the
 `.deb` does.
-The package carries no OpenPGP signature, so dnf says it skipped the OpenPGP check and zypper
-needs `--allow-unsigned-rpm`. What vouches for it is the release's `SHA256SUMS` and its cosign
-signature; check them before installing ("Verify a release" in
+From 0.1.24 the package carries an OpenPGP signature by Vimma's package key. dnf does not check
+a local file's signature. zypper refuses a signed package whose key it has not imported, even
+with `--allow-unsigned-rpm`, hence the key import above; a release before 0.1.24 has no
+signature and needs `sudo zypper install --allow-unsigned-rpm` instead. What vouches for a file
+installed by hand is the release's `SHA256SUMS` and its cosign signature; check them before
+installing ("Verify a release" in
 [the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging)):
 
 ```sh
@@ -189,9 +476,9 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \
 sha256sum -c --ignore-missing SHA256SUMS   # vimma-X.Y.Z-1.x86_64.rpm: OK
 ```
 
-There is no Vimma repository for dnf or zypper, so `dnf upgrade` and `zypper update` do not
-update it: install the newer `.rpm` the same way, or run the command `:update` shows. To remove
-it, `sudo dnf remove vimma` or `sudo zypper remove vimma`.
+Installed this way, `dnf upgrade` and `zypper up` do not update it until you set up the
+repository: install the newer `.rpm` the same way, or run the command `:update` shows. To
+remove it, `sudo dnf remove vimma` or `sudo zypper remove vimma`.
 
 #### Flatpak (Flathub)
 
@@ -260,7 +547,7 @@ update, install the newer `.dmg` over the old one, or run `brew upgrade --cask v
 stored in macOS (iCloud Keychain) do not work in Vimma yet, notarised or not. Your profile lives in `~/Library/Application Support/Vimma/`, and
 macOS keeps Vimma's window state under its bundle identifier, `dev.vimma.browser`. To
 check the `.dmg` before you open it, verify `SHA256SUMS-macos` with cosign as in "Arch Linux"
-below (same identity), then run `shasum -a 256 -c --ignore-missing SHA256SUMS-macos`.
+above (same identity), then run `shasum -a 256 -c --ignore-missing SHA256SUMS-macos`.
 
 **With Homebrew.** The same `.dmg` installs as a cask from Vimma's own tap,
 [vimma-browser/homebrew-tap](https://github.com/vimma-browser/homebrew-tap):
@@ -291,68 +578,6 @@ command; Vimma counts as a Homebrew install when it runs from `/Applications/Vim
 `--zap` deletes `~/Library/Application Support/Vimma/` (every profile), `~/Library/Caches/Vimma/`,
 and Vimma's preferences and saved window state in `~/Library`; it leaves your configuration in
 `~/.config/vimma/` alone.
-
-#### Arch Linux
-
-Each release carries a `PKGBUILD` for the `vimma-bin` package. It needs no other file: it
-downloads the release tarball, checks it against the SHA-256 written into it, and installs Vimma
-to `/opt/vimma` with `vimma`, `vimma-open` and `vimma-ctl` on your `PATH`, a desktop entry and
-icons. Run
-this as your normal user, from any directory:
-
-```sh
-mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si
-```
-
-`makepkg -si` installs the libraries Vimma needs with pacman, asks for your password to install
-the package, and refuses to run as root. A first install and every update use the same
-command: it builds in `~/.cache/vimma-build`, so it leaves nothing in the directory you run it
-from, fetches the newest release's `PKGBUILD` each time, and pacman replaces the installed
-version. The folder holds the build files and the last package built (about 450 MB during a
-build), and you can delete it at any time. `:update` shows this command when a new release is
-out ([Updates](#updates)). `sudo pacman -R vimma-bin` removes Vimma; your profile stays in your
-home directory.
-
-A release is built and its files are uploaded before it is published, so a published release
-has its `PKGBUILD` from the start. If `curl` prints `curl: (22) The requested URL returned
-error: 404`, the files are missing (no release is published yet, or one went out without them);
-`curl` then exits, the `PKGBUILD` you already have stays as it was and `makepkg` does not run.
-Try again later.
-
-To check the `PKGBUILD` before you build it, download it with the release's checksums and their
-signature, verify the signature with [cosign](https://github.com/sigstore/cosign), then the
-checksum:
-
-```sh
-mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build
-base=https://github.com/vimma-browser/vimma/releases/latest/download
-curl -fL -O "$base/PKGBUILD" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sigstore.json"
-cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
-sha256sum -c --ignore-missing SHA256SUMS   # PKGBUILD: OK
-makepkg -si
-```
-
-The `PKGBUILD` pins the SHA-256 of the tarball it downloads, so checking the `PKGBUILD` covers
-what it installs. Every Linux file of the release is in `SHA256SUMS`, and the macOS `.dmg` and
-Homebrew cask in `SHA256SUMS-macos` ("Verify a release" in
-[the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging)).
-
-The package marks itself as installed by a package manager (`/opt/vimma/is-packaged-app`), as
-Firefox's own distribution packages do; the `.deb`, the `.rpm` and the AppImage carry the same
-file in `usr/lib/vimma/`, and only the tarball has none. The file tells Vimma's update check which
-commands to show, so a `.deb` is updated with apt and an `.rpm` with dnf or zypper, never by
-unpacking a tarball over the files the package manager owns. Like Firefox's packages, a marked install does not show Firefox's warning that "some
-security features may offer less protection" when your kernel does not allow unprivileged user
-namespaces, which the content sandbox uses. On Ubuntu 24.04 that means the `.deb` and the
-AppImage run with a weaker content sandbox without saying so; the tarball still shows the warning
-([limits.md](limits.md#platforms-and-packaging)).
-There is no AUR package for now. The AUR does not accept new account registrations at the
-moment, and a package needs an account to own it, so `vimma-bin` cannot be published there yet.
-On Arch, the release's `PKGBUILD` above is the way to install and update Vimma, and `:update`
-shows that command. The same package goes to the AUR as `vimma-bin`, for AUR helpers such as
-`yay -S vimma-bin`, once registration opens again.
 
 ### First launch, with its own profile
 
@@ -5409,23 +5634,22 @@ Except for the AppImage and such a tarball, it installs nothing; it tells you.
   and is checked against the SHA-512 the signed file gives for it (`sha512sum -c`) before
   anything is installed or replaced, so a file changed on the release page stops the command.
 
-  | Installed with            | `:update` shows                                                                                                                                                             |
-  | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | The release's `PKGBUILD`  | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`             |
-  | AUR `vimma-bin`           | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                              |
-  | `.deb`                    | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                                 |
-  | `.rpm`                    | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                              |
-  | Repository (unpublished)  | `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade vimma`, `sudo zypper up vimma` or `sudo pacman -Syu` (on Omarchy, `omarchy update`), once the repository is set up |
-  | Tarball                   | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                        |
-  | AppImage                  | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                                        |
-  | Flatpak (once on Flathub) | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice                   |
-  | Homebrew (macOS)          | `brew upgrade --cask vimma`                                                                                                                                                 |
-  | `.dmg` (macOS)            | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos)            |
-  | A build from source       | nothing: source builds never check (pull and rebuild)                                                                                                                       |
+  | Installed with            | `:update` shows                                                                                                                                                                                                                                                                                                  |
+  | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | The release's `PKGBUILD`  | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`                                                                                                                                                  |
+  | AUR `vimma-bin`           | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                                                                                                                                                                   |
+  | `.deb`                    | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`; one line points at [the repository](#package-repositories)                                                                                                                                                          |
+  | `.rpm`                    | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora), or download Vimma's package key, check it against the SHA-256 built into Vimma, import it with `sudo rpm --import` and `sudo zypper install` the file (openSUSE); one line points at [the repository](#package-repositories) |
+  | A package repository      | `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade vimma`, `sudo zypper up vimma` or `sudo pacman -Syu` (on Omarchy, `omarchy update`)                                                                                                                                                                     |
+  | Tarball                   | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                                                                                                                             |
+  | AppImage                  | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                                                                                                                                                                             |
+  | Flatpak (once on Flathub) | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice                                                                                                                                                        |
+  | Homebrew (macOS)          | `brew upgrade --cask vimma`                                                                                                                                                                                                                                                                                      |
+  | `.dmg` (macOS)            | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos)                                                                                                                                                 |
+  | A build from source       | nothing: source builds never check (pull and rebuild)                                                                                                                                                                                                                                                            |
 
-  Vimma's signed apt, dnf, zypper and pacman repositories are not published yet. Once they
-  are, a `.deb` or `.rpm` installed from one is the same file as the release's, so `:update`
-  tells them apart by the repository's own setup file (`/etc/apt/sources.list.d/vimma.sources`
+  A `.deb` or `.rpm` installed from [Vimma's repository](#package-repositories) is the same
+  file as the release's, so `:update` tells them apart by the repository's own setup file (`/etc/apt/sources.list.d/vimma.sources`
   for a `.deb`; `/etc/yum.repos.d/vimma.repo` or `/etc/zypp/repos.d/vimma.repo` for an `.rpm`):
   it checks only whether the file exists, never reads it, and shows the command of each
   package manager set up for that package's format.

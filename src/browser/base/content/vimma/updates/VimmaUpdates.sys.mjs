@@ -90,12 +90,6 @@ const TEST_TYPE_PREF = "vimma.update.installType";
  */
 const TEST_REPO_ROOT_PREF = "vimma.update.testRepoRoot";
 /**
- * The `.deb` and `.rpm` hint's line pointing at the guide's repository section (spec
- * package-repositories, decisions 22 and 25), off until the repositories and that section are
- * published: until then the line would point at nothing.
- */
-const REPO_HINT_PREF = "vimma.feature.packageRepos";
-/**
  * After the first window's delayed startup (`browser-delayed-startup-finished`): late enough not
  * to compete with session restore, early enough that a due check is not hours away.
  */
@@ -1242,7 +1236,6 @@ export const VimmaUpdates = {
                     writable: firefoxMode() ? firefox().canApply : undefined,
                     repos,
                     omarchy,
-                    repoHint: Services.prefs.getBoolPref(REPO_HINT_PREF, false),
                   }),
           }
         : null,
