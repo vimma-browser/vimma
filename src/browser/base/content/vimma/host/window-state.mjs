@@ -176,12 +176,17 @@ export function newWindowState(host, win, keymap, env) {
       state.focusNow = el;
     },
     dialogOpener: null,
-    // An element of another dialog (one that closed just before this one opened) is no opener:
-    // the opener that dialog had is kept, handed on by onDialogClose.
+    // An element of a dialog that closed just before this one opened is no opener (focusin from
+    // a dialog's frame reaches the window, so it can be in the frame's document): the opener
+    // onDialogClose handed on from that dialog is kept.
     onDialogOpen: () => {
       const el = win.document.activeElement;
       const opener = el?.closest("dialog, .dialogOverlay") ? state.focusBefore : el;
-      if (opener?.ownerDocument !== win.document || opener.closest("dialog, .dialogOverlay")) {
+      if (
+        !opener ||
+        opener.ownerDocument !== win.document ||
+        opener.closest("dialog, .dialogOverlay")
+      ) {
         return;
       }
       state.dialogOpener = opener;
@@ -196,11 +201,9 @@ export function newWindowState(host, win, keymap, env) {
     // window manager slow to give the activation back) is looked at once it is active again,
     // after the focus manager has given its focused element the focus back (#1423). A window
     // dialog (gDialogBox) sits in a modal <dialog> that keeps the rest of the window inert until
-    // it closes, after the dialog's frame has unloaded (gDialogBox.open), and that close gives
-    // focus back: looked at before then, the address bar refuses the focus, and a slow runner
-    // let its reveal settle back to hidden before that focus came (#1423). A window dialog that
-    // opens as soon as one closes (a caller asking again straight after the answer) has the
-    // first's own elements as what had focus before it: it inherits the first's opener.
+    // its `close`, after the dialog's frame has unloaded (gDialogBox.open): the focus is looked
+    // at only then. A window dialog opening as soon as one closes (a caller asking again straight
+    // after the answer) inherits the first's opener until it closes.
     /** @param {Event} e */
     onDialogClose: (e) => {
       const opener = state.dialogOpener;
@@ -212,6 +215,11 @@ export function newWindowState(host, win, keymap, env) {
       const check = () => {
         if (modal?.open) {
           state.dialogOpener ??= opener;
+          // Never outlives that dialog, should it close without its own dialogclose.
+          const drop = () => {
+            if (state.dialogOpener === opener) state.dialogOpener = null;
+          };
+          modal.addEventListener("close", drop, { once: true });
           return;
         }
         const lost = () => {
