@@ -49,13 +49,44 @@ The docs, every key and the install page are at **[vimma.dev](https://vimma.dev)
 
 ## Install
 
-Vimma runs on Linux x86_64 and on macOS 15 or later with Apple Silicon. Download the files from the
-[latest release](https://github.com/vimma-browser/vimma/releases/latest).
+Vimma runs on Linux x86_64 and on macOS 15 or later with Apple Silicon. On Linux, Vimma's signed
+package repositories let the system's own upgrade command update Vimma with everything else. The
+package key's fingerprint is `110649CB2BC11400828DD0D497FD3D2B24AD4390`; the guide's
+[Package repositories](docs/guide.md#package-repositories) has every step in detail, how to check
+the key, and how to remove a repository.
 
-**Debian, Ubuntu, Fedora, openSUSE, Arch Linux:** set up Vimma's signed package repository
-once, and `apt upgrade`, `dnf upgrade`, `zypper up` or `pacman -Syu` then updates Vimma with the
-rest of the system. The guide's [Package repositories](docs/guide.md#package-repositories) has
-the commands for each, the key's fingerprint and how to check it before the first install.
+**Arch Linux (pacman):** import and trust the key:
+
+```sh
+curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add -
+sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390
+```
+
+add the repository to `/etc/pacman.conf`:
+
+```ini
+[vimma]
+SigLevel = Required
+Server = https://updates.vimma.dev/arch/$arch
+```
+
+then install with `sudo pacman -Syu vimma-bin`. `sudo pacman -Syu` updates it.
+
+**Debian 12+, Ubuntu 22.04+ (apt):** add the repository, check the key's fingerprint as the
+guide shows, then install; `sudo apt update && sudo apt upgrade` updates it.
+
+```sh
+curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources
+sudo apt update && sudo apt install vimma
+```
+
+**Fedora (dnf), openSUSE (zypper):** add the repository and install; the package manager shows
+the key's fingerprint and asks once. `sudo dnf upgrade` or `sudo zypper up` updates it.
+
+```sh
+sudo dnf config-manager addrepo --from-repofile=https://updates.vimma.dev/rpm/vimma.repo && sudo dnf install vimma
+sudo zypper addrepo --refresh --gpgcheck-strict https://updates.vimma.dev/rpm/vimma.repo && sudo zypper refresh && sudo zypper install vimma
+```
 
 **macOS, with Homebrew:** install from Vimma's own tap; `brew upgrade --cask vimma` updates it.
 
@@ -68,24 +99,20 @@ other app. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma
 For release 0.1.10 or earlier, or a CI test build, which are not notarised, the
 guide's [macOS](docs/guide.md#macos) section has the steps to open it the first time.
 
-**Without the repository:** each release also has `vimma_X.Y.Z_amd64.deb` for Debian 12+ and
-Ubuntu 22.04+ and `vimma-X.Y.Z-1.x86_64.rpm` for Fedora and openSUSE; the guide's
-[Installing](docs/guide.md#installing) section has the commands. On Arch Linux, the release's
-`PKGBUILD` builds the package; run this as your normal user (not root), from any directory, and
-again to update:
+**Direct downloads:** each [release](https://github.com/vimma-browser/vimma/releases/latest)
+also has an AppImage for any distribution, a tarball, `vimma_X.Y.Z_amd64.deb`,
+`vimma-X.Y.Z-1.x86_64.rpm` and a `PKGBUILD` for Arch Linux, which builds the package; run it as
+your normal user (not root), from any directory, and again to update:
 
 ```sh
 mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si
 ```
 
-**Any other distribution:** download `vimma-X.Y.Z-x86_64.AppImage`, then
-`chmod +x vimma-X.Y.Z-x86_64.AppImage && ./vimma-X.Y.Z-x86_64.AppImage`.
-
 `X.Y.Z` is the Vimma version. The status bar says when a new release is out. The AppImage and the
 tarball then update themselves, and a repository install updates with the system; for the other
-packages, `:update` shows the command for your install ([Updates](docs/guide.md#updates)). The
-guide's [Installing](docs/guide.md#installing) section has the tarball and how to verify a
-download with `sha256sum` and cosign.
+files, `:update` shows the command for your install ([Updates](docs/guide.md#updates)). The
+guide's [Installing](docs/guide.md#installing) section has the commands for each file and how to
+verify a download with `sha256sum` and cosign.
 
 ## Why
 
