@@ -167,6 +167,9 @@ group("Navigation", [
   ["scroll_half_up", "scroll.half_up", "Scroll half a page up"],
   ["scroll_top", "scroll.top", "Scroll to top"],
   ["scroll_bottom", "scroll.bottom", "Scroll to bottom"],
+  // docs/specs/scroll-area.md: which panel the scroll keys move.
+  ["scroll_area_next", "scroll.area_next", "Scroll keys: next scroll area (a count: the Nth)"],
+  ["scroll_area_prev", "scroll.area_prev", "Scroll keys: previous scroll area"],
   ["history_back", "history.back", "Go back"],
   ["history_forward", "history.forward", "Go forward"],
   ["reload", "page.reload", "Reload page"],

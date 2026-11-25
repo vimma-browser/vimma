@@ -912,6 +912,8 @@ interface WindowGlobalParent {
     name: "Vimma",
   ): import("../src/browser/base/content/vimma/host/VimmaParent.sys.mjs").VimmaParent;
   getActor(name: string): JSWindowActorParent;
+  /** The actor if this document has one already; never creates one (WindowGlobalActors.webidl). */
+  getExistingActor(name: string): JSWindowActorParent | null;
 }
 
 // A tab's <browser>. A lazy one answers currentURI from session data (Tabbrowser.sys.mjs,

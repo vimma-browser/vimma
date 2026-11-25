@@ -65,6 +65,12 @@ export class VimmaParent extends JSWindowActorParent {
       VimmaHost.onHoverEnded(wg);
       return undefined;
     }
+    if (msg.name === "Vimma:ScrollAreaChosen") {
+      // A click chose a scroll area in this frame, or its choice ended (docs/specs/scroll-area.md):
+      // it moves only this tab's status bar marker (security.md K15).
+      VimmaHost.onScrollAreaChosen(bc, wg, data.chosen === true);
+      return undefined;
+    }
     if (msg.name === "Vimma:PdfState") {
       // PdfOps takes it only from the top viewer's current document (security.md section 20).
       PdfOps.onState(this, msg.data);

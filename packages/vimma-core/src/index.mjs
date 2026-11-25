@@ -51,4 +51,5 @@ export * from "./control/ctl-version.mjs";
 export * from "./ui/grep.mjs";
 export * from "./page/pdf.mjs";
 export * from "./page/scroll.mjs";
+export * from "./page/scroll-areas.mjs";
 export * from "./keys/suggestions.mjs";

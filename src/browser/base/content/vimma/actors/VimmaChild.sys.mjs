@@ -46,6 +46,7 @@ import { DocumentHover } from "./hover.mjs";
  *   | { name: "Vimma:Edit", data: { command: string } }
  *   | { name: "Vimma:Selection", data: { max?: unknown } | undefined }
  *   | { name: "Vimma:ScrollTo", data: Parameters<PageScroll["scrollTo"]>[0] }
+ *   | { name: "Vimma:ScrollAreaPick", data: { index?: unknown } | undefined }
  *   | { name: "Vimma:Grep", data: Parameters<GrepPage["search"]>[0] }
  *   | { name: "Vimma:GrepPreview", data: Parameters<GrepPage["preview"]>[0] }
  *   | { name: "Vimma:GrepJump", data: Parameters<GrepPage["jump"]>[0] }
@@ -64,7 +65,8 @@ import { DocumentHover } from "./hover.mjs";
  *   | { name: "Vimma:PdfZoom" | "Vimma:PdfWhere" | "Vimma:ScrollFraction" | "Vimma:FocusLast"
  *       | "Vimma:SuggestionsOpen" | "Vimma:ScrollPosition" | "Vimma:FindAnchor"
  *       | "Vimma:FindClosed" | "Vimma:FindStep" | "Vimma:GrepEnd" | "Vimma:AgentCards"
- *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown" | "Vimma:Painted", data?: unknown }}
+ *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown" | "Vimma:Painted"
+ *       | "Vimma:ScrollAreas" | "Vimma:ScrollAreaClear", data?: unknown }}
  *   ChildMessage
  */
 /** @import { BlockMessage } from "./block.mjs" */
@@ -350,7 +352,12 @@ export class VimmaChild extends JSWindowActorChild {
   static _sizePollMsForTests = null;
 
   /** Scrolling in this frame (docs/specs/m1-actor-insert-scroll.md). */
-  #scroll = new PageScroll(this, () => deepActiveElement(this.document));
+  #scroll = new PageScroll(
+    this,
+    () => deepActiveElement(this.document),
+    // The status bar's scroll area marker (docs/specs/scroll-area.md decision 6).
+    (chosen) => this.sendAsyncMessage("Vimma:ScrollAreaChosen", { chosen }),
+  );
   /**
    * The last hint collection (m1-hints): its generation, its elements by target id, and, to
    * tell whether a wheel moved them, where each was in the viewport (`at`, by target id), where
@@ -562,6 +569,12 @@ export class VimmaChild extends JSWindowActorChild {
       // Registered for trusted events only; checked again, as a forged one could skip a step.
       if (!event.isTrusted) return;
       this.#agent.pageHidden();
+      // A new document starts from the default rule (docs/specs/scroll-area.md, behaviour 4).
+      // The parent hears of it here: a document kept in the back-forward cache is not destroyed,
+      // so its frame-gone report never comes.
+      if (this.#scroll.clearArea()) {
+        this.sendAsyncMessage("Vimma:ScrollAreaChosen", { chosen: false });
+      }
       // Also into the back-forward cache, which keeps the elements and so their locks
       // (docs/specs/hover.md decision 5, experiment X1).
       if (this.#hover.pageHidden()) this.#hoverEnded();
@@ -653,7 +666,13 @@ export class VimmaChild extends JSWindowActorChild {
         // it is not the page's own doing, and a field the page focused is the user's now. The
         // parent takes it only from the frame that has focus (VimmaParent); a click into another
         // frame focuses it, and that focus report is the user's.
-        if (event.isTrusted) this.sendAsyncMessage("Vimma:Click");
+        if (event.isTrusted) {
+          this.sendAsyncMessage("Vimma:Click");
+          // The user's click, or `f` (#press dispatches its mousedown from here, so trusted),
+          // picks the scroll area under it; an agent's press is untrusted and never does
+          // (docs/specs/scroll-area.md decision 5).
+          this.#scroll.clicked(event.originalTarget);
+        }
         return;
       }
       case "compositionstart":
@@ -1009,6 +1028,13 @@ export class VimmaChild extends JSWindowActorChild {
         if (this.document.hasFocus() && this.#inEditable()) this.docShell?.doCommand(command);
         return undefined;
       }
+      case "Vimma:ScrollAreas":
+        return this.#scroll.scrollAreas();
+      case "Vimma:ScrollAreaPick":
+        return this.#scroll.pickArea(msg.data?.index);
+      case "Vimma:ScrollAreaClear":
+        this.#scroll.clearArea();
+        return undefined;
       case "Vimma:ScrollPosition":
         return this.#scroll.position();
       case "Vimma:FindAnchor":

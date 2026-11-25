@@ -27,6 +27,9 @@ support-files = [
 ["browser_vimma_scroll_step.js"]
 support-files = ["file_vimma_insert_scroll.html", "file_vimma_frame.html"]
 
+["browser_vimma_scroll_area.js"]
+support-files = ["file_vimma_scroll_area.html", "file_vimma_scroll_area_inner.html"]
+
 ["browser_vimma_view_source.js"]
 support-files = ["file_vimma_view_source.html"]
 

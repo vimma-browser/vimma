@@ -558,7 +558,7 @@ const FRAMES_SET = new Set(["iframe", "frame"]);
  * @param {Iterable<Element>} candidates
  * @returns {FoundFrame[]}
  */
-function visibleFrames(win, candidates) {
+export function visibleFrames(win, candidates) {
   /** @type {FoundFrame[]} */
   const frames = [];
   for (const el of candidates) {

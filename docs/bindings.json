@@ -985,6 +985,26 @@
           ]
         },
         {
+          "name": "scroll_area_next",
+          "description": "Scroll keys: next scroll area (a count: the Nth)",
+          "keys": [
+            {
+              "keys": "gs",
+              "chords": ["gs"]
+            }
+          ]
+        },
+        {
+          "name": "scroll_area_prev",
+          "description": "Scroll keys: previous scroll area",
+          "keys": [
+            {
+              "keys": "gS",
+              "chords": ["gS"]
+            }
+          ]
+        },
+        {
           "name": "history_back",
           "description": "Go back",
           "keys": [
