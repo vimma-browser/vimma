@@ -119,9 +119,9 @@ details, and [bindings.md](bindings.md) lists every action's config name with it
 
 ### Installing
 
-On Debian, Ubuntu, Fedora, openSUSE and Arch Linux, the easiest way is Vimma's package
-repository: you set it up once, and from then on the system's own upgrade command updates Vimma
-with everything else ([Package repositories](#package-repositories)). Every release is also a
+On Debian, Ubuntu, Fedora, openSUSE and Arch Linux, Vimma's package repository keeps Vimma up to
+date: you set it up once, and from then on the system's own upgrade command updates Vimma with
+everything else ([Package repositories](#package-repositories)). Every release is also a
 set of files to download and install by hand ([Release files](#release-files)), and macOS has a
 `.dmg` and a Homebrew cask ([macOS](#macos)).
 
@@ -145,12 +145,21 @@ trusts the key for this repository only, never for the rest of the system:
 
 ```sh
 curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources
+```
+
+apt does not show the fingerprint, so check it before the first update; this prints it:
+
+```sh
+sed -n 's/^ \.\?//p' /etc/apt/sources.list.d/vimma.sources | gpg --show-keys
+```
+
+Then install Vimma:
+
+```sh
 sudo apt update && sudo apt install vimma
 ```
 
-apt does not show the fingerprint; to see it, run
-`sed -n 's/^ \.\?//p' /etc/apt/sources.list.d/vimma.sources | gpg --show-keys`. From then on,
-`sudo apt update && sudo apt upgrade` updates Vimma with the rest of the system.
+From then on, `sudo apt update && sudo apt upgrade` updates Vimma with the rest of the system.
 
 **Fedora (dnf).**
 
@@ -185,8 +194,12 @@ Then add the repository at the end of `/etc/pacman.conf`:
 
 ```ini
 [vimma]
+SigLevel = Required
 Server = https://updates.vimma.dev/arch/$arch
 ```
+
+`SigLevel = Required` makes pacman refuse the package list, not only a package, when its
+signature is missing; pacman's default would accept a package list served without one.
 
 and install the package:
 
@@ -202,7 +215,8 @@ moves to the repository's on the next `sudo pacman -Syu`, with nothing to remove
 `sudo dnf remove vimma`, `sudo zypper remove vimma` or `sudo pacman -R vimma-bin`), then the
 repository: delete `/etc/apt/sources.list.d/vimma.sources` or `/etc/yum.repos.d/vimma.repo`,
 run `sudo zypper removerepo vimma`, or delete the `[vimma]` section from `/etc/pacman.conf` and
-run `sudo pacman-key --delete 110649CB2BC11400828DD0D497FD3D2B24AD4390`.
+run `sudo pacman-key --delete 110649CB2BC11400828DD0D497FD3D2B24AD4390`. dnf and zypper keep
+the key in the rpm database; `sudo rpm -e gpg-pubkey-24ad4390` removes it.
 
 #### Release files
 
@@ -242,8 +256,8 @@ but never make it your default browser on their own
 
 **Updating.** An install from a [package repository](#package-repositories) updates with the
 system's upgrade command. Otherwise, install the newer release the way you installed this one:
-with the release `PKGBUILD` on Arch Linux, run the install command again; otherwise, install the newer `.deb`, `.rpm`, AppImage or
-tarball over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
+with the release `PKGBUILD`, run its command again; for a `.deb`, `.rpm`, AppImage or tarball,
+install the newer file over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
 command for your install ([Updates](#updates)); Vimma 0.1.1 never does, so update it this way once.
 An AppImage from a release that includes the self-update replaces its own file when a newer
 release is out; the next start runs it. A tarball from a release built with Firefox's updater
@@ -262,16 +276,24 @@ The [rpm repository](#package-repositories) is the way to get updates with `dnf 
 manager pulls in the libraries it needs:
 
 ```sh
-sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm   # Fedora
-sudo rpm --import https://updates.vimma.dev/vimma-packages.asc   # openSUSE, once
-sudo zypper install ./vimma-X.Y.Z-1.x86_64.rpm                   # openSUSE
+sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm      # Fedora
+sudo zypper install ./vimma-X.Y.Z-1.x86_64.rpm   # openSUSE, once the key is imported (below)
+```
+
+On openSUSE, import Vimma's package key once first, checking that the fingerprint printed is
+the one in [Package repositories](#package-repositories):
+
+```sh
+curl -fsSLO https://updates.vimma.dev/vimma-packages.asc
+gpg --show-keys vimma-packages.asc
+sudo rpm --import vimma-packages.asc
 ```
 
 It installs to `/usr/lib/vimma`, with `vimma`, `vimma-open` and `vimma-ctl` in `/usr/bin`, as the
 `.deb` does.
 From 0.1.24 the package carries an OpenPGP signature by Vimma's package key. dnf does not check
 a local file's signature. zypper refuses a signed package whose key it has not imported, even
-with `--allow-unsigned-rpm`, hence the `rpm --import` above; a release before 0.1.24 has no
+with `--allow-unsigned-rpm`, hence the key import above; a release before 0.1.24 has no
 signature and needs `sudo zypper install --allow-unsigned-rpm` instead. What vouches for a file
 installed by hand is the release's `SHA256SUMS` and its cosign signature; check them before
 installing ("Verify a release" in
@@ -389,8 +411,8 @@ and Vimma's preferences and saved window state in `~/Library`; it leaves your co
 
 #### Arch Linux
 
-The [pacman repository](#package-repositories) is the easiest way: it installs the prebuilt
-`vimma-bin` package, and `sudo pacman -Syu` updates it. Without the repository, each release
+The [pacman repository](#package-repositories) installs the prebuilt `vimma-bin` package, and
+`sudo pacman -Syu` updates it. Without the repository, each release
 carries a `PKGBUILD` for the same `vimma-bin` package. It needs no other file: it
 downloads the release tarball, checks it against the SHA-256 written into it, and installs Vimma
 to `/opt/vimma` with `vimma`, `vimma-open` and `vimma-ctl` on your `PATH`, a desktop entry and

@@ -286,7 +286,8 @@ the [user guide](guide.md); planned work is on the
   (audio keeps playing), and scripts still see it: `vimma-ctl state` lists both windows. A
   window in full screen is never hidden, so from full screen the private workspace is a
   fullscreen Space of its own and switching moves between Spaces.
-- The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
+- The AUR package `vimma-bin` is not published yet; use Vimma's pacman repository (the guide's
+  "Package repositories") or the release's `PKGBUILD`.
 - On Omarchy, `xdg-settings set default-web-browser` fails unless `BROWSER` and
   `XDG_CURRENT_DESKTOP` are cleared for it, `omarchy default browser` does not list Vimma, and a
   link from another app may not raise Vimma's window, since Omarchy's launcher looks for a window

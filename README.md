@@ -55,12 +55,7 @@ Vimma runs on Linux x86_64 and on macOS 15 or later with Apple Silicon. Download
 **Debian, Ubuntu, Fedora, openSUSE, Arch Linux:** set up Vimma's signed package repository
 once, and `apt upgrade`, `dnf upgrade`, `zypper up` or `pacman -Syu` then updates Vimma with the
 rest of the system. The guide's [Package repositories](docs/guide.md#package-repositories) has
-the commands for each and the key's fingerprint. On Debian or Ubuntu:
-
-```sh
-curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources
-sudo apt update && sudo apt install vimma
-```
+the commands for each, the key's fingerprint and how to check it before the first install.
 
 **macOS, with Homebrew:** install from Vimma's own tap; `brew upgrade --cask vimma` updates it.
 
@@ -88,8 +83,9 @@ mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://gi
 
 `X.Y.Z` is the Vimma version. The status bar says when a new release is out. The AppImage and the
 tarball then update themselves, and a repository install updates with the system; for the other
-packages, `:update` shows the command for your install ([Updates](docs/guide.md#updates)). The guide's [Installing](docs/guide.md#installing)
-section has the tarball and how to verify a download with `sha256sum` and cosign.
+packages, `:update` shows the command for your install ([Updates](docs/guide.md#updates)). The
+guide's [Installing](docs/guide.md#installing) section has the tarball and how to verify a
+download with `sha256sum` and cosign.
 
 ## Why
 

@@ -386,6 +386,10 @@ smoke test", the last item below).
     `vimma-bin`, the AUR's name, so a `PKGBUILD` install moves to the repository on its next
     `pacman -Syu` without removing anything. Rejected: building in the user's `makepkg` from a
     repository of `PKGBUILD`s, because pacman has no such repository type.
+    (Since changed: the guide's `[vimma]` section sets `SigLevel = Required`, because under the
+    default `Required DatabaseOptional` pacman accepts a `vimma.db` served without its `.sig`
+    (Research), which would let a tampered host hold users on an older signed release; Behaviour
+    4's snippet gains that line.)
 11. **Metadata only on the update host; package requests redirect to the GitHub Release.** The
     host serves `/apt/`, `/rpm/` and `/arch/x86_64/` metadata, `vimma-packages.asc` and the setup
     files. Its `_redirects` file sends package requests to
