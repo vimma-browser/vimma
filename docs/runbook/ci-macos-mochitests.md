@@ -9,7 +9,10 @@ build of the same release; and `npm run mochitest -- --artifact tests/browser/`,
 one pref set (below). `df
 -k .` records the free disk before the download, after the unpack and after the tests, because
 GitHub documents only 14 GB for hosted Macs. On a failure the run uploads `mochitest-macos-logs`
-(the mochitests' TBPL log and the objdir's `config.log`, kept 7 days).
+(the mochitests' TBPL log and the objdir's `config.log`, kept 7 days). Green runs took 35 to
+44 minutes in November 2026, so `timeout-minutes` is 65, about 1.5 times the job, as for the
+macOS build ([#1546](https://github.com/vimma-browser/vimma/issues/1546)); once the job passes
+about 60 minutes it is better split in two.
 
 It runs on every pull request except a docs-only one, gated by the same `changes` job as the
 Linux job, and on a manual run without a `firefox-version`. It does not run when `upstream.yml` or

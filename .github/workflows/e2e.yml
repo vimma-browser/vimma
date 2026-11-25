@@ -380,7 +380,9 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' && inputs.firefox-version == '' }}
     runs-on: macos-15
-    timeout-minutes: 45
+    # About 1.5 times the measured job, 44 min (docs/runbook/ci-macos-mochitests.md), so the
+    # growing suite does not hit the limit while a hung run still fails here with its own log.
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
