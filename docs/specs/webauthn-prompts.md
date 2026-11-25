@@ -56,8 +56,7 @@ assumption (Research): their main button is Cancel. Before this change:
 
 ## Research
 
-Checked against the Firefox 160.0.1 engine tree (`engine/`); the files named are unchanged in
-what they show for 161.0, the version in `surfer.json` (to be confirmed in the lane's build).
+Checked against Firefox 161.0 (`surfer.json`, the engine tree `engine/`).
 
 - Every WebAuthn prompt but the PIN entry is a `PopupNotifications.show` with a popupid starting
   `webauthn-prompt-` (`engine/toolkit/modules/WebAuthnPromptHelper.sys.mjs`, `show_formatted_msg`;
@@ -92,6 +91,10 @@ what they show for 161.0, the version in `surfer.json` (to be confirmed in the l
   does not have (issue #544); without it Firefox falls back to authenticator-rs and these
   prompts. Neither path draws a QR code in Firefox's chrome: a QR code for a phone comes from the
   operating system or from the site's own page.
+
+- In a build, the prompts' panel and the passkey list's surface take the theme's colours, in the
+  built-in theme and in an Omarchy theme (computed `--panel-background-color` and the list's
+  `content` part), and the list's active row is the theme's selection.
 
 ## Design
 
@@ -134,8 +137,10 @@ typing. `docs/security/` describes the prompt keys' guards; they are unchanged.
   with two answers) and `doorhangerHint` without a `y` button and with `more`.
 - mochitest, `tests/browser/browser_vimma_webauthn_prompts.js`, with Firefox's virtual
   authenticator (`nsIWebAuthnService.addVirtualAuthenticator`) or, for "touch your security key",
-  USB tokens on and none plugged in: `touch_your_key_answers_n_and_not_y`,
-  `choosing_a_passkey_from_the_keyboard`, `a_passkey_notice_cancels_with_n`,
+  USB tokens on and none plugged in; the notices and the PIN entry are raised through Firefox's own
+  `webauthn-prompt` observer with a transaction id that is not live, because the virtual
+  authenticator turns down an excluded passkey without a notice that stays up: `touch_your_key_answers_n_and_not_y`,
+  `choosing_a_passkey_from_the_keyboard`, `the_passkey_notices_cancel_with_n`,
   `the_attestation_question_answers_y_and_n`, `the_pin_entry_keeps_its_letters`.
 
 ## Docs and changelog
