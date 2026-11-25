@@ -640,6 +640,9 @@ buttons`), shows once the prompt is armed and hides while it is not, as the agen
     - It applies to every prompt in Firefox's doorhanger panel (permissions, add-on installs,
       saving a password), because they share the panel and its buttons; the topmost prompt is the
       one answered, as for Firefox's `Esc`.
+      (Since changed: in Firefox's passkey and security key prompts, whose main button is
+      Cancel, `n` presses the button `Esc` runs and `y` the other one, and the keys line leaves
+      out a key with no button; [webauthn-prompts](webauthn-prompts.md), issue #1544.)
     - Rejected: moving focus into the prompt when it opens, because a page can raise prompts at
       will and would take the keys the user is typing (Firefox sets `noautofocus` for the same
       reason); `Enter` as an answer while focus is in the page, because there `Enter` belongs to

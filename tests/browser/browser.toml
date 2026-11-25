@@ -580,6 +580,9 @@ support-files = ["file_vimma_popups.html"]
 ["browser_vimma_notification_bars.js"]
 support-files = ["file_vimma_popups.html"]
 
+["browser_vimma_webauthn_prompts.js"]
+support-files = ["file_vimma_plain.html"]
+
 ["browser_vimma_security_invariants.js"]
 support-files = ["head_vimma_control.js"]
 

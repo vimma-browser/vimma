@@ -7,7 +7,8 @@
 // only once the prompt is armed, and never from a field. Esc stays Firefox's: the prompt runs
 // its own Esc action (PopupNotifications, `escAction`, the secondary one unless it says
 // otherwise). The notice after an add-on install takes them too, with `p` for its checkbox
-// ("Pin extension to toolbar", issue #868).
+// ("Pin extension to toolbar", issue #868). In a passkey or security key prompt `n` is the button
+// Esc runs and `y` the other one (docs/specs/webauthn-prompts.md, doorhangerButtons).
 
 /**
  * @typedef {object} DoorhangerState
@@ -54,6 +55,32 @@ export function doorhangerKey(key, s) {
   return { kind: key === "y" ? "allow" : "block" };
 }
 
+/** The popupid of every prompt Firefox's WebAuthn code shows (WebAuthnPromptHelper.sys.mjs,
+ * WebAuthnRelatedOriginFetcher.sys.mjs). */
+const WEBAUTHN_PREFIX = "webauthn-prompt-";
+
+/**
+ * @typedef {"main" | "secondary" | null} DoorhangerButton  a prompt's button, or none
+ */
+
+/**
+ * Which of a prompt's buttons `y` (`allow`) and `n` (`block`) press. `n` is the button Esc runs,
+ * the safe answer, and `y` the other one. A permission prompt's Esc runs its secondary button, so
+ * `y` is its main button. Firefox's WebAuthn prompts make Cancel their main button: choosing a
+ * passkey and "touch your security key" have Esc run it (`escAction: "buttoncommand"`), and the
+ * passkey notices (no device, PIN not set, too many tries) show Cancel alone, whose Esc only
+ * hides the prompt; in both `n` presses Cancel, so that `y` never cancels.
+ * @param {{ popupid: string, escAction?: string, secondary: boolean }} p  the prompt's id, its
+ *   `escAction` (PopupNotifications.show's option) and whether it shows its secondary button
+ * @returns {{ yes: DoorhangerButton, no: DoorhangerButton }}
+ */
+export function doorhangerButtons({ popupid, escAction, secondary }) {
+  const other = secondary ? "secondary" : null;
+  if (escAction === "buttoncommand") return { yes: other, no: "main" };
+  if (popupid.startsWith(WEBAUTHN_PREFIX) && !secondary) return { yes: null, no: "main" };
+  return { yes: "main", no: other };
+}
+
 /** A button's label in the hint: one line, short. */
 const HINT_LABEL_MAX = 24;
 
@@ -64,20 +91,26 @@ function hintLabel(label) {
 }
 
 /**
- * The keys line shown inside an armed prompt, named after its own buttons. With focus in a field
+ * The keys line shown inside an armed prompt, named after the buttons `y` and `n` press (an empty
+ * label leaves the key out). With focus in a field
  * outside the prompt (a login form that keeps the page leaves it in the password field), the keys
  * are the field's text, so the line starts with the way out: Esc leaves the field and keeps the
  * prompt open. The same holds in hint, copy and element mode, which keep the keys too. A prompt
- * with a checkbox `p` toggles names it after the checkbox's label.
- * @param {{ main: string, secondary: string, toggle?: string, inField?: boolean }} labels
+ * with a checkbox `p` toggles names it after the checkbox's label. A prompt with more answers in
+ * its button's list (`more`: the other passkeys) says that `Tab`, then `↓` on that button, opens
+ * the list, where Firefox's own arrow keys and `Enter` choose.
+ * @param {{ main: string, secondary: string, toggle?: string, inField?: boolean,
+ *   more?: boolean }} labels  `main` is the label of `y`'s button, `secondary` of `n`'s
  */
-export function doorhangerHint({ main, secondary, toggle = "", inField = false }) {
-  const parts = [`y ${hintLabel(main)}`];
+export function doorhangerHint({ main, secondary, toggle = "", inField = false, more = false }) {
+  /** @type {string[]} */
+  const parts = [];
+  if (main.trim()) parts.push(`y ${hintLabel(main)}`);
   if (secondary.trim()) parts.push(`n ${hintLabel(secondary)}`);
   if (toggle.trim()) parts.push(`p ${hintLabel(toggle)}`);
   // From a field, Tab is the field's; leaving `Tab buttons` out keeps the line on one row.
   if (inField) return `Esc, then ${parts.join(" · ")}`;
-  parts.push("Tab buttons");
+  parts.push(more ? "Tab, ↓ more" : "Tab buttons");
   return parts.join(" · ");
 }
 
