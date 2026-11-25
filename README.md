@@ -53,10 +53,10 @@ Vimma runs on Linux x86_64 and on macOS 15 or later with Apple Silicon. On Linux
 package repository lets the system's own upgrade command update Vimma with everything else; the
 package key's fingerprint is `110649CB2BC11400828DD0D497FD3D2B24AD4390`.
 
-**Arch Linux and Omarchy:**
+**Arch Linux:**
 
-1. Set up the repository (the same on Arch and Omarchy). `--lsign-key` names the key's full
-   fingerprint, so it fails unless the key downloaded is Vimma's:
+1. Set up the repository. `--lsign-key` names the key's full fingerprint, so it fails unless the
+   key downloaded is Vimma's:
 
    ```sh
    curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
@@ -72,9 +72,8 @@ package key's fingerprint is `110649CB2BC11400828DD0D497FD3D2B24AD4390`.
    sudo pacman -S --needed vimma-bin
    ```
 
-Step 3 has no `-y` or `-u`, so it never makes a partial upgrade, and Omarchy's update guard lets
-it through; the system update in step 2 is your usual one. Updates afterwards:
-`sudo pacman -Syu`, or `omarchy update` on Omarchy.
+Step 3 has no `-y` or `-u`, so it never makes a partial upgrade. From then on, your usual system
+update upgrades Vimma too.
 
 Without the repository, build the same `vimma-bin` package from the release's `PKGBUILD`; run it
 again for each new release:
