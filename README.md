@@ -50,13 +50,11 @@ The docs, every key and the install page are at **[vimma.dev](https://vimma.dev)
 ## Install
 
 Vimma runs on Linux x86_64 and on macOS 15 or later with Apple Silicon. On Linux, Vimma's signed
-package repository lets the system's own upgrade command update Vimma with everything else; the
-package key's fingerprint is `110649CB2BC11400828DD0D497FD3D2B24AD4390`.
+package repository lets the system's own upgrade command update Vimma with everything else.
 
 **Arch Linux:**
 
-1. Set up the repository. `--lsign-key` names the key's full fingerprint, so it fails unless the
-   key downloaded is Vimma's:
+1. Set up the repository:
 
    ```sh
    curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
