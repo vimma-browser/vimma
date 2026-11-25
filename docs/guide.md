@@ -1287,14 +1287,18 @@ the same theme and take the same keys, with the same half-second wait. In these 
 always Cancel, the button `Esc` runs, and `y` is the answer that goes ahead, so `y` never cancels
 by accident:
 
-- **Touch your security key**, and the notices when something is wrong (no key found, the PIN is
-  not set, too many tries): `n` cancels. They have nothing for `y`, and the line reads
+- **Touch your security key**, and the notices: several keys found (touch the one to use), the
+  key already holds a passkey for the site, the PIN is not set, too many tries. `n` cancels. They have nothing for `y`, and the line reads
   `n cancel · Tab buttons`.
 - **Choose a passkey** for the site: `y` signs in with the passkey on the prompt's button and `n`
   cancels. With more passkeys, the line ends in `Tab, ↓ more`: `Tab` moves focus onto that
   button, `↓` opens the list of the others, the arrow keys move through it and `Enter` chooses.
+  While the list is open, `y` and `n` are the list's and answer nothing, so `y` never signs in
+  with a passkey other than the one you highlighted; `Esc` closes the list.
 - **Allow the site to see your key's make and model**: `y` allows and `n` blocks, as in a
-  permission prompt; a site that wants a passkey from a related site asks with `y` to continue.
+  permission prompt.
+- **Use a passkey saved for another site**: when a site asks for a passkey that belongs to a
+  related site, Firefox asks first; `y` continues and `n` cancels.
 - **The PIN for your key** opens as a dialog over the page ([Answering a dialog](#answering-a-dialog)):
   every key you type is the PIN, `y` and `n` included, and `Enter` and `Esc` answer it.
 

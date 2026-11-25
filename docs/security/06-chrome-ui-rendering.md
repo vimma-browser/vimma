@@ -143,6 +143,14 @@ text that pages, add-ons and bookmarks choose.
   add-on's button between the toolbar and the extensions menu, and private-window access is
   asked in the install prompt, not here. No other notice of that panel takes the keys (the
   update notices' main button restarts the browser).
+  Firefox's passkey and security key (WebAuthn) prompts take the keys under the same rules, but
+  their main button is Cancel: `n` presses the button `Esc` runs (Cancel, also in the notices
+  whose `Esc` only hides them) and `y` the answer that goes ahead (the passkey, Continue or
+  Allow), or nothing where the prompt has none. While the list of other passkeys is open, `y`
+  and `n` are the list's, so no key signs in with a passkey other than the highlighted one.
+  [`doorhangerButtons`](../../packages/vimma-core/test/prompt-keys.test.ts),
+  [`choosing_a_passkey_from_the_keyboard`](../../tests/browser/browser_vimma_webauthn_prompts.js),
+  [`the_passkey_notices_cancel_with_n`](../../tests/browser/browser_vimma_webauthn_prompts.js),
   [`doorhangerKey`](../../packages/vimma-core/test/prompt-keys.test.ts),
   [`permission_prompts_answer_y_and_n`](../../tests/browser/browser_vimma_toolbar.js),
   [`prompt_keys_arm_on_firefoxs_own_delay`](../../tests/browser/browser_vimma_toolbar.js),

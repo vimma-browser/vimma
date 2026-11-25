@@ -24,6 +24,8 @@
  * key (the post-install notice, which stays open until answered)
  * @property {boolean} [toggle]  the prompt shows a checkbox that `p` toggles (the post-install
  * notice's "Pin extension to toolbar")
+ * @property {boolean} [listOpen]  the list on one of the prompt's buttons is open (the other
+ * passkeys), and its own keys choose from it
  */
 
 /**
@@ -43,6 +45,10 @@
  */
 export function doorhangerKey(key, s) {
   if (!s.open || s.pending) return { kind: "pass" };
+  // An open list has a highlighted row, which Enter chooses: `y` pressing the button's answer
+  // instead would choose another one than the user is looking at. The keys stay the list's
+  // (Firefox's menu: arrow keys, Enter, Esc, type-ahead), not swallowed (webauthn-prompts.md).
+  if (s.listOpen) return { kind: "pass" };
   // Typing in a field is never an answer, in the page, in the chrome or in the prompt's own
   // fields. Elsewhere in the prompt, focus is on its buttons or its checkbox, where a letter
   // types nothing.

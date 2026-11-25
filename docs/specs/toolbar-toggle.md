@@ -628,6 +628,9 @@ Numbered decisions, each with its reason and the alternatives rejected.
       the secondary one, with Vimma's focus ring (`--vimma-focus`, focus.css). From there
       Firefox's own keys work: the arrow keys move between the buttons, `Enter` and `Space` run
       the focused one. The secondary button comes first, so `Tab` then `Enter` never allows.
+      (Since changed: in Firefox's prompt for choosing a passkey, the secondary button is the
+      first passkey, so `Tab` then `Enter` signs in with it; Cancel is that prompt's main button,
+      and `n` presses it; [webauthn-prompts](webauthn-prompts.md), issue #1544.)
     - **`Esc`** is Firefox's: it runs the prompt's `escAction` (the secondary button for
       permission prompts).
     - **A keys line** in the prompt, built from its own button labels (`y allow · n block · Tab

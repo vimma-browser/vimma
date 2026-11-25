@@ -30,9 +30,6 @@ function until(cond, msg, tries = 100) {
   return TestUtils.waitForCondition(cond, msg, 50, tries);
 }
 
-/** @param {number} ms */
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
 const panel = () => /** @type {XULPopupElement} */ (PopupNotifications.panel);
 /** The prompt the notification panel shows; a read through a missing one throws. */
 const promptEl = () => /** @type {MozPopupNotification} */ (panel().firstElementChild);
@@ -55,6 +52,15 @@ async function armed(popupid) {
   await until(() => hintText(n) !== "", `${popupid}: its keys line arms`);
   return n;
 }
+
+/**
+ * Whether the prompt with `popupid` is still up for `browser`. A key's click runs its action and
+ * removes the prompt within the keydown (PopupNotifications._onButtonEvent, _remove), so this is
+ * read right after the key, with no wait: a key that answered has removed it by then.
+ * @param {string} popupid
+ * @param {XULBrowserElement} browser
+ */
+const stillUp = (popupid, browser) => !!PopupNotifications.getNotification(popupid, browser);
 
 /** An example.com page, selected, focused, in normal mode. */
 async function openPage() {
@@ -179,8 +185,7 @@ add_task(async function touch_your_key_answers_n_and_not_y() {
     const n = await armed("webauthn-prompt-presence");
     Assert.equal(hintText(n), "n cancel · Tab buttons", "the line names only n");
     EventUtils.synthesizeKey("y");
-    await wait(DELAY / 2);
-    Assert.equal(panel().state, "open", "y does not cancel");
+    Assert.ok(stillUp("webauthn-prompt-presence", tab.linkedBrowser), "y does not cancel");
     await until(() => hintText(n) !== "", "armed again");
     EventUtils.synthesizeKey("n");
     Assert.equal(await result, "NotAllowedError", "n cancels the request");
@@ -259,6 +264,27 @@ add_task(async function choosing_a_passkey_from_the_keyboard() {
     const items = [...menu.querySelectorAll("menuitem")].map((m) => m.getAttribute("label") ?? "");
     Assert.equal(items.length, 2, "the list holds the other two passkeys");
     EventUtils.synthesizeKey("KEY_ArrowDown");
+    await until(
+      () => !!menu.querySelector("menuitem[_moz-menuactive]"),
+      "↓ highlights a passkey in the list",
+    );
+    // With the list open the keys are the list's: y must not sign in with the button's passkey
+    // while another one is highlighted, even once the prompt is armed again (the arrow keys
+    // restarted its delay).
+    await until(() => hintText(n) !== "", "armed again with the list open");
+    EventUtils.synthesizeKey("y");
+    Assert.equal(menu.state, "open", "y leaves the list open");
+    Assert.ok(
+      stillUp("webauthn-prompt-select-sign-result", browser),
+      "y with the list open does not answer the prompt",
+    );
+    await until(() => hintText(n) !== "", "armed again with the list open");
+    EventUtils.synthesizeKey("n");
+    Assert.equal(menu.state, "open", "n leaves the list open");
+    Assert.ok(
+      stillUp("webauthn-prompt-select-sign-result", browser),
+      "n with the list open does not cancel",
+    );
     EventUtils.synthesizeKey("KEY_Enter");
     const fromList = await result;
     Assert.ok(
@@ -270,8 +296,9 @@ add_task(async function choosing_a_passkey_from_the_keyboard() {
   });
 });
 
-// The notices with Cancel alone (no key found, a passkey already there, PIN not set, too many
-// tries): `n` presses Cancel, though Esc would only hide them; `y` has no button. They are raised
+// The notices with Cancel alone (several keys found, touch the one to use; a passkey already there;
+// PIN not set; too many tries): `n` presses Cancel, whose action ends the request, though Esc would
+// only hide them; `y` has no button. They are raised
 // as Firefox's authenticator code raises them; the transaction id is not a live one. (A virtual
 // authenticator turns down an excluded passkey without the notice staying up long enough to see.)
 add_task(async function the_passkey_notices_cancel_with_n() {
@@ -293,13 +320,25 @@ add_task(async function the_passkey_notices_cancel_with_n() {
     });
     Services.obs.notifyObservers(null, "webauthn-prompt", data);
     const n = await armed(`webauthn-prompt-${id}`);
+    // Cancel's own action (WebAuthnPromptHelper.buildCancelAction), seen when it runs: Esc's path
+    // removes the prompt without it.
+    const notification = /** @type {{ mainAction: { callback: Function } }} */ (
+      /** @type {unknown} */ (n.notification)
+    );
+    const cancel = notification.mainAction.callback;
+    let cancelled = 0;
+    notification.mainAction.callback = (/** @type {unknown[]} */ ...args) => {
+      cancelled++;
+      return cancel(...args);
+    };
     Assert.equal(hintText(n), "n cancel · Tab buttons", `${id}: the line names only n`);
     EventUtils.synthesizeKey("y");
-    await wait(DELAY / 2);
-    Assert.equal(panel().state, "open", `${id}: y does nothing`);
+    Assert.ok(stillUp(`webauthn-prompt-${id}`, browser), `${id}: y does nothing`);
+    Assert.equal(cancelled, 0, `${id}: y does not cancel`);
     await until(() => hintText(n) !== "", "armed again");
     EventUtils.synthesizeKey("n");
-    await until(() => panel().state === "closed", `${id}: n cancels`);
+    Assert.equal(cancelled, 1, `${id}: n runs Cancel`);
+    await until(() => panel().state === "closed", `${id}: and the notice goes`);
   }
   BrowserTestUtils.removeTab(tab);
 });

@@ -204,6 +204,15 @@ describe("doorhangerButtons", () => {
   });
 });
 
+describe("doorhangerKey with the prompt's list open", () => {
+  test("y and n are the list's: they neither answer nor are swallowed", () => {
+    const listOpen = { ...base, inPrompt: true, listOpen: true };
+    expect(doorhangerKey("y", listOpen)).toEqual({ kind: "pass" });
+    expect(doorhangerKey("n", listOpen)).toEqual({ kind: "pass" });
+    expect(doorhangerKey("y", { ...listOpen, armed: false })).toEqual({ kind: "pass" });
+  });
+});
+
 describe("doorhangerHint for passkey prompts", () => {
   test("a prompt with no button for y names only n", () => {
     expect(doorhangerHint({ main: "", secondary: "Cancel" })).toBe("n cancel · Tab buttons");

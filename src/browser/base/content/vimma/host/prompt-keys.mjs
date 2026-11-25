@@ -693,6 +693,7 @@ export class PromptKeys {
       toggle: !!toggle,
       // Only the notice leaves `n` to Vimma: it stays open until answered.
       secondary: !this.isNotice(n) || !n.hasAttribute("secondarybuttonhidden"),
+      listOpen: listOpen(n),
     });
     if (result.kind === "pass") return false;
     e.preventDefault();
@@ -705,6 +706,16 @@ export class PromptKeys {
     else if (result.kind === "focus") (toggle ?? n.footerFocusableButtons?.[0])?.focus();
     return true;
   }
+}
+
+/**
+ * Whether the list on the prompt's secondary button (popupnotification.js, `menupopup`: the
+ * other passkeys) is open or opening.
+ * @param {MozPopupNotification} n
+ */
+function listOpen(n) {
+  const state = /** @type {{ menupopup?: XULPopupElement }} */ (n).menupopup?.state;
+  return state === "open" || state === "showing";
 }
 
 /**
