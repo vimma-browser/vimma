@@ -76,23 +76,16 @@ async function openPage() {
 /**
  * The page asks for a new credential; resolves with "ok" or the error's name.
  * @param {XULBrowserElement} browser
- * @param {{ attestation?: AttestationConveyancePreference, exclude?: string }} [opts]  `exclude`: a credential id
- *   (base64url) the authenticator must not hold already
  */
-function create(browser, opts = {}) {
-  return SpecialPowers.spawn(browser, [opts], async ({ attestation, exclude }) => {
-    const decode = (/** @type {string} */ s) =>
-      Uint8Array.from(content.atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) =>
-        c.charCodeAt(0),
-      );
+function create(browser) {
+  return SpecialPowers.spawn(browser, [], async () => {
     /** @type {PublicKeyCredentialCreationOptions} */
     const publicKey = {
       rp: { id: content.document.domain, name: "none" },
       user: { id: new Uint8Array(16), name: "none", displayName: "none" },
       pubKeyCredParams: [{ type: "public-key", alg: -7 }],
       authenticatorSelection: { authenticatorAttachment: "cross-platform" },
-      excludeCredentials: exclude ? [{ type: "public-key", id: decode(exclude) }] : [],
-      attestation: attestation ?? "none",
+      attestation: "none",
       challenge: content.crypto.getRandomValues(new Uint8Array(16)),
     };
     try {
@@ -343,42 +336,53 @@ add_task(async function the_passkey_notices_cancel_with_n() {
   BrowserTestUtils.removeTab(tab);
 });
 
-// Asking to see the key's make and model: Allow and Block, as a permission prompt.
+// Asking to see the key's make and model: Allow and Block, as a permission prompt. The question
+// is raised as WebAuthnService::ShowAttestationConsentPrompt raises it once a key has answered, with
+// a transaction id that is not live. A virtual authenticator's request does not raise it reliably:
+// its "touch your key" prompt comes from authrs_bridge's status thread, the question from the
+// register thread by way of the main thread, and when the status thread runs late its prompt
+// replaces the question (WebAuthnPromptHelper.show_formatted_msg) and the request waits forever
+// (issue #1565).
 add_task(async function the_attestation_question_answers_y_and_n() {
-  await withAuthenticator(async () => {
-    const tab = await openPage();
-    for (const [key, pressed] of [
-      ["y", "allow"],
-      ["n", "block"],
-    ]) {
-      const result = create(tab.linkedBrowser, { attestation: "direct" });
-      const n = await armed("webauthn-prompt-register-direct");
-      Assert.ok(hintText(n).startsWith("y allow · n block"), hintText(n));
-      // Both answers make the passkey (Block only anonymizes the key), so the button is told by
-      // which action runs.
-      const notification =
-        /** @type {{ mainAction: { callback: Function }, secondaryActions: { callback: Function }[] }} */ (
-          /** @type {unknown} */ (n.notification)
-        );
-      /** @type {string[]} */
-      const ran = [];
-      const allow = notification.mainAction.callback;
-      const block = notification.secondaryActions[0].callback;
-      notification.mainAction.callback = (/** @type {unknown[]} */ ...args) => {
-        ran.push("allow");
-        return allow(...args);
-      };
-      notification.secondaryActions[0].callback = (/** @type {unknown[]} */ ...args) => {
-        ran.push("block");
-        return block(...args);
-      };
-      EventUtils.synthesizeKey(key);
-      Assert.deepEqual(ran, [pressed], `${key} presses ${pressed}`);
-      Assert.equal(await result, "ok", `${key} answers and the passkey is made`);
-      await until(() => panel().state === "closed", "the prompt goes");
-    }
-    BrowserTestUtils.removeTab(tab);
-  });
+  const tab = await openPage();
+  const browser = tab.linkedBrowser;
+  let tid = 0x7fff0200;
+  for (const [key, pressed] of [
+    ["y", "allow"],
+    ["n", "block"],
+  ]) {
+    const data = JSON.stringify({
+      prompt: { type: "attestation-consent" },
+      origin: "https://example.com",
+      tid: ++tid,
+      browsingContextId: browser.browsingContext?.id,
+    });
+    Services.obs.notifyObservers(null, "webauthn-prompt", data);
+    const n = await armed("webauthn-prompt-register-direct");
+    Assert.ok(hintText(n).startsWith("y allow · n block"), hintText(n));
+    // The buttons' own actions (WebAuthnPromptHelper.attestation_consent), seen when they run.
+    const notification =
+      /** @type {{ mainAction: { callback: Function }, secondaryActions: { callback: Function }[] }} */ (
+        /** @type {unknown} */ (n.notification)
+      );
+    /** @type {string[]} */
+    const ran = [];
+    const allow = notification.mainAction.callback;
+    const block = notification.secondaryActions[0].callback;
+    notification.mainAction.callback = (/** @type {unknown[]} */ ...args) => {
+      ran.push("allow");
+      return allow(...args);
+    };
+    notification.secondaryActions[0].callback = (/** @type {unknown[]} */ ...args) => {
+      ran.push("block");
+      return block(...args);
+    };
+    EventUtils.synthesizeKey(key);
+    Assert.deepEqual(ran, [pressed], `${key} presses ${pressed}`);
+    Assert.ok(!stillUp("webauthn-prompt-register-direct", browser), `${key} answers the question`);
+    await until(() => panel().state === "closed", "the prompt goes");
+  }
+  BrowserTestUtils.removeTab(tab);
 });
 
 // The PIN entry is a tab dialog with a password field (WebAuthnPromptHelper.prompt_for_password):

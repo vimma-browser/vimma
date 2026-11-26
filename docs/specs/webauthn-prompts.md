@@ -164,7 +164,10 @@ unchanged, and names the WebAuthn buttons `y` and `n` press.
   authenticator turns down an excluded passkey without a notice that stays up:
   `touch_your_key_answers_n_and_not_y`,
   `choosing_a_passkey_from_the_keyboard`, `the_passkey_notices_cancel_with_n`,
-  `the_attestation_question_answers_y_and_n`, `the_pin_entry_keeps_its_letters`.
+  `the_attestation_question_answers_y_and_n`, `the_pin_entry_keeps_its_letters`. (Since
+  changed: the attestation question is raised the same way, because with the virtual
+  authenticator its "touch your key" prompt, sent from authrs_bridge's status thread, can arrive
+  after the question and replace it, so the request never ends; issue #1565.)
 
 ## Docs and changelog
 
