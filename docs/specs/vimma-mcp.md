@@ -1000,6 +1000,12 @@ at risk, and the number could not be changed.
     activation, the page can still open one new tab per gesture through Firefox's modified-click
     path (`ClickHandlerChild`, `openLinkIn`), which the pop-up sandbox does not cover and neither
     rate counts; issue [#1568](https://github.com/vimma-browser/vimma/issues/1568) tracks it.
+    (Since changed: an agent tab opens nothing on a modified click, the user's own included:
+    `AgentPages` wraps `ClickHandlerParent.contentAreaClick` and drops a ctrl-, cmd-, shift- or
+    middle-clicked link whose tab is in the agent container, because the agent workspace's pages
+    open nothing the agent is not counted for, and the parent cannot tell the user's click from
+    a page's scripted one; counting the tab against the agent's rate instead would charge the
+    agent for a tab the page chose. Issue #1568.)
     The two count apart, in a window of 60 s, with
     grants and Vimma's own agent (`ctrl+b i`, which runs the same agent commands) included.
     - **Why two.** The limit exists because a grant runs these unasked: without it, a looping or
@@ -1175,7 +1181,8 @@ m7-a11y.
   accessible name.
 - `browser_vimma_mcp_control.js`: full control asks while MCP is on, the code, `:control on`;
   an unfocused window gets `getAttention` and one alert with no URL (alerts service mocked).
-- `browser_vimma_mcp_agent_pages.js`: permissions refused, pop-ups blocked, no external app.
+- `browser_vimma_mcp_agent_pages.js`: permissions refused, pop-ups blocked, no tab from a modified
+  click, no external app.
 - `browser_vimma_mcp_downloads.js` (served by `file_vimma_agent_download.sjs`): the question
   shows name, size, type and host and no URL; `y` saves to the quarantine, mode 0600, not
   opened; `n` saves nothing; `.sh`, ELF and zip-with-ELF need `!`; `http:` refused; over the

@@ -386,7 +386,7 @@ describe("chrome code", () => {
     // allow, and only through this one call.
     const AGENT_PAGES = "src/browser/base/content/vimma/ctl/AgentPages.sys.mjs";
     expect(writes.filter((h) => !h.startsWith(`${OPS}:`))).toEqual([
-      `${AGENT_PAGES}:195: services.perms.addFromPrincipalForBrowser(`,
+      `${AGENT_PAGES}:200: services.perms.addFromPrincipalForBrowser(`,
     ]);
     const agentPages = readFileSync(join(ROOT, AGENT_PAGES), "utf8");
     expect(

@@ -2380,6 +2380,10 @@ you, and `a` lets it work without asking until it quits, except where
   an agent tab: the link gets a new tab in that workspace. A password-reset or login link is then
   never in reach of an agent. What you open while in the agent workspace (`ctrl+t`, `:open`, the address
   bar, a bookmark) stays there.
+- **Its pages open no tabs or windows of their own.** Pop-ups are blocked there, and a link you
+  ctrl-click, shift-click or middle-click in an agent tab opens nothing, because a page can
+  script those clicks while you are using it. To open a link in a new tab there, use `gF`
+  (follow a link in a new tab), which only your keys reach.
 
 | Command          | What it does                                                                                                                                                           |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
