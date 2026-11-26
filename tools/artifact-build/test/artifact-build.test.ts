@@ -40,6 +40,7 @@ const GENERATED = [
   "ac_add_options --enable-optimize",
   "ac_add_options --with-ccache=sccache",
   "ac_add_options --disable-debug",
+  "ac_add_options --disable-debug-symbols",
   "ac_add_options --disable-updater",
   "ac_add_options --with-branding=browser/branding/vimma",
   "ac_add_options --enable-update-channel=vimma",
@@ -61,6 +62,7 @@ describe("artifactMozconfig", () => {
       "--disable-crashreporter", // Mozilla's libxul then aborts on a missing CrashService.sys.mjs
       "--disable-updater", // Mozilla's libxul then aborts on a missing UpdateServiceStub.sys.mjs
       "--with-ccache=sccache", // nothing is compiled
+      "--disable-debug-symbols", // configure: not available in this configuration
     ]) {
       expect(out.some((l) => l.includes(dropped))).toBe(false);
     }
