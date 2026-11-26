@@ -222,12 +222,19 @@ async function openWizard() {
 
 /**
  * The wizard's browser list, opened as a press of its button opens it (on mousedown,
- * migration-wizard.mjs handleEvent).
+ * migration-wizard.mjs handleEvent), and open in full: its XUL panel shown as well as the list.
  * @param {MigrationWizardSelector} selector
  * @param {Element} list
  */
 async function openList(selector, list) {
-  const shown = BrowserTestUtils.waitForEvent(list, "shown");
+  // panel-list sends `shown` two animation frames after it opens, and opens its XUL panel after
+  // one frame and a timeout (panel-list.mjs show and onShow): neither waits for the other, so on
+  // a slow runner `shown` can come while the panel is still "showing" or not yet opened.
+  const panel = /** @type {XULPopupElement} */ (/** @type {Element} */ (list.parentElement));
+  const shown = Promise.all([
+    BrowserTestUtils.waitForEvent(list, "shown"),
+    BrowserTestUtils.waitForPopupEvent(panel, "shown"),
+  ]);
   const win = /** @type {Window & typeof globalThis} */ (selector.ownerDocument.defaultView);
   // A mousedown event, not a synthesized press: the release a synthesized press sends would
   // close the list again under a window manager that does not hold popups open. Sent from here

@@ -138,8 +138,13 @@ add_task(async function a_label_opens_the_import_wizards_browser_list() {
     const label = labelAt(hints, { x: r.x + r.width / 2, y: r.y + r.height / 2 });
     Assert.ok(label, "the browser list's button has a label");
     Assert.strictEqual(list.open, false, "the list is closed before the label");
-    // panel-list sends `shown` once its keys are listened for and its first entry has focus.
-    const shown = BrowserTestUtils.waitForEvent(list, "shown");
+    // panel-list sends `shown` once its keys are listened for and its first entry has focus. It
+    // does not wait for its XUL panel, which it opens after one frame and a timeout (panel-list.mjs
+    // show and onShow): wait for the panel's popupshown too, or a slow runner sees it "showing".
+    const shown = Promise.all([
+      BrowserTestUtils.waitForEvent(list, "shown"),
+      BrowserTestUtils.waitForPopupEvent(panel, "shown"),
+    ]);
     type(/** @type {string} */ (label));
     await shown;
     Assert.equal(panel.state, "open", "the label opened the list");
