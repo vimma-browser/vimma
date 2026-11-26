@@ -32,6 +32,9 @@ taskset -c 0,1 npm run mochitest -- --repeat=49 tests/browser/browser_vimma_<nam
 kill $(jobs -p)
 ```
 
+`--shard=N/M` runs shard N of M of the whole suite, as the macOS job does (`--shard=1/2`, "macOS
+mochitests" in [ci-macos-mochitests.md](ci-macos-mochitests.md)), and takes no test paths.
+
 Pass `--repeat=N` with `=`: `tools/mochitest.ts` treats a bare `N` as a test path. Under
 `--repeat`, the harness never resets a test's `unexpectedTimeouts`, so after one repetition runs
 over the limit every later one also reports "exceeded the timeout threshold": count overruns from

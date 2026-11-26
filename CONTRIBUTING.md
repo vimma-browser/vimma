@@ -218,8 +218,9 @@ npm run mochitest -- --artifact tests/browser/  # headless
 existing checkout use `npx surfer download` and `npm run verify-source` instead, as in "Build and
 run". The artifact build's app is `engine/obj-artifact/dist/Vimma.app`.
 
-Pull requests run the same steps on a hosted Mac (`mochitest (artifact build, macOS)` in
-`e2e.yml`); that check is informational and does not block a merge
+Pull requests run the same steps on hosted Macs, split into two shards
+(`mochitest (artifact build, macOS, shard 1/2)` and `shard 2/2` in `e2e.yml`); those checks are
+informational, and a failure there blocks a merge only in a file the pull request touches
 ([runbook](docs/runbook/ci-macos-mochitests.md#macos-mochitests-e2eyml-spec-macos-build)).
 
 ## Project layout
