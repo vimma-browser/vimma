@@ -11,10 +11,10 @@
 // (LaunchServices launches nothing from a temporary directory), so it runs only on a CI runner:
 // a headless start never receives Apple Events, because it does not run AppKit's event loop
 // while it starts (MacApplicationDelegate.mm, InitializeMacApp).
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
@@ -27,13 +27,16 @@ const run = promisify(execFile);
 
 export const OPENER_ID = "dev.vimma.test.link-opener";
 export const OPENER_EXE = "link-opener";
+/** The same helper as a bare executable, outside any bundle (decision 12: it names nothing). */
+export const BARE_EXE = "vimma-bare-opener";
 const LSREGISTER =
   "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
 /**
  * config.toml for every start: the helper's bundle identifier routes `article.html` to `work`,
- * its executable name routes `long.html` to `dev`, and any other link from the page server goes
- * to `admin` by its domain. `home`, which no rule names, is shown at the start.
+ * its executable name routes `long.html` to `dev`, as would the bare helper's name for
+ * `form.html` if it were passed, and any other link from the page server goes to `admin` by its
+ * domain. `home`, which no rule names, is shown at the start.
  * @param base the page server's base URL, with a trailing slash
  */
 export function smokeConfig(base: string): string {
@@ -53,6 +56,11 @@ workspace = "work"
 [[routes]]
 app = "${OPENER_EXE}"
 url = "${base}long.html"
+workspace = "dev"
+
+[[routes]]
+app = "${BARE_EXE}"
+url = "${base}form.html"
 workspace = "dev"
 
 [[routes]]
@@ -118,16 +126,22 @@ async function install(app: string) {
   ]);
   // Ad hoc, so the arm64 binary may run; swiftc signs it, but not as part of a bundle.
   await run("codesign", ["--force", "--sign", "-", opener]);
+  const bare = join(dir, ".vimma-bare-opener", BARE_EXE);
+  mkdirSync(dirname(bare), { recursive: true });
+  await run("cp", [join(opener, "Contents/MacOS", OPENER_EXE), bare]);
+  await run("codesign", ["--force", "--sign", "-", bare]);
   await run(LSREGISTER, ["-f", vimma]);
   await run(LSREGISTER, ["-f", opener]);
   return {
     vimma,
     opener,
+    bare,
     remove: async () => {
       for (const a of [opener, vimma]) {
         await run(LSREGISTER, ["-u", a]).catch(() => {});
         rmSync(a, { recursive: true, force: true });
       }
+      rmSync(dirname(bare), { recursive: true, force: true });
     },
   };
 }
@@ -159,6 +173,28 @@ async function openWithHelper(
   const line = readFileSync(out, "utf8").trim();
   console.log(`link opener: ${line}`);
   if (!line.startsWith("opened ")) throw new Error(`the link opener failed: ${line}`);
+}
+
+/**
+ * Runs the bare helper as a plain process, not through LaunchServices, to open `url` with the
+ * running `vimma`: AppKit still checks it in as a running application, with no bundle.
+ */
+async function openWithBareHelper(
+  apps: { vimma: string; bare: string },
+  root: string,
+  url: string,
+) {
+  const out = join(mkdtempSync(join(root, "bare-")), "result");
+  const child = spawn(apps.bare, [apps.vimma, url, out], { detached: true, stdio: "ignore" });
+  child.unref();
+  const deadline = Date.now() + 60_000;
+  while (!existsSync(out)) {
+    if (Date.now() > deadline) throw new Error(`the bare link opener wrote no result for ${url}`);
+    await sleep(250);
+  }
+  const line = readFileSync(out, "utf8").trim();
+  console.log(`bare link opener: ${line}`);
+  if (!line.startsWith("opened ")) throw new Error(`the bare link opener failed: ${line}`);
 }
 
 /** Waits for `state` to show `workspace` with `url`'s tab; the last state on failure. */
@@ -222,6 +258,7 @@ async function main() {
   const apps = await install(values.app);
   const article = `${pages.base}article.html`;
   const long = `${pages.base}long.html`;
+  const form = `${pages.base}form.html`;
   const failures: string[] = [];
   const check = async (label: string, body: () => Promise<void>) => {
     try {
@@ -241,6 +278,8 @@ async function main() {
         await expectShown(vimma.client, { workspace: "work", url: article }, "running, bundle id");
         await openWithHelper(apps, root, long);
         await expectShown(vimma.client, { workspace: "dev", url: long }, "running, executable");
+        await openWithBareHelper(apps, root, form);
+        await expectShown(vimma.client, { workspace: "admin", url: form }, "running, no bundle");
       } finally {
         await quit(vimma);
       }

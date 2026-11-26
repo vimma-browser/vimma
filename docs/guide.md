@@ -4245,10 +4245,11 @@ of them stands for the role, and the rule naming the nearest one wins. On Linux,
 
 **On macOS**, a link an app opens (a cmd-click in Ghostty, a link in Slack, Teams or your mail)
 carries that app's bundle identifier and the name of its program, lower-cased:
-`com.mitchellh.ghostty, ghostty`. A rule can name either; the bundle identifier
-(`app = "com.microsoft.teams2"`) is the one only that app's developer can use. An app in Apple's
-sandbox, as App Store apps are, carries only its bundle identifier, because such an app can give
-its program any name. `vimma-open` is not in the app bundle yet, so on macOS the links of
+`com.mitchellh.ghostty, ghostty`. A rule can name either (`app = "com.microsoft.teams2"`). Both
+are declared by the app itself, so another app on your Mac can claim them: for a workspace that
+holds privileged sign-ins, pair `app` with `domain`, so that an app that only claims a name opens
+nothing but the sign-in host there. An app in Apple's sandbox, as App Store apps are, carries
+only its bundle identifier. `vimma-open` is not in the app bundle yet, so on macOS the links of
 command-line tools carry no names, and neither do links a tool opens with `open` or `osascript`,
 nor pages handed over from another device (Handoff).
 

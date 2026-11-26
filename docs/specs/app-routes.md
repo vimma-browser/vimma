@@ -529,7 +529,10 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
       sandboxed app's executable name is whatever its developer chose, while an App Store app's
       bundle identifier is registered to one developer team; a sandboxed app distributed outside
       the store can still use any bundle identifier. A sender that is not an app or has exited
-      gives no names.
+      gives no names. (Since changed: a sender with no bundle identifier gives no names either,
+      because a process outside an app bundle that AppKit checks in, such as a menu-bar helper,
+      chooses its executable's name freely, and so does a non-sandboxed app's bundle; any app that
+      is not from the App Store can declare any bundle identifier.)
     - Running Vimma: insert `-vimma-from <names>` before the first `-url`, so the existing
       `k-vimma-from` handler takes it while `x-default` opens the link in the same task.
       (Since changed: Firefox 161's `openURLs:` reads `currentAppleEvent` itself and passes
@@ -540,7 +543,10 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
       environment (`open` passes it on, and so does `launchctl setenv`) never names a link that
       arrived as an Apple Event. If sub-PR 3's smoke shows that the sender at a cold start is
       LaunchServices, the Dock or Finder rather than the app, the patch only unsets it, and
-      docs/limits.md says that such a link names no program.
+      docs/limits.md says that such a link names no program. (Since changed: the smoke showed the
+      sender at a cold start is the app. The variable is set from the start's first event only
+      and unset when a later event arrives during the start, because the first tab cannot tell
+      which link it holds when two apps' links start Vimma at once.)
 
     Reason: the sender is known only while the event is handled, and only native code can read it;
     reusing the flag and the variable keeps the rest of the path the one Linux uses. A reused pid
@@ -656,7 +662,10 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
 - **Residual risks.** (1) A sandboxed or App Store app can name its executable after another
   program; on macOS only its bundle identifier is used (decision 11), a sandboxed app distributed
   outside the store can still choose any bundle identifier, and on Linux nothing tells a look-alike
-  name apart. (2) A web page can start another app through an external protocol, after Firefox's
+  name apart. (Since changed: on macOS the bundle identifier is self-declared too, so any app
+  that is not from the App Store, sandboxed or not, can choose any bundle identifier; a process
+  outside an app bundle names nothing, and at a cold start only the first event's names are kept;
+  R7 in docs/security/02-workspace-routing.md.) (2) A web page can start another app through an external protocol, after Firefox's
   prompt or a remembered "always allow", and that app's next link then carries its name. (3) Every
   program run in a terminal carries the terminal's names, an AI agent's CLI included, so a
   prompt-injected agent's link matches the terminal's rules unless a rule names the agent's CLI:

@@ -104,7 +104,8 @@ the [user guide](guide.md); planned work is on the
   multiplexer: a rule for the terminal behind it does not match. On macOS, app rules apply to
   links from apps; links from command-line tools carry no names yet, because `vimma-open` is
   not in the app bundle, and neither do links a tool opens with `open` or `osascript`, nor
-  Handoff.
+  Handoff. When two links from different apps start Vimma at once, the first window's tab
+  carries no names.
 
 ## Bookmarks
 

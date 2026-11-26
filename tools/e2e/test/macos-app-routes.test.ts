@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parseConfig } from "../../../packages/vimma-core/src/config/config.mjs";
 import { matchRoute, parseAppList } from "../../../packages/vimma-core/src/config/routes.mjs";
 import {
+  BARE_EXE,
   OPENER_EXE,
   OPENER_ID,
   openerInfoPlist,
@@ -28,6 +29,11 @@ describe("the macOS app-routes smoke's config", () => {
     const names = `${OPENER_ID},${OPENER_EXE}`;
     expect(routed(`${BASE}article.html`, names)).toBe("work");
     expect(routed(`${BASE}long.html`, names)).toBe("dev");
+  });
+
+  it("routes the unbundled opener's executable name to dev, so a link it names would show", () => {
+    expect(routed(`${BASE}form.html`, BARE_EXE)).toBe("dev");
+    expect(routed(`${BASE}form.html`, "")).toBe("admin");
   });
 
   it("routes a link with no names, or other names, to admin by the domain rule", () => {
