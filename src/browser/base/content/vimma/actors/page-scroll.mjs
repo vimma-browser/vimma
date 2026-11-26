@@ -3,11 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Scrolling in one frame (docs/specs/m1-actor-insert-scroll.md): which element the scroll keys
-// move, and the scroll position an agent or a mark reads and restores. VimmaChild owns one per
+// move, the scroll areas `gs` cycles and the one it or a click chose (docs/specs/scroll-area.md),
+// and the scroll position an agent or a mark reads and restores. VimmaChild owns one per
 // actor and hands it the `Vimma:Scroll*` messages; it reads only the actor's document and window.
 
 import { scrollStep } from "../core/scroll.mjs";
-import { viewportSize } from "./hint-collect.mjs";
+import { SCROLL_AREA_MAX_PER_FRAME, SCROLL_AREA_MIN_SHARE } from "../core/scroll-areas.mjs";
+import { viewportSize, visibleFrames } from "./hint-collect.mjs";
 
 /** @import { ScrollKind } from "./VimmaActors.sys.mjs" */
 
@@ -236,6 +238,41 @@ function parentOf(el) {
   return "host" in root ? /** @type {ShadowRoot} */ (root).host : null;
 }
 
+/**
+ * Whether the element scrolls on either axis.
+ * @param {Element} el
+ */
+function scrollsEither(el) {
+  return canScroll(el, true) || canScroll(el, false);
+}
+
+/**
+ * The part of `r` inside the viewport, or null when none is.
+ * @param {DOMRect} r
+ * @param {number} vw
+ * @param {number} vh
+ */
+function inView(r, vw, vh) {
+  const x = Math.max(r.left, 0);
+  const y = Math.max(r.top, 0);
+  const width = Math.min(r.right, vw) - x;
+  const height = Math.min(r.bottom, vh) - y;
+  return width > 0 && height > 0 ? { x, y, width, height } : null;
+}
+
+/**
+ * @param {{ x: number, y: number, width: number, height: number }} a
+ * @param {{ x: number, y: number, width: number, height: number }} b
+ */
+function sameBox(a, b) {
+  return (
+    Math.abs(a.x - b.x) <= 1 &&
+    Math.abs(a.y - b.y) <= 1 &&
+    Math.abs(a.width - b.width) <= 1 &&
+    Math.abs(a.height - b.height) <= 1
+  );
+}
+
 export class PageScroll {
   /** @type {JSWindowActorChild} */
   #actor;
@@ -274,14 +311,204 @@ export class PageScroll {
   #wheels = [];
   /** @type {(() => void) | null} */
   #onWheel = null;
+  /**
+   * The scroll area `gs` or the user's click chose in this document (docs/specs/scroll-area.md),
+   * tried before the default rule; null when there is none.
+   * @type {WeakRef<Element> | null}
+   */
+  #chosen = null;
+  /** @type {(chosen: boolean) => void} */
+  #onChoice;
 
   /**
    * @param {JSWindowActorChild} actor  the VimmaChild: its document and window are read
    * @param {() => Element | null} activeElement  the focused element, through shadow roots
+   * @param {(chosen: boolean) => void} [onChoice]  a click chose an area here, or the choice
+   *   ended by itself (the area left the page): the parent's status bar marker follows
    */
-  constructor(actor, activeElement) {
+  constructor(actor, activeElement, onChoice = () => {}) {
     this.#actor = actor;
     this.#activeElement = activeElement;
+    this.#onChoice = onChoice;
+  }
+
+  /**
+   * The scroll areas of this document (docs/specs/scroll-area.md decision 2): its scroller and
+   * each visible element that can scroll and shows at least SCROLL_AREA_MIN_SHARE of the
+   * viewport, without one whose box is the same as an area's around it; each with the part of
+   * it inside the viewport.
+   * @returns {{ el: Element, rect: { x: number, y: number, width: number, height: number } }[]}
+   */
+  #areas() {
+    const win = this.#actor.contentWindow;
+    const doc = this.#actor.document;
+    if (!win || !doc) return [];
+    const { vw, vh } = viewportSize(win);
+    if (!(vw > 0 && vh > 0)) return [];
+    /** @type {{ el: Element, rect: { x: number, y: number, width: number, height: number } }[]} */
+    const out = [];
+    const root = doc.scrollingElement;
+    if (root && scrollsEither(root))
+      out.push({ el: root, rect: { x: 0, y: 0, width: vw, height: vh } });
+    const all = doc.getElementsByTagName("*");
+    for (let i = 0; i < Math.min(all.length, SEARCH_LIMIT); i++) {
+      if (out.length >= SCROLL_AREA_MAX_PER_FRAME) break;
+      const el = /** @type {Element} */ (all[i]);
+      if (el === root || !this.#isArea(el, vw, vh)) continue;
+      const rect = /** @type {{ x: number, y: number, width: number, height: number }} */ (
+        inView(el.getBoundingClientRect(), vw, vh)
+      );
+      if (out.some((a) => a.el.contains(el) && sameBox(a.rect, rect))) continue;
+      out.push({ el, rect });
+    }
+    return out;
+  }
+
+  /** The chosen area while it is still in its document, else null (and the choice ends). */
+  #chosenArea() {
+    const el = this.#chosen?.deref();
+    if (el?.isConnected && el.ownerDocument === this.#actor.document) return el;
+    if (this.#chosen) {
+      this.#chosen = null;
+      this.#onChoice(false);
+    }
+    return null;
+  }
+
+  /**
+   * Chooses `el` as the area the scroll keys move, or no area when it is the one the default
+   * rule picks in the top document, so that the rule's other steps apply again.
+   * @param {Element | null} el
+   * @returns {boolean} whether an area is chosen now
+   */
+  #choose(el) {
+    const top = !this.#actor.browsingContext?.parent;
+    // Vertical only: the default rule's search caches one element for whichever axis it ran
+    // on last, and the vertical one is the page's own area.
+    const plain = !!el && top && el === this.#defaultTarget(true);
+    this.#chosen = el && !plain ? new WeakRef(el) : null;
+    return !!this.#chosen;
+  }
+
+  /**
+   * What `gs` needs of this frame (`Vimma:ScrollAreas`): its areas, which of them the scroll
+   * keys move now and which one is chosen, its viewport and its visible subframes, in its
+   * viewport's CSS pixels.
+   */
+  scrollAreas() {
+    const win = this.#actor.contentWindow;
+    const areas = this.#areas();
+    const current = this.target(true) ?? this.target(false);
+    const chosen = this.#chosenArea();
+    const { vw, vh } = win ? viewportSize(win) : { vw: 0, vh: 0 };
+    const doc = this.#actor.document;
+    const frameEls = doc
+      ? [...doc.getElementsByTagName("iframe"), ...doc.getElementsByTagName("frame")]
+      : [];
+    return {
+      viewport: { x: 0, y: 0, width: vw, height: vh },
+      areas: areas.map((a) => ({
+        rect: a.rect,
+        current: a.el === current,
+        chosen: a.el === chosen,
+      })),
+      frames: win ? visibleFrames(win, frameEls).map((f) => ({ id: f.bc.id, rect: f.rect })) : [],
+    };
+  }
+
+  /**
+   * `gs` chose this document's area `index` (`Vimma:ScrollAreaPick`): the scroll keys move it,
+   * and focus comes to this frame, since they go to the focused frame first: a subframe's
+   * window is focused, and the top document takes focus back from a frame element.
+   * @param {unknown} index
+   * @returns {boolean | null} whether an area is chosen (false: the default rule's own), or null
+   *   when there is no such area
+   */
+  pickArea(index) {
+    if (!Number.isSafeInteger(index)) return null;
+    const area = this.#areas()[/** @type {number} */ (index)];
+    if (!area) return null;
+    const win = this.#actor.contentWindow;
+    if (this.#actor.browsingContext?.parent) win?.focus();
+    else {
+      const active = this.#actor.document?.activeElement;
+      if (active && FRAME_ELEMENTS.has(active.localName))
+        /** @type {HTMLElement} */ (active).blur();
+    }
+    // After the focus moved: the default rule starts from the focused element.
+    return this.#choose(area.el);
+  }
+
+  /**
+   * Another frame's area was chosen (`Vimma:ScrollAreaClear`), or this document is hidden.
+   * @returns {boolean} whether a choice was held here
+   */
+  clearArea() {
+    const held = !!this.#chosen;
+    this.#chosen = null;
+    return held;
+  }
+
+  /**
+   * The user pressed the mouse (or `f` pressed for them) on `node`: the scroll area around it
+   * becomes the target (docs/specs/scroll-area.md decision 5), found the way a wheel there finds
+   * what it scrolls (EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent): the nearest
+   * element around it, through shadow hosts, that is an area by decision 2, else the document's
+   * scroller. A smaller scroller (a code block, a tab strip) is passed over, so that a click in
+   * one does not leave the keys there. Decided after the mousedown's own focus change, since
+   * the default rule starts from the focused element. Every such click is reported, also one
+   * that keeps the default rule here, so that it ends a choice held in another frame.
+   * @param {EventTarget | null} node
+   */
+  clicked(node) {
+    lazy.setTimeout(() => {
+      try {
+        this.#clickedNow(node);
+      } catch {
+        // The actor was destroyed meanwhile (its document went away): nothing to choose.
+      }
+    }, 0);
+  }
+
+  /** @param {EventTarget | null} node */
+  #clickedNow(node) {
+    const doc = this.#actor.document;
+    const win = this.#actor.contentWindow;
+    if (!doc || !win) return;
+    let el =
+      node && /** @type {Node} */ (node).nodeType === 1 ? /** @type {Element} */ (node) : null;
+    if (!el && node && /** @type {Node} */ (node).nodeType === 3) {
+      el = /** @type {Node} */ (node).parentElement;
+    }
+    if (el && !el.isConnected) return;
+    const { vw, vh } = viewportSize(win);
+    for (; el; el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)) {
+      if (el !== doc.scrollingElement && this.#isArea(el, vw, vh)) break;
+    }
+    const root = doc.scrollingElement;
+    const area = el ?? (root && scrollsEither(root) ? root : null);
+    // A click that focused a smaller scroller inside the area (a list box, a widget with
+    // tabindex) leaves the keys with the default rule, which starts from that focus.
+    const own = this.#defaultTarget(true);
+    if (area && own && own !== area && area.contains(own)) {
+      this.#chosen = null;
+      this.#onChoice(false);
+      return;
+    }
+    this.#onChoice(this.#choose(area));
+  }
+
+  /**
+   * Whether `el` is a scroll area by decision 2: it scrolls, is visible, and shows at least
+   * SCROLL_AREA_MIN_SHARE of the viewport.
+   * @param {Element} el
+   * @param {number} vw
+   * @param {number} vh
+   */
+  #isArea(el, vw, vh) {
+    if (!scrollsEither(el) || !el.checkVisibility({ visibilityProperty: true })) return false;
+    const rect = inView(el.getBoundingClientRect(), vw, vh);
+    return !!rect && rect.width * rect.height >= SCROLL_AREA_MIN_SHARE * vw * vh;
   }
 
   /**
@@ -485,12 +712,29 @@ export class PageScroll {
   }
 
   /**
-   * The element the scroll keys move on this axis: the focused element's scroller, a layer's,
-   * the page, or the largest visible scroller.
+   * The element the scroll keys move on this axis: the chosen area, or the nearest element
+   * around it that scrolls on the axis (docs/specs/scroll-area.md); else the default rule.
    * @param {boolean} vertical
    * @returns {Element | null}
    */
   target(vertical) {
+    for (
+      let el = this.#chosenArea();
+      el;
+      el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)
+    ) {
+      if (canScroll(el, vertical)) return el;
+    }
+    return this.#defaultTarget(vertical);
+  }
+
+  /**
+   * The default rule: the focused element's scroller, a layer's, the page, or the largest
+   * visible scroller.
+   * @param {boolean} vertical
+   * @returns {Element | null}
+   */
+  #defaultTarget(vertical) {
     const doc = this.#actor.document;
     const root = doc.scrollingElement;
     for (let el = this.#activeElement(); el && el !== root && el !== doc.body;) {

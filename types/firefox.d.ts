@@ -575,6 +575,17 @@ interface nsIPrincipal {
 // `/** @type {Lazy<"setTimeout" | "PrivateBrowsingUtils">} */ ({})`: the getters fill it on the
 // next line, which is why the empty object may be asserted to the full shape. Firefox modules
 // list only the members Vimma calls.
+// engine/browser/actors/ClickHandlerChild.sys.mjs: the event-like data a Content:Click carries,
+// with the fields ClickHandlerParent fills in (fillInClickEvent); only those Vimma reads.
+interface ClickHandlerData {
+  button: number;
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  href: string | null;
+}
+
 interface LazyModules {
   // engine/toolkit/modules/Timer.sys.mjs: ids are numbers; clearing an unknown id (null, a
   // finished timer) does nothing. The callback gets the extra arguments (a promise's resolve
@@ -591,6 +602,21 @@ interface LazyModules {
     isWindowPrivate(win: Window): boolean;
     readonly permanentPrivateBrowsing: boolean;
     readonly enabled: boolean;
+  };
+  // engine/toolkit/modules/BrowserUtils.sys.mjs: where a click event (or ClickHandlerParent's
+  // event-like data) opens its link: "current", "tab", "tabshifted", "window", "save" …
+  BrowserUtils: {
+    whereToOpenLink(
+      event: {
+        button?: number;
+        shiftKey?: boolean;
+        ctrlKey?: boolean;
+        metaKey?: boolean;
+        altKey?: boolean;
+      },
+      ignoreButton?: boolean,
+      ignoreAlt?: boolean,
+    ): string;
   };
   // engine/toolkit/modules/AppConstants.sys.mjs
   AppConstants: {
@@ -912,6 +938,8 @@ interface WindowGlobalParent {
     name: "Vimma",
   ): import("../src/browser/base/content/vimma/host/VimmaParent.sys.mjs").VimmaParent;
   getActor(name: string): JSWindowActorParent;
+  /** The actor if this document has one already; never creates one (WindowGlobalActors.webidl). */
+  getExistingActor(name: string): JSWindowActorParent | null;
 }
 
 // A tab's <browser>. A lazy one answers currentURI from session data (Tabbrowser.sys.mjs,
@@ -1239,6 +1267,9 @@ interface CanonicalBrowsingContext extends BrowsingContext {
   /** The tab's back/forward list (engine/docshell/shistory/nsISHistory.idl), null for a context
    * that keeps none. */
   readonly sessionHistory: nsISHistory | null;
+  /** The entry of the document shown (BrowsingContext.webidl), null without session history in
+   * the parent. */
+  readonly activeSessionHistoryEntry: nsISHEntry | null;
   getAllBrowsingContextsInSubtree(): CanonicalBrowsingContext[];
   /** The chrome window the context is in; null once it has none. */
   readonly topChromeWindow: ChromeWindow | null;
@@ -1323,6 +1354,9 @@ interface HTMLTextAreaElement {
 // rather than give null.
 interface nsIEditor {
   readonly selectionController: nsISelectionController;
+  readonly selection: Selection;
+  readonly rootElement: Element;
+  endOfDocument(): void;
 }
 // engine/dom/base/nsISelectionController.idl
 interface nsISelectionController {
@@ -1549,6 +1583,8 @@ interface nsIURI {
 // engine/docshell/shistory/nsISHEntry.idl
 interface nsISHEntry {
   readonly URI: nsIURI;
+  /** The principal that started the load of this entry ([infallible], never null). */
+  readonly triggeringPrincipal: nsIPrincipal;
   /** Both entries show the same document (a same-document navigation between them). */
   sharesDocumentWith(entry: nsISHEntry): boolean;
 }
@@ -2587,6 +2623,7 @@ interface nsIAppStartup extends nsISupports {
 // engine/widget/nsIBaseWindow.idl
 interface nsIBaseWindow extends nsISupports {
   visibility: boolean;
+  destroy(): void;
 }
 // engine/widget/nsIClipboardHelper.idl: `context` is the window context that copies, so a
 // private window's copy is marked private.

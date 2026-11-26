@@ -10,6 +10,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { HoverOps } from "./hover-ops.mjs";
+import { ScrollAreaOps } from "./scroll-area-ops.mjs";
 import { describeAction } from "../core/actions.mjs";
 import {
   noTabText,
@@ -63,6 +64,7 @@ import {
 import { restartAsking } from "./restart.mjs";
 import { runRoute } from "./route-ops.mjs";
 import { runSiteKeys } from "./site-keys-ops.mjs";
+import { sleepCommand } from "./sleep-ops.mjs";
 import {
   closeTab,
   newTab,
@@ -327,6 +329,17 @@ export function hostRunners(host, page) {
     // Firefox's alt+9: the workspace's last visible tab (docs/specs/firefox-keys.md).
     "tab.goto_last": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
     "tab.close": (/** @type {WindowState} */ s) => closeTab(s.win),
+    // `:sleep [all|N]` (docs/specs/tab-sleep.md Behaviour 9-13); the notice says what it did.
+    "tab.sleep": (
+      /** @type {WindowState} */ s,
+      /** @type {Action} */ a,
+      /** @type {string | undefined} */ text,
+    ) => {
+      sleepCommand(s.win, a, text).then(
+        (said) => s.notice.show(said),
+        (e) => console.error("vimma: :sleep", e),
+      );
+    },
     // The focused pane; the last pane closes the tab (`:q`, prefix+x; m4-split-panes).
     "pane.close": paneRunner(closePane, emit),
     "pane.split_vertical": paneRunner(splitPane, emit),
@@ -528,6 +541,10 @@ export function hostRunners(host, page) {
       if (!s.bookmarks.isOpen) s.panel.action(a);
     },
     "panel.visual": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
+      if (!s.bookmarks.isOpen) s.panel.action(a);
+    },
+    // tab-sleep Behaviour 12: `z` in the side panel; nothing in the bookmarks panel.
+    "panel.sleep": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
       if (!s.bookmarks.isOpen) s.panel.action(a);
     },
     // `m`: the bookmarks panel's move to a folder, or the side panel's move to a workspace.
@@ -748,6 +765,20 @@ export function hostRunners(host, page) {
 }
 
 /**
+ * A scroll key, once a `gs` typed before it has chosen its area (docs/specs/scroll-area.md).
+ * @param {MozBrowser} browser
+ * @param {import("../actors/VimmaActors.sys.mjs").ScrollKind} kind
+ * @param {number} [count]
+ */
+function scrollAfterArea(browser, kind, count) {
+  // At once when no gs runs: a later key's message (f's collection after d) must not overtake it.
+  const wait = ScrollAreaOps.pending(browser);
+  return wait
+    ? wait.then(() => VimmaActors.scroll(browser, kind, count))
+    : VimmaActors.scroll(browser, kind, count);
+}
+
+/**
  * Actions on the focused page (m1-actor-insert-scroll). Runnable only while a content browser
  * with our actor has focus; elsewhere (the URL bar) they count as not runnable, so Esc there
  * still reaches Firefox. Every runnable id is a key of RUNNERS or CONTENT_RUNNERS; whether one
@@ -758,14 +789,17 @@ export function hostRunners(host, page) {
  */
 export function contentRunners(host, page) {
   return Object.freeze({
-    "scroll.down": (b, a) => VimmaActors.scroll(b, "down", a.count),
-    "scroll.up": (b, a) => VimmaActors.scroll(b, "up", a.count),
-    "scroll.left": (b, a) => VimmaActors.scroll(b, "left", a.count),
-    "scroll.right": (b, a) => VimmaActors.scroll(b, "right", a.count),
-    "scroll.half_down": (b, a) => VimmaActors.scroll(b, "half_down", a.count),
-    "scroll.half_up": (b, a) => VimmaActors.scroll(b, "half_up", a.count),
-    "scroll.top": (b) => VimmaActors.scroll(b, "top"),
-    "scroll.bottom": (b) => VimmaActors.scroll(b, "bottom"),
+    "scroll.down": (b, a) => scrollAfterArea(b, "down", a.count),
+    "scroll.up": (b, a) => scrollAfterArea(b, "up", a.count),
+    "scroll.left": (b, a) => scrollAfterArea(b, "left", a.count),
+    "scroll.right": (b, a) => scrollAfterArea(b, "right", a.count),
+    "scroll.half_down": (b, a) => scrollAfterArea(b, "half_down", a.count),
+    "scroll.half_up": (b, a) => scrollAfterArea(b, "half_up", a.count),
+    "scroll.top": (b) => scrollAfterArea(b, "top"),
+    "scroll.bottom": (b) => scrollAfterArea(b, "bottom"),
+    // docs/specs/scroll-area.md: which scroll area the keys above move.
+    "scroll.area_next": (b, a) => host._cycleScrollArea(b, 1, a.count),
+    "scroll.area_prev": (b, a) => host._cycleScrollArea(b, -1, a.count),
     // History and reload act on the focused page's <browser>, so in a split the focused pane's
     // (docs/bindings.md, "Navigation"). In insert mode the keys are the page's (normal-only
     // bindings).

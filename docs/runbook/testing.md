@@ -32,10 +32,16 @@ taskset -c 0,1 npm run mochitest -- --repeat=49 tests/browser/browser_vimma_<nam
 kill $(jobs -p)
 ```
 
+`--shard=N/M` runs shard N of M of the whole suite, as the macOS job does (`--shard=1/2`, "macOS
+mochitests" in [ci-macos-mochitests.md](ci-macos-mochitests.md)), and takes no test paths.
+
 Pass `--repeat=N` with `=`: `tools/mochitest.ts` treats a bare `N` as a test path. Under
 `--repeat`, the harness never resets a test's `unexpectedTimeouts`, so after one repetition runs
 over the limit every later one also reports "exceeded the timeout threshold": count overruns from
-the `Entering test`/`Leaving test` timestamps instead. No retries in CI; a flaky test gets
+the `Entering test`/`Leaving test` timestamps instead. A file's limit is 45 s (times its
+`requestLongerTimeout`), and 68 s on the macOS job, whose runner is up to 1.5 times slower
+("Per-file time limit" in [ci-macos-mochitests.md](ci-macos-mochitests.md)); a file near the
+limit is split, as `browser_vimma_workspace_desync.js` was. No retries in CI; a flaky test gets
 quarantined and an issue the same day.
 
 ### The control socket (spec m0-control-server)
@@ -81,6 +87,11 @@ existing value is kept), so a dev or lane build never reads or writes the instal
 `~/.config/vimma/config.toml`: a setting only the dev build knows, written there by its setup,
 once broke the installed release's config. The e2e harness sets the same pref inside each
 throwaway profile; mochitests set `/nonexistent/vimma-test/config.toml` in `browser.toml`.
+
+On macOS the artifact build's `Vimma.app` has its own bundle id (`dev.vimma.browser.artifact`)
+and no `http` or `https` URL types, so a link clicked in another app always goes to the installed
+Vimma, never to a dev or lane build that happens to run ("Parallel browser lanes" has why). It
+cannot be made the default browser, and it keeps its macOS preferences apart from the release's.
 
 It merges `security.sandbox.content.read_path_whitelist=<repo>/src/` into the profile's `user.js`.
 In a local objdir the chrome files are symlinks into `engine/`, which `surfer import` links to the
@@ -344,8 +355,10 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   both baskets filled with each shop's cheapest match and both checkouts asked. Kauppa's add
   buttons are icon-only buttons named by `aria-label`; Market's are a repeated "Add" that
   submits a small form. Alone it runs only that scenario. `--check` also fails it when anything
-  but a checkout asked or a result said that questions were waiting for the user. Unpaced, its
-  ten searches use up the open rate, so a run takes about 70 seconds, most of it the rate wait.
+  but a checkout asked or a result said that questions were waiting for the user. At Vimma's
+  default rates (15 new tabs and 60 loads a minute) its ten searches and two checkouts stay within
+  them; with `[mcp] open_per_minute = 10` the searches use up the rate, so a run takes about 70
+  seconds, most of it the rate wait.
 - `--num-ctx` sets an Ollama model's context length by making a model of that name with
   `num_ctx` set (`qwen2.5:7b-ctx32768`), which shares the original's weights. Ollama's
   OpenAI-compatible API takes no context length, and its default of 4096 tokens holds less than
@@ -371,8 +384,8 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   product's page by URL, the earlier floor) or `parallel` (the search path with independent
   steps in one turn: every search in one turn, every basket button in the next). Like the
   built-in agent's runner, the bench waits out a rate refusal once and runs the call again, which
-  the parallel path needs on a ten-item list: ten loads in one turn use up the open rate, which
-  a click checks too.
+  the parallel path needs on a ten-item list when `[mcp] open_per_minute` is 10 or less: ten
+  searches in one turn then use up the rate before the checkout opens.
 - **Where the model ran.** For an Ollama model, `--out` records `ollama ps` at the end of the
   run (`meta.loaded`: each loaded model's `size`, `sizeVram` and `contextLength`); a row in
   `agent-bench.md` says GPU, CPU or the split. Ollama leaves out an integrated GPU unless

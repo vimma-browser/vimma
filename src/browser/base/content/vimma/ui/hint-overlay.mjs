@@ -6,13 +6,15 @@
 // page's <browser>, never in the page: the page cannot see, restyle or remove them. The layer
 // is a child of the browser's .browserStack (a XUL stack, so it covers exactly the browser),
 // ignores the mouse and clips to the content area. Element focus outlines the chosen text block
-// in a layer of its own beside it (docs/specs/element-focus.md, decision 6).
+// in a layer of its own beside it (docs/specs/element-focus.md, decision 6), and `gs` the scroll
+// area it chose for a moment (docs/specs/scroll-area.md, decision 8).
 
 /** @import { Hint } from "../core/hints.mjs" */
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
 
 export const HINT_OVERLAY_ID = "vimma-hints";
 export const ELEMENT_OUTLINE_ID = "vimma-element";
+export const SCROLL_AREA_OUTLINE_ID = "vimma-scroll-area";
 const STYLESHEET = "chrome://browser/skin/vimma/hints.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into */
@@ -28,6 +30,10 @@ export class HintOverlay {
     this.labels = new Map();
     /** @type {HTMLElement | null} the element-focus outline's layer */
     this.ring = null;
+    /** @type {HTMLElement | null} the scroll area outline's layer, while it shows */
+    this.area = null;
+    /** @type {number} */
+    this.areaTimer = 0;
   }
 
   #style() {
@@ -72,6 +78,47 @@ export class HintOverlay {
     ring.style.top = `${Math.round(box.y * zoom) - 2}px`;
     ring.style.width = `${Math.round(box.width * zoom) + 4}px`;
     ring.style.height = `${Math.round(box.height * zoom) + 4}px`;
+  }
+
+  /**
+   * Outlines the scroll area `gs` chose for `ms`, then removes the outline; a later call
+   * replaces it.
+   * @param {MozBrowser} browser
+   * @param {{ x: number, y: number, width: number, height: number }} box  in the top frame's
+   *   CSS pixels
+   * @param {number} ms
+   */
+  flashArea(browser, box, ms) {
+    this.clearArea();
+    const parent = /** @type {ParentNode} */ (
+      browser.closest(".browserStack") ?? browser.parentNode
+    );
+    this.#style();
+    const doc = this.win.document;
+    const layer = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
+    layer.id = SCROLL_AREA_OUTLINE_ID;
+    // The status bar says an area is chosen; the outline is a picture of which.
+    layer.setAttribute("aria-hidden", "true");
+    const ring = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
+    ring.className = "vimma-scroll-area-ring";
+    const zoom = Number(browser.fullZoom) || 1;
+    // Just inside the area, so an area that fills the page keeps its whole outline in view.
+    ring.style.left = `${Math.round(box.x * zoom)}px`;
+    ring.style.top = `${Math.round(box.y * zoom)}px`;
+    ring.style.width = `${Math.round(box.width * zoom)}px`;
+    ring.style.height = `${Math.round(box.height * zoom)}px`;
+    layer.append(ring);
+    parent.append(layer);
+    this.area = layer;
+    this.areaTimer = this.win.setTimeout(() => this.clearArea(), ms);
+  }
+
+  /** Removes the scroll area outline. */
+  clearArea() {
+    if (this.areaTimer) this.win.clearTimeout(this.areaTimer);
+    this.areaTimer = 0;
+    this.area?.remove();
+    this.area = null;
   }
 
   /** Removes the element-focus outline. */

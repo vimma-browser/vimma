@@ -1,6 +1,12 @@
 // docs/specs/tab-sleep.md: which tabs go to sleep (decision 3).
 import { describe, test, expect } from "vitest";
-import { planSleep, SLEEP_CHECK_MS } from "../src/workspaces/tabsleep.mjs";
+import {
+  PRIVATE_SLEEP_TEXT,
+  namedSleepText,
+  planSleep,
+  SLEEP_CHECK_MS,
+  sleepReport,
+} from "../src/workspaces/tabsleep.mjs";
 
 import type { SleepTab } from "../src/workspaces/tabsleep.mjs";
 
@@ -186,5 +192,96 @@ describe("planSleep", () => {
       { id: "c", reason: "page" },
       { id: "d", reason: "loading" },
     ]);
+  });
+});
+
+// Behaviour 9-13: what `:sleep`, its forms and the side panel's `z` say.
+describe("sleep messages", () => {
+  test(":sleep reports the count and, when some stayed awake, how many and the most common reason", () => {
+    expect(sleepReport({ slept: 3, keep: [] })).toBe("3 tabs asleep");
+    expect(sleepReport({ slept: 1, keep: [] })).toBe("1 tab asleep");
+    expect(sleepReport({ slept: 0, keep: [] })).toBe("0 tabs asleep");
+    expect(sleepReport({ slept: 2, keep: ["onScreen", "sound", "onScreen"] })).toBe(
+      "2 tabs asleep; 3 stay awake: on screen",
+    );
+    expect(sleepReport({ slept: 0, keep: ["pinned"] })).toBe(
+      "0 tabs asleep; 1 stays awake: pinned",
+    );
+  });
+
+  test("a tie between reasons names the one Behaviour 2 lists first", () => {
+    // The start page and the tab on screen: "on screen" is the one the user expects.
+    expect(sleepReport({ slept: 2, keep: ["page", "onScreen"] })).toBe(
+      "2 tabs asleep; 2 stay awake: on screen",
+    );
+    expect(sleepReport({ slept: 1, keep: ["unload", "sound", "loading", "sound", "unload"] })).toBe(
+      "1 tab asleep; 5 stay awake: playing sound",
+    );
+  });
+
+  test("every reason reads as a phrase", () => {
+    const reasons = [
+      ["onScreen", "on screen"],
+      ["pinned", "pinned"],
+      ["sound", "playing sound"],
+      ["pip", "in Picture-in-Picture"],
+      ["sharing", "sharing a camera, microphone or screen"],
+      ["private", "private"],
+      ["agent", "an agent is connected"],
+      ["page", "not a web page"],
+      ["site", "its site has sleep = false"],
+      ["loading", "loading"],
+      ["unload", "it would ask before leaving"],
+    ] as const;
+    for (const [reason, text] of reasons) {
+      expect(sleepReport({ slept: 0, keep: [reason] })).toBe(
+        `0 tabs asleep; 1 stays awake: ${text}`,
+      );
+    }
+  });
+
+  test(":sleep N says the tab is asleep, on screen, asleep already, or what keeps it awake", () => {
+    expect(namedSleepText([{ number: 3, reason: null }])).toBe("Tab 3 asleep");
+    expect(namedSleepText([{ number: 2, reason: "onScreen" }])).toBe("Tab 2 is on screen");
+    expect(namedSleepText([{ number: 5, reason: "asleep" }])).toBe("Tab 5 is asleep already");
+    expect(namedSleepText([{ number: 4, reason: "sound" }])).toBe(
+      "Tab 4 stays awake: it is playing sound",
+    );
+    expect(namedSleepText([{ number: 4, reason: "agent" }])).toBe(
+      "Tab 4 stays awake: an agent is connected",
+    );
+    expect(namedSleepText([{ number: 4, reason: "unload" }])).toBe(
+      "Tab 4 stays awake: it would ask before leaving",
+    );
+    expect(namedSleepText([{ number: 4, reason: "site" }])).toBe(
+      "Tab 4 stays awake: its site has sleep = false",
+    );
+  });
+
+  test("several named tabs (the side panel's marks) are reported as :sleep reports, tabs asleep already left out", () => {
+    expect(
+      namedSleepText([
+        { number: 1, reason: null },
+        { number: 2, reason: "asleep" },
+        { number: 3, reason: null },
+        { number: 4, reason: "onScreen" },
+      ]),
+    ).toBe("2 tabs asleep; 1 stays awake: on screen");
+    expect(namedSleepText([])).toBe("0 tabs asleep");
+  });
+
+  test("a tab closed while it was being put to sleep is named as closed, and left out of a report", () => {
+    expect(namedSleepText([{ number: 4, reason: "closed" }])).toBe("Tab 4 closed");
+    expect(
+      namedSleepText([
+        { number: 1, reason: null },
+        { number: 2, reason: "closed" },
+        { number: 3, reason: "sound" },
+      ]),
+    ).toBe("1 tab asleep; 1 stays awake: playing sound");
+  });
+
+  test("a private window's :sleep says private tabs do not sleep", () => {
+    expect(PRIVATE_SLEEP_TEXT).toBe("Private tabs do not sleep");
   });
 });

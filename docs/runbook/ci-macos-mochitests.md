@@ -1,15 +1,79 @@
 ### macOS mochitests (`e2e.yml`, spec macos-build)
 
-The job `mochitest (artifact build, macOS)` runs the front-end tests on a hosted Apple Silicon
-Mac (`macos-15`), as sub-PR 1 of [macos-build](../specs/macos-build.md) describes. Its steps: `npm
-ci`; the whole Vitest suite (`npm test`); GNU tar and `gpgv` from Homebrew when the image lacks
-them; `tools/upstream/firefox-source.sh`; `npm run import`;
+The job `mochitest-macos` runs the front-end tests on hosted Apple Silicon Macs (`macos-15`), as
+sub-PR 1 of [macos-build](../specs/macos-build.md) describes, in two shards that run in parallel
+on runners of their own: `mochitest (artifact build, macOS, shard 1/2)` and `shard 2/2`. Each
+shard's steps: `npm ci`; the whole Vitest suite (`npm test`); GNU tar and `gpgv` from Homebrew when
+the image lacks them; `tools/upstream/firefox-source.sh`; `npm run import`;
 `node tools/artifact-build/artifact-build.ts`, which fetches Mozilla's `macosx64-aarch64-opt`
-build of the same release; and `npm run mochitest -- --artifact tests/browser/`, headless, with
-one pref set (below). `df
--k .` records the free disk before the download, after the unpack and after the tests, because
-GitHub documents only 14 GB for hosted Macs. On a failure the run uploads `mochitest-macos-logs`
-(the mochitests' TBPL log and the objdir's `config.log`, kept 7 days).
+build of the same release; and `npm run mochitest -- --artifact --shard=N/2`, headless, with one
+pref set (below). `df -k .` records the free disk before the download, after the unpack and after
+the tests, because GitHub documents only 14 GB for hosted Macs. On a failure a shard uploads
+`mochitest-macos-logs-1` or `mochitest-macos-logs-2` (its TBPL log and the objdir's `config.log`,
+kept 7 days). `fail-fast` is off, so one shard's failure does not cancel the other.
+
+**Why two shards** ([#1569](https://github.com/vimma-browser/vimma/issues/1569)). As one job,
+green runs took 35 to 44 minutes in November 2026, 33 of them in the mochitests. The hosted Mac is
+a shared virtual machine with 3 vCPU and 7 GB, and its speed varies by 1.3 to 1.5 times between
+runs, so one long job left every test close to its limits, and most macOS-only flakes that month
+were timing failures on the slow runs. Larger macOS runners are billed and are not used.
+
+**How the files are split.** `--shard=N/M` (`tools/mochitest-shards.ts`) takes the test files of
+`tests/browser/browser.toml` and assigns them, longest first, each to the shard with the least
+time so far, using `tools/mochitest-times.json`: each file's median seconds over six green macOS
+runs (November 2026). A file the table does not name, such as a new test, counts as the median
+file, so it lands in a shard without an edit to the table. The split depends only on the manifest
+and the table, and each shard keeps the manifest's order. With the November table both shards
+hold 985 s of tests; mochitest's own `--total-chunks 2`, which cuts the manifest into halves of
+equal file counts, left them 13 % apart. When the shards drift apart by more than a few minutes,
+refresh the table from the `TEST_START` lines of recent green job logs (`gh run view --log`).
+
+**Time limit.** A shard took 23.6 to 27.2 minutes in three runs in November 2026 (median 24.5;
+about 16.4 of them in the mochitests, the rest setup, Vitest and the artifact build), against 40
+to 44 minutes for the single job, so `timeout-minutes` is 37, about 1.5 times a shard, as for the
+macOS build
+([#1546](https://github.com/vimma-browser/vimma/issues/1546)): the growing suite does not hit the
+limit, and a hung run still fails with its own log.
+
+**Per-file time limit** ([#1570](https://github.com/vimma-browser/vimma/issues/1570)). The
+shards pass `--setpref=testing.browserTestHarness.timeout=68`, so a test file's limit is 68 s
+instead of the harness's 45 s, and a file's `requestLongerTimeout(n)` gives it 68 × n s. The
+limits were set on Linux, and this runner varies: over 106 macOS jobs from 23 to 26 November 2026
+(green and red, re-run attempts included), the median file took between 0.67 and 1.46 times its
+own median time depending on the run, and the slowest times came close to 45 s or past it:
+
+| File                                 | Median | Slowest | Linux median |
+| ------------------------------------ | ------ | ------- | ------------ |
+| `browser_vimma_workspace_desync.js`  | 25.2 s | 54.4 s  | 9.4 s        |
+| `browser_vimma_insert_scroll.js`     | 23.7 s | 44.1 s  | 10.9 s       |
+| `browser_vimma_hints.js`             | 26.6 s | 42.4 s  | 18.4 s       |
+| `browser_vimma_insert_focus.js`      | 18.4 s | 41.8 s  | 13.9 s       |
+| `browser_vimma_live_grep.js`         | 25.8 s | 38.3 s  | 20.0 s       |
+| `browser_vimma_element.js`           | 19.6 s | 36.7 s  | 15.8 s       |
+| `browser_vimma_cmdline.js`           | 19.8 s | 35.2 s  | 14.1 s       |
+| `browser_vimma_mcp_prompt.js`        | 33.6 s | 35.1 s  | 33.4 s       |
+| `browser_vimma_pdf_outline.js`       | 24.2 s | 34.4 s  | 17.8 s       |
+| `browser_vimma_split_contract.js`    | 17.1 s | 33.7 s  | 6.2 s        |
+| `browser_vimma_control.js`           | 23.9 s | 33.4 s  | 22.4 s       |
+| `browser_vimma_workspace_restore.js` | 15.3 s | 32.3 s  | 6.6 s        |
+| `browser_vimma_private_swap.js` (×2) | 53.0 s | 73.0 s  | 44.0 s       |
+
+Those are the files whose slowest time left less than 1.5 times headroom under their limit. 1.5
+times 45 s covers the runner's measured spread and leaves each of them at least 1.5 times
+headroom over its slowest time (`browser_vimma_insert_scroll.js`: 44.1 s of 68). One setting for
+the job, rather than `requestLongerTimeout` in each of these files, because the cause is the
+runner and not the file: `requestLongerTimeout` would raise the limit on Linux as well, where
+the same files have the headroom (their Linux medians in the table), and a new file would meet the same runner without one. Mozilla's
+harness does the same for its slower builds (90 s for debug and ASan, 120 s for TSan). The Linux
+job keeps 45 s, so a file that grows towards the limit still fails there first, and gets split.
+The one file that ran past 45 s, `browser_vimma_workspace_desync.js`, was split instead
+([#1566](https://github.com/vimma-browser/vimma/issues/1566)): its three cases that close the
+last window took half its time, and they are now `browser_vimma_workspace_desync_last_window.js`.
+The harness reads the pref (`testing.browserTestHarness.timeout`) directly; mach's `--timeout`
+would set it too, but also cuts the no-output limit of the whole run to that value plus 30 s,
+which a file with `requestLongerTimeout(6)` can need. Re-measure from the `TEST_START` and
+`TEST_END` lines of recent job logs (`gh run view --log`, attempts included with
+`gh api .../runs/<id>/jobs?filter=all`) when a file's slowest time comes within 1.5 times of 68 s.
 
 It runs on every pull request except a docs-only one, gated by the same `changes` job as the
 Linux job, and on a manual run without a `firefox-version`. It does not run when `upstream.yml` or
@@ -97,4 +161,12 @@ When it fails:
   [CONTRIBUTING.md](../../CONTRIBUTING.md). Fix the test or the code; a test that cannot pass on
   macOS gets `skip-if = ["os == 'mac'"]` in `tests/browser/browser.toml` with a comment naming
   its issue.
-- A merge with this check red is allowed; the failure then gets an issue of its own.
+
+**Merging past a red shard.** The macOS shards are not required checks, and a red shard does not
+block a merge when all of these hold: the failing test is in a file the pull request does not
+touch, and `main` also shows that failure (a recent run on `main` or on another pull request).
+The failure then gets an issue labelled `flaky` and `owner:mac` (or a comment on the existing
+one), the pull request body names it, and the shard is re-run at most once. A failure in a file
+the pull request touches still blocks the merge, as does a failure that `main` does not show. The
+reason: these are shared 3-vCPU runners whose speed varies by 1.3 to 1.5 times between runs, so
+an unrelated timing failure there says more about the runner than about the change.

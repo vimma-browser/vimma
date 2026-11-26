@@ -705,6 +705,10 @@ enable` exists for exactly this case, a Firefox key wanted back as Firefox runs 
     two weeks, as the Linux e2e job was. That needs
     [#605](https://github.com/vimma-browser/vimma/issues/605) fixed first: the job currently times
     out in unrelated tests on most runs. Rejected: required at once, for the reason above.
+    (Since changed: the job runs as two parallel shards, `mochitest (artifact build, macOS,
+shard 1/2)` and `shard 2/2`, both informational, because one 35 to 44 minute job on the
+    shared 3-vCPU runner left every test close to its limits;
+    [#1569](https://github.com/vimma-browser/vimma/issues/1569).)
 
 ### Not in this spec
 

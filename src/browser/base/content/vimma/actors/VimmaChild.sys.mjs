@@ -47,6 +47,7 @@ import { DocumentHover } from "./hover.mjs";
  *   | { name: "Vimma:Edit", data: { command: string } }
  *   | { name: "Vimma:Selection", data: { max?: unknown } | undefined }
  *   | { name: "Vimma:ScrollTo", data: Parameters<PageScroll["scrollTo"]>[0] }
+ *   | { name: "Vimma:ScrollAreaPick", data: { index?: unknown } | undefined }
  *   | { name: "Vimma:Grep", data: Parameters<GrepPage["search"]>[0] }
  *   | { name: "Vimma:GrepPreview", data: Parameters<GrepPage["preview"]>[0] }
  *   | { name: "Vimma:GrepJump", data: Parameters<GrepPage["jump"]>[0] }
@@ -66,7 +67,8 @@ import { DocumentHover } from "./hover.mjs";
  *   | { name: "Vimma:PdfZoom" | "Vimma:PdfWhere" | "Vimma:ScrollFraction" | "Vimma:FocusLast"
  *       | "Vimma:SuggestionsOpen" | "Vimma:ScrollPosition" | "Vimma:FindAnchor"
  *       | "Vimma:FindClosed" | "Vimma:FindStep" | "Vimma:GrepEnd" | "Vimma:AgentCards"
- *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown" | "Vimma:Painted", data?: unknown }}
+ *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown" | "Vimma:Painted"
+ *       | "Vimma:ScrollAreas" | "Vimma:ScrollAreaClear", data?: unknown }}
  *   ChildMessage
  */
 /** @import { BlockMessage } from "./block.mjs" */
@@ -84,6 +86,81 @@ const FRAMES = new Set(["iframe", "frame", "browser"]);
 
 /** Candidates for `i`; isEditable decides. */
 const TEXT_FIELDS = "input, textarea, [contenteditable]";
+
+/** A character that is not collapsible white space. */
+const NOT_COLLAPSIBLE = /[^ \t\n\r\f]/;
+
+/** Elements that hold no text: the caret goes before them, as HTMLEditor's endOfDocument does. */
+const VOID_LEAVES = new Set(["br", "hr", "img", "input", "wbr", "embed", "video", "audio"]);
+
+/**
+ * Whether `sel` is collapsed at the start of `root`'s text: the state a focus leaves a field in
+ * that neither the user nor the page put a caret in. In an editor (`html`), collapsible white
+ * space before the first block is no text: the focus may put the caret before it.
+ * @param {Selection | null} sel
+ * @param {Element | null} root
+ * @param {boolean} [html]
+ */
+function atStart(sel, root, html = false) {
+  if (!sel || !root || sel.rangeCount !== 1 || !sel.isCollapsed || !sel.anchorNode) return false;
+  if (!root.contains(sel.anchorNode)) return false;
+  const before = root.ownerDocument.createRange();
+  before.setStart(root, 0);
+  before.setEnd(sel.anchorNode, sel.anchorOffset);
+  const text = before.toString();
+  return html ? !NOT_COLLAPSIBLE.test(text) : text === "";
+}
+
+/** Elements whose content is no text of the editor: the caret never goes into them. */
+const NOT_EDITOR_TEXT = new Set([
+  "script",
+  "style",
+  "template",
+  "textarea",
+  "select",
+  "iframe",
+  "object",
+  "svg",
+  "math",
+  "head",
+]);
+
+/**
+ * Whether `node` holds text the caret can end at: an element that is rendered and not one of
+ * NOT_EDITOR_TEXT, or text beyond collapsible white space.
+ * @param {Node} node
+ */
+function holdsCaret(node) {
+  if (node.nodeType === 3) return NOT_COLLAPSIBLE.test(node.nodeValue ?? "");
+  if (node.nodeType !== 1) return false;
+  const el = /** @type {Element} */ (node);
+  return !NOT_EDITOR_TEXT.has(el.localName) && el.checkVisibility();
+}
+
+/**
+ * The end of an editor's last leaf, where its text ends (HTMLEditor's
+ * CollapseSelectionToEndOfLastLeafNodeOfDocument, which only acts on a whole editable document):
+ * the end of the last text, inside the last block, not after it, so typed text joins that line.
+ * A non-editable element (a mention chip) is a leaf the caret goes after, as HTMLEditUtils'
+ * TreatNonEditableNodeAsLeafNode makes it: inside it, typing does nothing.
+ * @param {Element} root
+ * @returns {{ node: Node, offset: number }}
+ */
+function endOfLastLeaf(root) {
+  /** @type {Node} */
+  let node = root;
+  for (;;) {
+    let child = node.lastChild;
+    while (child && !holdsCaret(child)) child = child.previousSibling;
+    if (!child) return { node, offset: node.childNodes.length };
+    if (child.nodeType === 3) return { node: child, offset: /** @type {Text} */ (child).length };
+    const el = /** @type {HTMLElement} */ (child);
+    const index = Array.prototype.indexOf.call(node.childNodes, child);
+    if (!el.isContentEditable) return { node, offset: index + 1 };
+    if (VOID_LEAVES.has(el.localName)) return { node, offset: index };
+    node = child;
+  }
+}
 
 /**
  * The focused element, through open and closed shadow roots.
@@ -277,7 +354,12 @@ export class VimmaChild extends JSWindowActorChild {
   static _sizePollMsForTests = null;
 
   /** Scrolling in this frame (docs/specs/m1-actor-insert-scroll.md). */
-  #scroll = new PageScroll(this, () => deepActiveElement(this.document));
+  #scroll = new PageScroll(
+    this,
+    () => deepActiveElement(this.document),
+    // The status bar's scroll area marker (docs/specs/scroll-area.md decision 6).
+    (chosen) => this.sendAsyncMessage("Vimma:ScrollAreaChosen", { chosen }),
+  );
   /**
    * The last hint collection (m1-hints): its generation, its elements by target id, and, to
    * tell whether a wheel moved them, where each was in the viewport (`at`, by target id), where
@@ -328,6 +410,13 @@ export class VimmaChild extends JSWindowActorChild {
   #dragging = false;
   /** @type {WeakRef<Element> | null} the text field that last took focus here, for `i` */
   #lastField = null;
+  /**
+   * The editable elements the user has been in on this page (a key, a click, a focus from their
+   * input): `i` and `gi` keep their caret, and put any other field's at the end of its text
+   * (docs/specs/insert-focus.md, behaviour 9).
+   * @type {WeakSet<Element>}
+   */
+  #userFields = new WeakSet();
   /** This actor is focusing an element (`i`, a hint): the focus is the user's, not the find's. */
   #focusing = false;
   /**
@@ -482,6 +571,12 @@ export class VimmaChild extends JSWindowActorChild {
       // Registered for trusted events only; checked again, as a forged one could skip a step.
       if (!event.isTrusted) return;
       this.#agent.pageHidden();
+      // A new document starts from the default rule (docs/specs/scroll-area.md, behaviour 4).
+      // The parent hears of it here: a document kept in the back-forward cache is not destroyed,
+      // so its frame-gone report never comes.
+      if (this.#scroll.clearArea()) {
+        this.sendAsyncMessage("Vimma:ScrollAreaChosen", { chosen: false });
+      }
       // Also into the back-forward cache, which keeps the elements and so their locks
       // (docs/specs/hover.md decision 5, experiment X1).
       if (this.#hover.pageHidden()) this.#hoverEnded();
@@ -505,6 +600,14 @@ export class VimmaChild extends JSWindowActorChild {
         const el = target?.nodeType === 1 ? target : deepActiveElement(doc);
         if (el && !FRAMES.has(el.localName) && isEditable(describe(el)).editable) {
           this.#lastField = new WeakRef(el);
+          // A click or Tab put the caret there; Vimma's own focus and the page's script did not.
+          if (
+            !this.#focusing &&
+            !this.#agentPress &&
+            this.contentWindow?.windowUtils.isHandlingUserInput
+          ) {
+            this.#userFields.add(el);
+          }
         }
         this.#report(el, "focusin");
         return;
@@ -514,6 +617,7 @@ export class VimmaChild extends JSWindowActorChild {
         const el = deepActiveElement(doc);
         const keys = this.#keys;
         keys.focus.push({ n: keys.count++, el: el ? new WeakRef(el) : null });
+        if (el && el !== doc.body && isEditable(describe(el)).editable) this.#userFields.add(el);
         if (keys.focus.length > KEYS_KEPT) keys.focus.shift();
         return;
       }
@@ -555,13 +659,22 @@ export class VimmaChild extends JSWindowActorChild {
         // A click into an editable root whose window already has focus, or into a field that
         // already has focus (the page put it back after Esc), fires no focus event.
         const el = this.#editableRoot() ?? this.#focusedFieldUnder(event.originalTarget);
-        if (el) this.#report(el, "focusin");
+        if (el) {
+          if (event.isTrusted) this.#userFields.add(el);
+          this.#report(el, "focusin");
+        }
         // A trusted mousedown is the user's (an agent's is untrusted, #press), though it may
         // move no focus (a toolbar item that prevents its mousedown): what the page focuses after
         // it is not the page's own doing, and a field the page focused is the user's now. The
         // parent takes it only from the frame that has focus (VimmaParent); a click into another
         // frame focuses it, and that focus report is the user's.
-        if (event.isTrusted) this.sendAsyncMessage("Vimma:Click");
+        if (event.isTrusted) {
+          this.sendAsyncMessage("Vimma:Click");
+          // The user's click, or `f` (#press dispatches its mousedown from here, so trusted),
+          // picks the scroll area under it; an agent's press is untrusted and never does
+          // (docs/specs/scroll-area.md decision 5).
+          this.#scroll.clicked(event.originalTarget);
+        }
         return;
       }
       case "compositionstart":
@@ -802,7 +915,15 @@ export class VimmaChild extends JSWindowActorChild {
     const handler = this.docShell?.chromeEventHandler;
     if (!win || !handler) return Promise.resolve();
     const utils = win.windowUtils;
-    const before = utils.lastTransactionId;
+    /** @type {number} */
+    let before;
+    try {
+      before = utils.lastTransactionId;
+    } catch {
+      // No docshell or pres context any more (nsDOMWindowUtils::GetLastTransactionId throws
+      // NS_ERROR_UNEXPECTED): the window is going away, and nothing of it will paint.
+      return Promise.resolve();
+    }
     return new Promise((resolve) => {
       let over = false;
       const done = () => {
@@ -824,8 +945,14 @@ export class VimmaChild extends JSWindowActorChild {
       // one was painted since and none waits for the screen any more.
       const check = () => {
         if (over) return;
-        if (utils.lastTransactionId > before && !utils.isMozAfterPaintPending) done();
-        else win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
+        try {
+          if (utils.lastTransactionId > before && !utils.isMozAfterPaintPending) done();
+          else win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
+        } catch {
+          // The window was torn down since the last refresh (its tab closed, #1521): no paint
+          // of it is coming, so the wait ends here rather than by its timer.
+          done();
+        }
       };
       handler.addEventListener("MozAfterPaint", onPaint);
       win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
@@ -903,6 +1030,13 @@ export class VimmaChild extends JSWindowActorChild {
         if (this.document.hasFocus() && this.#inEditable()) this.docShell?.doCommand(command);
         return undefined;
       }
+      case "Vimma:ScrollAreas":
+        return this.#scroll.scrollAreas();
+      case "Vimma:ScrollAreaPick":
+        return this.#scroll.pickArea(msg.data?.index);
+      case "Vimma:ScrollAreaClear":
+        this.#scroll.clearArea();
+        return undefined;
       case "Vimma:ScrollPosition":
         return this.#scroll.position();
       case "Vimma:FindAnchor":
@@ -1325,7 +1459,7 @@ export class VimmaChild extends JSWindowActorChild {
       return true;
     }
     if (el.localName !== "a" && isEditable(describe(el)).editable) {
-      this.#focus(html);
+      this.#focusAtEnd(html);
       return true;
     }
     return asUserGesture(win, () => this.#press(el));
@@ -1510,8 +1644,7 @@ export class VimmaChild extends JSWindowActorChild {
     if (!isEditable(describe(el)).editable || !el.checkVisibility({ visibilityProperty: true })) {
       return false;
     }
-    this.#focus(el);
-    return deepActiveElement(this.document) === el;
+    return this.#focusAtEnd(el);
   }
 
   /**
@@ -1530,7 +1663,44 @@ export class VimmaChild extends JSWindowActorChild {
     const el = /** @type {HTMLElement | undefined} */ (
       fields[inputIndex(Number(count) || undefined, fields.length)]
     );
-    if (el) this.#focus(el);
+    if (el) this.#focusAtEnd(el);
     return !!el;
+  }
+
+  /**
+   * Focuses `el` for `i`, `gi` or a hint, and puts its caret at the end of its text unless the
+   * user has been in it or the page moved its selection on focus: a page fills its field from
+   * markup with the selection at 0, where a scripted focus keeps it (#1522).
+   * @param {HTMLElement} el
+   * @returns {boolean} whether it took focus
+   */
+  #focusAtEnd(el) {
+    this.#focus(el);
+    if (deepActiveElement(this.document) !== el) return false;
+    if (this.#userFields.has(el)) return true;
+    try {
+      if (el.localName === "input" || el.localName === "textarea") {
+        // The field's own editor: setSelectionRange throws, and selectionStart is null, for an
+        // email or number input.
+        const editor = /** @type {HTMLInputElement} */ (el).editor;
+        if (!editor || !atStart(editor.selection, editor.rootElement)) return true;
+        editor.endOfDocument();
+      } else if (el.isContentEditable) {
+        const sel = this.document.getSelection();
+        if (!sel || !atStart(sel, el, true)) return true;
+        const end = endOfLastLeaf(el);
+        sel.collapse(end.node, end.offset);
+        // A text field's focus scrolls its caret into view (nsFocusManager::ScrollIntoView), an
+        // editor's only its box: in an editor taller than the view, its end is off screen.
+        this.#selCon()?.scrollSelectionIntoView(
+          Ci.nsISelectionController.SELECTION_NORMAL,
+          Ci.nsISelectionController.SELECTION_FOCUS_REGION,
+          0,
+        );
+      }
+    } catch {
+      // A field the page removed or made read-only while it took focus keeps its caret.
+    }
+    return true;
   }
 }

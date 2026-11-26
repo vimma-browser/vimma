@@ -69,6 +69,8 @@ group("Tabs", [
   ["move_tab_left", "tab.move_left", "Move the tab left"],
   ["move_tab_right", "tab.move_right", "Move the tab right"],
   ["restore_tab", "tab.restore", "Reopen the last closed tab"],
+  // docs/specs/tab-sleep.md decision 15: no default key; `:sleep` and `z` in the side panel.
+  ["sleep_tabs", "tab.sleep", "Put this workspace's tabs to sleep (:sleep; :sleep all, :sleep N)"],
   // docs/specs/tab-line.md: the tab line's labels, and the line itself.
   [
     "tabline_hint",
@@ -165,6 +167,9 @@ group("Navigation", [
   ["scroll_half_up", "scroll.half_up", "Scroll half a page up"],
   ["scroll_top", "scroll.top", "Scroll to top"],
   ["scroll_bottom", "scroll.bottom", "Scroll to bottom"],
+  // docs/specs/scroll-area.md: which panel the scroll keys move.
+  ["scroll_area_next", "scroll.area_next", "Scroll keys: next scroll area (a count: the Nth)"],
+  ["scroll_area_prev", "scroll.area_prev", "Scroll keys: previous scroll area"],
   ["history_back", "history.back", "Go back"],
   ["history_forward", "history.forward", "Go forward"],
   ["reload", "page.reload", "Reload page"],
@@ -383,6 +388,8 @@ group("Side panel", [
     "panel.move",
     "Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder",
   ],
+  // docs/specs/tab-sleep.md Behaviour 12: `z`, "zzz".
+  ["panel_sleep", "panel.sleep", "Put the selected tab, or the marked tabs, to sleep"],
   // No default key (docs/specs/close-active-tab.md decision 1): a user binds it, as ctrl+w;
   // after the bound keys, as the row numbers below are.
   [

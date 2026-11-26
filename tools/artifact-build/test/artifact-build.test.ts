@@ -11,7 +11,10 @@ import {
   indexTask,
   linkLauncher,
   machArtifactEnv,
+  markTestBundle,
   refreshAppIni,
+  TEST_BUNDLE_ID,
+  testBundlePlist,
   sourceStamp,
   uaName,
 } from "../artifact-build.ts";
@@ -343,6 +346,16 @@ describe("refreshAppIni", () => {
     expect(copy(dir)).toContain("BuildID=2");
   });
 
+  it("marks the .app as a test build again after a bare `./mach build` rewrote Info.plist", () => {
+    const dir = engine();
+    build(dir, "1");
+    const contents = join(dir, ARTIFACT_OBJDIR, "dist", "Vimma.app", "Contents");
+    mkdirSync(contents, { recursive: true });
+    writeFileSync(join(contents, "Info.plist"), PLIST);
+    refreshAppIni(dir, () => {});
+    expect(readFileSync(join(contents, "Info.plist"), "utf8")).toContain(TEST_BUNDLE_ID);
+  });
+
   it("returns the path tests pass as XUL_APP_FILE", () => {
     const dir = engine();
     build(dir, "1");
@@ -371,5 +384,83 @@ describe("linkLauncher", () => {
     writeFileSync(join(bin, "other"), "a real binary");
     linkLauncher(engine, "other");
     expect(lstatSync(join(bin, "other")).isFile()).toBe(true);
+  });
+});
+
+/** The parts of a macOS build's Contents/Info.plist (browser/app/macbuild) that matter here. */
+const URL_TYPE = (scheme: string) =>
+  `\t\t<dict>\n\t\t\t<key>CFBundleURLName</key>\n\t\t\t<string>${scheme} URL</string>\n` +
+  `\t\t\t<key>CFBundleURLSchemes</key>\n\t\t\t<array>\n\t\t\t\t<string>${scheme}</string>\n` +
+  `\t\t\t</array>\n\t\t</dict>\n`;
+const PLIST = [
+  '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n',
+  "\t<key>CFBundleDocumentTypes</key>\n\t<array>\n\t\t<dict>\n",
+  "\t\t\t<key>CFBundleTypeExtensions</key>\n\t\t\t<array>\n\t\t\t\t<string>html</string>\n",
+  "\t\t\t</array>\n\t\t</dict>\n\t</array>\n",
+  "\t<key>CFBundleIdentifier</key>\n\t<string>dev.vimma.browser</string>\n",
+  "\t<key>CFBundleURLTypes</key>\n\t<array>\n",
+  URL_TYPE("http"),
+  URL_TYPE("https"),
+  URL_TYPE("file"),
+  "\t</array>\n\t<key>CFBundleVersion</key>\n\t<string>16126.11.25</string>\n</dict>\n</plist>\n",
+].join("");
+
+describe("testBundlePlist", () => {
+  // LaunchServices sends a link clicked in another app to the default browser's bundle id, and
+  // to a running app with that id first: a lane build with the release id took the user's links.
+  it("gives the build its own bundle id", () => {
+    const out = testBundlePlist(PLIST);
+    expect(TEST_BUNDLE_ID).not.toBe("dev.vimma.browser");
+    expect(out).toContain(`<key>CFBundleIdentifier</key>\n\t<string>${TEST_BUNDLE_ID}</string>`);
+    expect(out).not.toContain("<string>dev.vimma.browser</string>");
+  });
+
+  it("drops the http and https URL handlers and keeps everything else", () => {
+    const out = testBundlePlist(PLIST);
+    expect(out).not.toMatch(/<string>https?<\/string>/);
+    expect(out).not.toContain("http URL");
+    expect(out).toContain(URL_TYPE("file"));
+    expect(out).toContain("<string>html</string>");
+    expect(out).toContain("<string>16126.11.25</string>");
+    expect(out.replace(TEST_BUNDLE_ID, "dev.vimma.browser")).toBe(
+      PLIST.replace(URL_TYPE("http"), "").replace(URL_TYPE("https"), ""),
+    );
+  });
+
+  it("is idempotent", () => {
+    const once = testBundlePlist(PLIST);
+    expect(testBundlePlist(once)).toBe(once);
+  });
+
+  it("refuses a plist without a bundle id rather than leave the release id in place", () => {
+    expect(() => testBundlePlist("<plist><dict></dict></plist>")).toThrow(/CFBundleIdentifier/);
+  });
+});
+
+describe("markTestBundle", () => {
+  const app = (engine: string) => join(engine, ARTIFACT_OBJDIR, "dist", "Vimma.app");
+  const withApp = () => {
+    const engine = tempDir("vimma-artifact-");
+    mkdirSync(join(app(engine), "Contents"), { recursive: true });
+    writeFileSync(join(app(engine), "Contents", "Info.plist"), PLIST);
+    return engine;
+  };
+
+  it("rewrites the .app's Info.plist and unregisters the stale LaunchServices record once", () => {
+    const engine = withApp();
+    const unregistered: string[] = [];
+    expect(markTestBundle(engine, (p) => unregistered.push(p))).toBe(true);
+    const plist = readFileSync(join(app(engine), "Contents", "Info.plist"), "utf8");
+    expect(plist).toBe(testBundlePlist(PLIST));
+    expect(unregistered).toEqual([app(engine)]);
+    expect(markTestBundle(engine, (p) => unregistered.push(p))).toBe(false);
+    expect(unregistered).toHaveLength(1);
+  });
+
+  it("does nothing without a .app (Linux)", () => {
+    const engine = tempDir("vimma-artifact-");
+    const unregistered: string[] = [];
+    expect(markTestBundle(engine, (p) => unregistered.push(p))).toBe(false);
+    expect(unregistered).toEqual([]);
   });
 });

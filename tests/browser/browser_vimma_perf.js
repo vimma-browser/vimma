@@ -29,6 +29,8 @@ const PAGE = "https://example.com/";
 const SAMPLES = 21;
 const TABS = 200;
 
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+
 /**
  * Median budgets in ms, per case and timing; `null`: recorded, not gated (the floors are the
  * yardstick, not a target). About twice the higher median of two CI runs on PR #108
@@ -37,13 +39,32 @@ const TABS = 200;
  * 12.8 / 56.5; floor paint 35.1 and 36.2. Re-record from CI, never from a laptop (runbook).
  * @type {Record<string, { action: number | null, paint: number | null }>}
  */
-const BUDGETS = {
+const LINUX_BUDGETS = {
   floor: { action: null, paint: null },
   "key-floor": { action: null, paint: null },
   "pane-focus": { action: 25, paint: 85 },
   "workspace-200-in": { action: 25, paint: 150 },
   "workspace-200-out": { action: 25, paint: 115 },
 };
+
+/**
+ * The hosted macOS runner (3 vCPU, shared) varies by up to 1.46 times between runs, and its action
+ * medians over 102 CI runs (November 2026) reached 26.3 ms for pane-focus (median 12.9) and
+ * 22.4 / 22.1 ms for the workspace switches (medians 11.1 / 11.3): the Linux 25 ms action budget
+ * failed there on a slow runner (issue #1567). Its action budgets are a third above the highest
+ * median, rounded up to 5 ms. Its paint medians stay inside the Linux paint budgets (highest
+ * 70.9, 112.7 and 72.5 ms), so those are shared. The run's own floors do not track the action
+ * time, so they cannot scale it (runbook, "Key-to-paint timings").
+ */
+const BUDGETS =
+  AppConstants.platform === "macosx"
+    ? {
+        ...LINUX_BUDGETS,
+        "pane-focus": { action: 35, paint: 85 },
+        "workspace-200-in": { action: 30, paint: 150 },
+        "workspace-200-out": { action: 30, paint: 115 },
+      }
+    : LINUX_BUDGETS;
 
 /**
  * A value the test's own lookup found. It changes nothing at run time: a read through a missing

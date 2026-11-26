@@ -1,6 +1,7 @@
 import { test, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { formatDefaultsToml } from "../src/config/defaults.mjs";
+import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/config/defaults.mjs";
+import { LOAD_RATE, OPEN_RATE } from "../src/agent/agent.mjs";
 import { bindingsJson } from "../src/ui/help.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 
@@ -26,4 +27,11 @@ test("defaults.toml lists macOS's own default keys as comments under [keys] (#38
   expect(keys).toContain('\n# select_last_tab = ["meta+9"]\n');
   expect(keys).toContain('\n# focus_urlbar = ["ctrl+l", "meta+l"]\n');
   expect(keys).toContain('\nhistory_back = ["alt+left"]\n');
+});
+
+test("[mcp]'s rate defaults are the agent gate's OPEN_RATE and LOAD_RATE", () => {
+  // The gate falls back to these when no config is in force, so the two must not drift
+  // (vimma-mcp decision 46).
+  expect(DEFAULT_CONFIG.mcp?.open_per_minute).toBe(OPEN_RATE.max);
+  expect(DEFAULT_CONFIG.mcp?.load_per_minute).toBe(LOAD_RATE.max);
 });

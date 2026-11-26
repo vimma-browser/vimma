@@ -25,7 +25,7 @@ const { AgentGate } = ChromeUtils.importESModule(
 const { AgentDrive } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentDrive.sys.mjs",
 );
-const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
+const { McpHost, MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
 );
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -443,29 +443,47 @@ add_task(async function test_a_find_never_focuses_a_field_of_the_tab_the_user_is
   await mcp(false);
 });
 
-add_task(async function test_loads_count_towards_the_open_rate() {
+// vimma-mcp decision 46: a key that loads a page loads it into its tab, so it takes a slot of the
+// load rate, which new tabs do not use up.
+add_task(async function test_loads_count_towards_the_load_rate() {
   await mcp(true);
+  const before = McpHost.config;
+  McpHost.configure({
+    workspace: "agent",
+    askTimeout: 50,
+    grantMinutes: 0,
+    grantMaxMinutes: 480,
+    maxReadChars: 200000,
+    notify: false,
+    downloadDir: "~/Downloads/vimma-agent",
+    downloadMaxMb: 200,
+    clamavMaxAgeDays: 7,
+    openPerMinute: 15,
+    loadPerMinute: 2,
+  });
   const tab = await openAgentTab(`${PAGE}?a`);
+  const other = await openAgentTab(`${PAGE}?o`);
   const b = `${PAGE}?b`;
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, b);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, b);
   const c = await agentClient();
-  // Ten opens, the most a minute (M3), under a grant.
+  // Two loads, the most a minute with load_per_minute = 2, under a grant.
   let id = c.request("agent-open", { url: `${PAGE}?1`, tab: idOf(tab) });
   AgentGate.answer((await question()).id, { kind: "grant", minutes: 5 });
   await c.response(id);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, `${PAGE}?1`);
-  for (let i = 2; i <= 10; i++) {
-    Assert.ok((await c.call("agent-open", { url: `${PAGE}?x${i}` })).ok, `open ${i}`);
-  }
+  Assert.ok((await c.call("agent-open", { url: `${PAGE}?2`, tab: idOf(other) })).ok, "load 2");
+  // A new tab takes no load slot.
+  Assert.ok((await c.call("agent-open", { url: `${PAGE}?x` })).ok, "a new tab still opens");
   // The open's grant covers keys too (mcp-grants G1).
   let r = await keys(c, tab, "gu", null);
-  Assert.equal(r.result.stopped, "denied", "gu needs a slot of the open rate (M20)");
+  Assert.equal(r.result.stopped, "denied", "gu needs a slot of the load rate (M20)");
   Assert.equal(r.result.url, `${PAGE}?1`, "and loads nothing");
   r = await keys(c, tab, "H", null);
   Assert.equal(r.result.stopped, "denied", "so does a history load");
   Assert.equal(r.result.url, `${PAGE}?1`, "which does not run");
   c.close();
+  McpHost.configure(before);
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   await mcp(false);
 });

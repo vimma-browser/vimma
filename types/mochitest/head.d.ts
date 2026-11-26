@@ -512,3 +512,14 @@ declare const notice: (doc: Document) => HTMLElement;
 declare function toEngines(/** @type {Document} */ doc: Document): Promise<void>;
 /** @param {Document} doc */
 declare const choiceNote: (doc: Document) => string;
+
+// tests/browser/head_vimma_workspace_desync.js
+
+declare const WorkspaceDesync: {
+  PAGE: string;
+  until: (cond: () => unknown, msg: string) => Promise<unknown>;
+  system: () => nsIPrincipal;
+  openWindow: () => Promise<BrowserWindow>;
+  outOfStep: (win: BrowserWindow) => string[];
+  useWindow: (win: BrowserWindow) => Promise<void>;
+};

@@ -70,7 +70,8 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [m1-find](specs/m1-find.md), [live-grep](specs/live-grep.md),
   [m1-copy-mode](specs/m1-copy-mode.md), [page-suggestions](specs/page-suggestions.md),
   [pdf-mode](specs/pdf-mode.md), [popup-blocked](specs/popup-blocked.md),
-  [site-permissions](specs/site-permissions.md), [firefox-dialogs](specs/firefox-dialogs.md).
+  [site-permissions](specs/site-permissions.md), [firefox-dialogs](specs/firefox-dialogs.md),
+  [webauthn-prompts](specs/webauthn-prompts.md).
 - **Tabs, panes and the side panel:** [m2-core-logic](specs/m2-core-logic.md),
   [m2-tab-keys](specs/m2-tab-keys.md), [m2-picker-rename](specs/m2-picker-rename.md),
   [tab-search](specs/tab-search.md), [m0-tabstrip-hidden](specs/m0-tabstrip-hidden.md),

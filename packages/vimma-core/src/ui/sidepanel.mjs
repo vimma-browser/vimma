@@ -55,12 +55,15 @@ import { splitLabel } from "../panes/splits.mjs";
  * `move`: ask which workspace gets that tab (`m`, m3-workspaces "Settled: moving a background
  * tab from the side panel").
  * `alone`: end the workspace's split and show `id` alone (docs/specs/side-panel-unsplit.md).
+ * `sleep`: put those tabs to sleep, each named by its row number (`z`, docs/specs/tab-sleep.md
+ * Behaviour 12); the panel stays open.
  * `together` with `alone`: make `ids` the view, then show the `alone` tab by itself with the view
  * kept hidden (side-panel-unsplit decision 25).
  * @typedef {{ type: "select", id: string } | { type: "close" }
  *   | { type: "refuse", text: string } | { type: "closeTab", id: string }
  *   | { type: "together", ids: string[], focus: string, alone?: string }
- *   | { type: "alone", id: string } | { type: "move", id: string }} PanelEffect
+ *   | { type: "alone", id: string } | { type: "move", id: string }
+ *   | { type: "sleep", tabs: { id: string, number: number }[] }} PanelEffect
  */
 
 /**
@@ -200,8 +203,26 @@ export function refreshPanel(state, model, info, options = {}) {
   const next = openPanel(model, info, { ...options, selectedId });
   if (!same) return next;
   const listed = new Set(next.rows.map((r) => r.tabId));
+  // A row's id is its browser's panel, which a discard takes away (docs/specs/tab-sleep.md
+  // decision 23): the highlighted tab gone, and in its place a row new to the list, asleep now,
+  // awake before and with the same name, is that tab under its new id, so the highlight stays
+  // on it rather than going back to the active tab.
+  const was = state.rows[state.selected];
+  const now = next.rows[state.selected];
+  const before = new Set(state.rows.map((r) => r.tabId));
+  const renamed =
+    selectedId !== null &&
+    !listed.has(selectedId) &&
+    next.rows.length === state.rows.length &&
+    !!was &&
+    !!now &&
+    !before.has(now.tabId) &&
+    now.asleep &&
+    !was.asleep &&
+    now.display === was.display;
   return Object.freeze({
     ...next,
+    ...(renamed ? { selected: state.selected } : {}),
     marked: changed(state) ? inRowOrder(next, new Set(state.marked)) : next.marked,
     anchor: state.anchor && listed.has(state.anchor) ? state.anchor : null,
   });
@@ -492,6 +513,21 @@ export function panelKey(state, action) {
       if (!row) return { state, effect: null };
       if (row.pinned) return { state, effect: { type: "refuse", text: PINNED_MOVE_TEXT } };
       return { state, effect: { type: "move", id: row.tabId } };
+    }
+    // `z` (docs/specs/tab-sleep.md Behaviour 12): the marked tabs once the marks are the user's
+    // (an open range included), else the highlighted row's. A split's panes start marked and
+    // are on screen, so they alone are not a choice to sleep. The marks are spent, as Enter
+    // spends them; the highlight stays, and the row turns muted in place.
+    case "panel.sleep": {
+      const ready = state.anchor === null ? state : markRange(state);
+      const rows = changed(ready)
+        ? markedRows(ready)
+        : [state.rows[state.selected]].filter((r) => r !== undefined);
+      if (!rows.length) return { state, effect: null };
+      return {
+        state: Object.freeze({ ...ready, marked: ready.panes, anchor: null }),
+        effect: { type: "sleep", tabs: rows.map((r) => ({ id: r.tabId, number: r.number })) },
+      };
     }
     default:
       return { state, effect: null };

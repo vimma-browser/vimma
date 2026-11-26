@@ -112,9 +112,10 @@ answer for the user, and that never disturbs what the user is doing.
   container (decision 6); background opens never switch workspace (decision 12).
 - **Routing** is applied by Vimma's own open paths (`host/route-ops.mjs`, the URL bar and
   `:open`) and the `-vimma-from` handler (`workspaces/WorkspaceRouter.sys.mjs`). The socket's
-  `open` calls `gBrowser.addTab` directly and is not routed. An open with an explicit
-  `userContextId` keeps it: the `Tabbrowser` hunks only fill a missing value (m3-workspaces
-  decision 3, `??=`).
+  `open` calls `gBrowser.addTab` directly and is not routed. (Since changed: rules apply only to
+  links from other apps, never to the URL bar or `:open`; see workspace-routing decision 9.) An
+  open with an explicit `userContextId` keeps it: the `Tabbrowser` hunks only fill a missing value
+  (m3-workspaces decision 3, `??=`).
 - **The y/N line** is `RenamePrompt.ask` (`ui/rename-prompt.mjs`): any key but `y` says no, a held
   key (`e.repeat`) is ignored, the line is an `alertdialog`, refuses to open over DOM full screen,
   and takes focus when it opens: right for a question the user's own key opened, wrong for one an
@@ -742,7 +743,9 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     once (`busy` beyond, grants included; `agent-cancel` is not counted, decision 41); at most 10
     `agent-open`s per connection a minute (core `OpenRate`, `busy` beyond), because a
     `vimma_open` grant runs unasked and must not open thousands of tabs. An agent connection
-    with a request waiting is not closed by the 60 s idle limit.
+    with a request waiting is not closed by the 60 s idle limit. (Since changed: the open rate
+    is two rates, 15 new tabs and 60 loads into an existing agent tab a minute, each set in
+    `[mcp]`; decision 46, issue [#1561](https://github.com/vimma-browser/vimma/issues/1561).)
 33. **Replies always fit and always parse.** `agent-read`'s `selection` is wrapped in the
     delimiters like the text and cut, with the text, until the reply fits 1 MiB; the selection
     is cut by code point in the content process. Every string in agent replies goes through
@@ -920,7 +923,9 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     meant to go, and showing an agent a page is a reason to be there. A restored session keeps each
     tab in the container it was saved with. Workspace routing's own rules for opens from the URL bar
     and `:open` are unchanged, so a rule naming the agent workspace still applies to what the user
-    types.
+    types. (Since changed: rules no longer apply to what the user types, and links from other
+    apps pass over a rule naming the agent workspace, so such a rule routes nothing; see
+    workspace-routing decision 9.)
 
 ### K. ClamAV's definitions and clamd
 
@@ -975,6 +980,63 @@ outdated definitions (ClamAV)`. An infected verdict is refused however old the d
     default: a scan turned off, fewer signatures, a limit set (other than 0, no limit), a short
     BytecodeTimeout, an excluded path, another signature folder or a developer option; security
     M13, issue #1210.)
+
+### L. Two open rates
+
+Issue [#1561](https://github.com/vimma-browser/vimma/issues/1561). Decision 32's one rate counted
+every `agent-open` against 10 a minute, including a URL loaded into an agent tab that already
+exists. Such a load adds no tab, yet it was held to a third of the 30 clicks a minute an agent
+gets, so an agent reading through pages in one tab waited on the rate long before anything was
+at risk, and the number could not be changed.
+
+46. **Two rates per connection, each a config key.** An `agent-open` that opens a new agent tab
+    takes a slot of `[mcp] open_per_minute` (default 15, core `OPEN_RATE`, `OpenRate`). A load
+    into an existing agent tab takes a slot of `[mcp] load_per_minute` (default 60, core
+    `LOAD_RATE`, `LoadRate`): an `agent-open` with `tab`, and the page loads that clicks, fills,
+    hovers, follows, `gu`, `gU` and history steps cause (mcp-drive D12, mcp-forms F11, hover
+    decision 9), since each of those loads into the tab it acts in and a page in an agent tab
+    opens no pop-up on its own (mcp-forms, Research, "Agent pages"): an agent's clicks carry no
+    user activation. While the user's own input in an agent tab gives the page transient
+    activation, the page can still open one new tab per gesture through Firefox's modified-click
+    path (`ClickHandlerChild`, `openLinkIn`), which the pop-up sandbox does not cover and neither
+    rate counts; issue [#1568](https://github.com/vimma-browser/vimma/issues/1568) tracks it.
+    (Since changed: an agent tab opens nothing on a modified click, the user's own included:
+    `AgentPages` wraps `ClickHandlerParent.contentAreaClick` and drops every link click whose tab
+    is in the agent container and that Firefox would open in a new tab or window, or save
+    (ctrl or cmd, shift, the middle button, alt with `browser.altClickSave`), because the agent
+    workspace's pages open nothing the agent is not counted for, and the parent cannot tell the
+    user's click from a page's scripted one; counting the tab against the agent's rate instead
+    would charge the agent for a tab the page chose. Issue #1568; described now in
+    docs/security/12-agents-mcp.md M10.)
+    The two count apart, in a window of 60 s, with
+    grants and Vimma's own agent (`ctrl+b i`, which runs the same agent commands) included.
+    - **Why two.** The limit exists because a grant runs these unasked: without it, a looping or
+      prompt-injected agent could open thousands of tabs, which the agent workspace keeps awake
+      while an agent is connected, and send requests to any site as fast as it can call. Both
+      reasons hold for a new tab. A load replaces a page, so it adds no tab and holds no more
+      memory, and only the second reason holds; 60 a minute still bounds that to one request a
+      second, and every call that loads still shows a notice under a grant and is a `:mcp log`
+      row (M23).
+    - **Why these defaults.** 15 new tabs leaves room for a ten-item task's searches, each in
+      its own tab, and its checkout within a minute; 60 loads is twice the 30 clicks a minute
+      an agent gets, so a click that loads a page is held by the click rate first.
+    - **Always on, bounded.** Each key is an integer from 1 to 600. There is no off, because
+      nothing else stops a granted agent in a loop; the user may raise or lower each limit.
+      600 (ten a second) is above what an agent's own round trips reach, so a larger value
+      would bound nothing. A value outside the range, or not an integer, is a config error
+      handled as every other (security.md F2): the file is not applied, and the config in force
+      stays (the defaults, when Vimma starts).
+    - **A change applies to the next call.** Each rate reads its value from the config in force
+      at every call, as `ask_timeout` and `max_read_chars` are read, so a saved config.toml
+      holds from the agent's next call, without a reconnect. Calls already in the window stay
+      counted: a lowered limit refuses until enough of them leave it, and the wait it gives is
+      until then.
+    - **The refusal says which.** A used-up rate is the `busy` denial of issue #592, with
+      `retryAfter`, and its message names the limit and its key. For new tabs it is
+      `too many new tabs from this agent in the last minute (at most 15, [mcp] open_per_minute)`;
+      for loads, `too many loads from this agent in the last minute (at most 60, [mcp] load_per_minute)`.
+      An `agent-open` is refused for its rate before its question as well as after it, as before
+      (M3).
 
 ## Security and privacy
 
@@ -1122,6 +1184,7 @@ m7-a11y.
 - `browser_vimma_mcp_control.js`: full control asks while MCP is on, the code, `:control on`;
   an unfocused window gets `getAttention` and one alert with no URL (alerts service mocked).
 - `browser_vimma_mcp_agent_pages.js`: permissions refused, pop-ups blocked, no external app.
+  (Since changed: and no tab or window from a modified click, issue #1568.)
 - `browser_vimma_mcp_downloads.js` (served by `file_vimma_agent_download.sjs`): the question
   shows name, size, type and host and no URL; `y` saves to the quarantine, mode 0600, not
   opened; `n` saves nothing; `.sh`, ELF and zip-with-ELF need `!`; `http:` refused; over the

@@ -91,6 +91,8 @@ function paneText({ index, count, hidden, split, splits = 1 }) {
  * @property {ElementStatus | null} [element]  the focused text block in ELEMENT mode
  * @property {HintStatus | null} [hint]  the hint session (hints.mjs hintStatus)
  * @property {HoverStatus | null} [hover]  the selected tab's hover (docs/specs/hover.md)
+ * @property {boolean} [scrollArea]  the scroll keys move an area `gs` or a click chose in the
+ *   selected tab, not the page's own (docs/specs/scroll-area.md)
  * @property {import("../page/pdf.mjs").PdfState | null} [pdf]  the PDF viewer's state, when the
  *   selected tab shows it (docs/specs/pdf-mode.md decision 13)
  * @property {string | null} [popups]  the selected page has Firefox's pop-up blocked bar: the cue
@@ -399,6 +401,7 @@ export function statusSegments(input) {
     element = null,
     hint = null,
     hover = null,
+    scrollArea = false,
     popups = null,
     pdf = null,
     downloads = null,
@@ -454,6 +457,19 @@ export function statusSegments(input) {
         fg: "--vimma-fg-bright",
         priority: 8.5,
         min: 8,
+        cut: "end",
+      }),
+    );
+  }
+  if (scrollArea) {
+    // Says why j moves a panel; gives way before the title and the URL, like the hover.
+    left.push(
+      seg({
+        id: "scroll-area",
+        text: "scroll area",
+        fg: "--vimma-accent",
+        priority: 8.5,
+        min: 11,
         cut: "end",
       }),
     );

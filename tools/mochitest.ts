@@ -1,12 +1,14 @@
 // Runs our mochitests through mach. `surfer import` symlinks tests/ under this engine path.
 // --artifact: against the artifact build (ADR-010, tools/artifact-build/artifact-build.ts).
+// --shard=N/M: shard N of M, split by file on the measured times (tools/mochitest-shards.ts).
 import { spawnSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { refreshAppIni } from "./artifact-build/artifact-build.ts";
 import { machPythonOrExit } from "./mach-python.ts";
+import { applyShard } from "./mochitest-shards.ts";
 
 const ENGINE_TESTS = "browser/base/zen-components/";
 
@@ -85,7 +87,18 @@ export function childEnv(env: Record<string, string | undefined>, extra: Record<
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const engine = new URL("../engine/", import.meta.url).pathname;
   const expectKey = expectSafeBrowsingKey(process.env, homedir(), existsSync);
-  const { args, env } = mochitestCommand(process.argv.slice(2), engine, expectKey);
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+  let argv = process.argv.slice(2);
+  if (argv.some((a) => a.startsWith("--shard"))) {
+    try {
+      const times = JSON.parse(read("./mochitest-times.json")) as Record<string, number>;
+      argv = applyShard(argv, read("../tests/browser/browser.toml"), times);
+    } catch (e) {
+      console.error(`npm run mochitest: ${(e as Error).message}`);
+      process.exit(2);
+    }
+  }
+  const { args, env } = mochitestCommand(argv, engine, expectKey);
   // A bare `./mach build` since the artifact build regenerates application.ini, not our copy.
   if (env.MOZCONFIG) refreshAppIni(engine);
   const python = machPythonOrExit(engine, "npm run mochitest");

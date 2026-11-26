@@ -505,7 +505,7 @@ async function updateStepsText() {
 
 // Spec package-repositories, decision 18: the pacman package upgrades with the system, and a
 // .deb or .rpm whose repository file exists gets its package manager's upgrade command; without
-// it, the download command, plus one line to the guide once vimma.feature.packageRepos is on.
+// it, the download command, plus one line to the guide's repository section (decision 22).
 add_task(async function package_repositories_get_the_upgrade_command() {
   const root = PathUtils.join(dir, "root");
   /** @param {string} path */
@@ -513,13 +513,13 @@ add_task(async function package_repositories_get_the_upgrade_command() {
     await IOUtils.makeDirectory(PathUtils.parent(root + path) ?? root, { createAncestors: true });
     await IOUtils.writeUTF8(root + path, "");
   };
-  /**
-   * @param {string} type
-   * @param {[string, string | boolean][]} [prefs]
-   */
-  const stepsFor = async (type, prefs = []) => {
+  /** @param {string} type */
+  const stepsFor = async (type) => {
     await SpecialPowers.pushPrefEnv({
-      set: [["vimma.update.installType", type], ["vimma.update.testRepoRoot", root], ...prefs],
+      set: [
+        ["vimma.update.installType", type],
+        ["vimma.update.testRepoRoot", root],
+      ],
     });
     VimmaUpdates._reset();
     await serve(await manifest({}));
@@ -534,22 +534,30 @@ add_task(async function package_repositories_get_the_upgrade_command() {
   Assert.ok(text.includes("Vimma's pacman repository"), "pacman: the install type");
   Assert.ok(text.includes("sudo pacman -Syu"), "pacman: its upgrade command");
   Assert.ok(!text.includes("curl "), "pacman: no download command");
+  Assert.ok(!text.includes("omarchy update"), "pacman off Omarchy: no omarchy update");
+  // Omarchy's pacman hook aborts a direct `pacman -Syu` (#1550); its own command upgrades.
+  await make("/usr/bin/omarchy-update");
+  text = await stepsFor("pacman");
+  Assert.ok(text.includes("omarchy update"), "pacman on Omarchy: omarchy update");
+  Assert.ok(!text.includes("pacman -Syu"), "pacman on Omarchy: no direct pacman upgrade");
+  Assert.ok(!text.includes("OMARCHY_ALLOW_DIRECT_PACMAN"), "pacman on Omarchy: no guard bypass");
+  text = await stepsFor("aur");
+  Assert.ok(text.includes("yay -Syu vimma-bin"), "aur on Omarchy: the host checks only for pacman");
+  await IOUtils.remove(root + "/usr/bin/omarchy-update");
 
   text = await stepsFor("deb");
   Assert.ok(text.includes("sudo apt install ./vimma_9.9.9_amd64.deb"), "deb: the download");
-  Assert.ok(!text.includes(guide), "deb: no line to the guide while the feature is off");
-  text = await stepsFor("deb", [["vimma.feature.packageRepos", true]]);
-  Assert.ok(text.includes("sudo apt install ./vimma_9.9.9_amd64.deb"), "deb: still the download");
   Assert.ok(text.includes(guide), "deb: one line to the guide's repository section");
 
   await make("/etc/apt/sources.list.d/vimma.sources");
-  text = await stepsFor("deb", [["vimma.feature.packageRepos", true]]);
+  text = await stepsFor("deb");
   Assert.ok(text.includes("sudo apt update && sudo apt upgrade"), "deb: apt's upgrade");
   Assert.ok(!text.includes("curl "), "deb with its repository: no download command");
   Assert.ok(!text.includes(guide), "deb with its repository: no line to the guide");
 
   text = await stepsFor("rpm");
   Assert.ok(text.includes("sudo dnf install ./vimma-9.9.9-1.x86_64.rpm"), "rpm: the download");
+  Assert.ok(text.includes(guide), "rpm: one line to the guide's repository section");
   await make("/etc/yum.repos.d/vimma.repo");
   text = await stepsFor("rpm");
   Assert.ok(text.includes("sudo dnf upgrade vimma"), "rpm: dnf's upgrade");

@@ -352,6 +352,12 @@ export class BookmarksFileImpl {
     this.lastInput = "";
     /** A run is applying: Places events wait for its closing compare (D5). */
     this.applying = false;
+    /**
+     * The guids the running apply writes: its own events, told apart from a change that races
+     * it, which still needs its window noted (#1576). Null: every event is taken as the apply's.
+     * @type {Set<string> | null}
+     */
+    this.applyingGuids = null;
     /** @type {number | null} */
     this.burstTimer = null;
     /** @type {number | null} */
@@ -653,6 +659,7 @@ export class BookmarksFileImpl {
     const B = places().bookmarks;
     let n = 0;
     this.applying = true;
+    this.applyingGuids = new Set(renames.map((r) => r.guid));
     try {
       for (const { guid, title } of renames) {
         try {
@@ -664,6 +671,7 @@ export class BookmarksFileImpl {
       }
     } finally {
       this.applying = false;
+      this.applyingGuids = null;
       this.burst.clear();
     }
     return n;
@@ -872,17 +880,25 @@ export class BookmarksFileImpl {
       who.add(sourceName(e.source));
       this.burst.set(table, who);
     }
-    if (!any || this.applying || this.paused || !this.ready) {
-      if (this.applying || this.paused) this.burst.clear();
+    if (!any || this.paused || !this.ready) {
+      if (this.paused) this.burst.clear();
       return;
     }
+    // A change that lands during an apply waits for its closing compare, which reads Places and
+    // must already know which of it a private window made, or it writes it (#1576).
+    const ownGuids = this.applyingGuids;
+    const theirs = !this.applying
+      ? mine
+      : ownGuids
+        ? mine.filter((e) => !ownGuids.has(e.guid))
+        : [];
     // Behaviour 12: what is added or changed from a private window is never written; an addition
     // stays in Places only, a change is put back. The event names no window, so the window it
     // came from is the focused one, or the browser window that opened it (the Library, a
     // bookmark dialog). A later change from a normal window makes the item an ordinary one.
-    if (this.writeBack === "all" && mine.some((e) => e.source === S.DEFAULT)) {
+    if (this.writeBack === "all" && theirs.some((e) => e.source === S.DEFAULT)) {
       const isPrivate = this.privateNow();
-      for (const e of mine) {
+      for (const e of theirs) {
         if (e.source !== S.DEFAULT || e.type === "bookmark-removed") continue;
         if (!isPrivate) {
           // Only a change to the item itself: a sort moves every bookmark of the folder, and a
@@ -902,6 +918,10 @@ export class BookmarksFileImpl {
         if (e.type === "bookmark-added") this.privateAdded.add(e.guid);
         else if (!this.privateAdded.has(e.guid)) this.privateChanged.add(e.guid);
       }
+    }
+    if (this.applying) {
+      this.burst.clear();
+      return;
     }
     // Only a burst that will be put back names its items for the loop guard.
     for (const [g, t] of named) this.eventTables.set(g, t);
@@ -2080,6 +2100,7 @@ export class BookmarksFileImpl {
     // (Behaviour 14, #1368).
     const before = new Map([...this.burst].map(([t, who]) => [t, new Set(who)]));
     this.applying = true;
+    this.applyingGuids = new Set(ops.flatMap((o) => (o.op === "reorder" ? o.guids : o.guid)));
     try {
       // Runs of inserts go in as trees, one transaction per parent (insertTree appends in the
       // order given, as the plan expects); removals in one call.
@@ -2118,6 +2139,7 @@ export class BookmarksFileImpl {
       }
     } finally {
       this.applying = false;
+      this.applyingGuids = null;
       this.burst = before;
     }
   }

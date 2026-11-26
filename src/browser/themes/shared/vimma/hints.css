@@ -68,3 +68,23 @@
     }
   }
 }
+
+/* The scroll area gs chose (docs/specs/scroll-area.md, decision 8), outlined for a moment just
+ * inside its box: the accent ring with the element ring's background halo, in chrome. */
+#vimma-scroll-area {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+  contain: strict;
+
+  & .vimma-scroll-area-ring {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid var(--vimma-accent, #2cf5d2);
+    border-radius: var(--vimma-radius, 0);
+    box-shadow:
+      0 0 0 1px var(--vimma-bg, #071011),
+      inset 0 0 0 1px var(--vimma-bg, #071011);
+  }
+}

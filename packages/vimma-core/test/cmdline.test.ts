@@ -1030,3 +1030,40 @@ describe(":tab N and :tabnext N (#1302)", () => {
     ).toEqual(["tab 1", "tab 2"]);
   });
 });
+
+// docs/specs/tab-sleep.md, Behaviour 9-12.
+describe(":sleep, :sleep all and :sleep N", () => {
+  const sleepRun = (action: object, text?: string) => ({
+    kind: "run",
+    command: "sleep",
+    action,
+    ...(text !== undefined ? { text } : {}),
+  });
+
+  test(":sleep, :sleep all and :sleep N parse to tab.sleep with their scope", () => {
+    expect(parseCommandLine(":sleep")).toEqual(sleepRun({ id: "tab.sleep" }));
+    expect(parseCommandLine(":sleep all")).toEqual(sleepRun({ id: "tab.sleep" }, "all"));
+    expect(parseCommandLine(":sleep ALL")).toEqual(sleepRun({ id: "tab.sleep" }, "all"));
+    expect(parseCommandLine(":sleep 4")).toEqual(sleepRun({ id: "tab.sleep", count: 4 }, "4"));
+    expect(parseCommandLine(":sl")).toEqual(sleepRun({ id: "tab.sleep" }));
+  });
+
+  test("sleep_tabs, the action's name, runs it too", () => {
+    expect(parseCommandLine(":sleep_tabs")).toEqual(run("sleep_tabs", "tab.sleep"));
+    expect(getAction("sleep_tabs")).toMatchObject({ id: "tab.sleep", group: "Tabs" });
+  });
+
+  test(":sleep with any other argument is an error that names the forms", () => {
+    for (const line of [":sleep 0", ":sleep x", ":sleep all 2", ":sleep 1 2", ":sleep -1"]) {
+      expect(errorOf(line)).toEqual({
+        code: "invalid-argument",
+        message: ":sleep takes all or a tab number (1, 2, …)",
+        suggestions: [],
+      });
+    }
+  });
+
+  test(":sleep completes all", () => {
+    expect(completeCommandLine("sleep a").candidates.map((c) => c.value)).toEqual(["sleep all"]);
+  });
+});

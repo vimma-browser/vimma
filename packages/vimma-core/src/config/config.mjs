@@ -160,7 +160,8 @@ import { hasControl } from "../text/strings.mjs";
  * over `:mcp on|off` (the pref), as `[theme] appearance` wins over `:theme`.
  * @typedef {{ enabled?: boolean, workspace: string, askTimeout: number, grantMinutes: number,
  *   grantMaxMinutes: number, maxReadChars: number, notify: boolean, downloadDir: string,
- *   downloadMaxMb: number, clamavMaxAgeDays: number }} McpConfig  `downloadDir` as written (`~` not expanded yet)
+ *   downloadMaxMb: number, clamavMaxAgeDays: number, openPerMinute: number,
+ *   loadPerMinute: number }} McpConfig  `downloadDir` as written (`~` not expanded yet)
  */
 
 /** @typedef {"swap" | "window"} PrivatePlacement */
@@ -299,6 +300,8 @@ const MCP_KEYS = [
   "download_dir",
   "download_max_mb",
   "clamav_max_age_days",
+  "open_per_minute",
+  "load_per_minute",
 ];
 export const MCP_BOUNDS = Object.freeze({
   askTimeout: Object.freeze({ min: 10, max: 300 }),
@@ -306,6 +309,10 @@ export const MCP_BOUNDS = Object.freeze({
   maxReadChars: Object.freeze({ min: 1000, max: 500000 }),
   downloadMaxMb: Object.freeze({ min: 1, max: 4096 }),
   clamavMaxAgeDays: Object.freeze({ min: 1, max: 90 }),
+  // vimma-mcp decision 46: at least 1, since a limit stays on; at most 600 (ten a second), past
+  // which an agent's own round trips are slower than the limit and it would bound nothing.
+  openPerMinute: Object.freeze({ min: 1, max: 600 }),
+  loadPerMinute: Object.freeze({ min: 1, max: 600 }),
 });
 
 /**
@@ -979,6 +986,10 @@ function validateMcp(mcp, { fail, typeError, unknownKey }) {
     } else if (key === "clamav_max_age_days") {
       const { min, max: top } = MCP_BOUNDS.clamavMaxAgeDays;
       integer(path, v, min, top, " (days)");
+    } else if (key === "open_per_minute" || key === "load_per_minute") {
+      const { min, max: top } =
+        MCP_BOUNDS[key === "open_per_minute" ? "openPerMinute" : "loadPerMinute"];
+      integer(path, v, min, top, " (per minute)");
     } else if (key === "download_dir") {
       const problem = downloadDirProblem(v);
       if (problem === "type") typeError(path, v, "a string");
@@ -1269,6 +1280,8 @@ function resolveMcp(mcp) {
     downloadDir: mcp?.download_dir ?? d.download_dir,
     downloadMaxMb: mcp?.download_max_mb ?? d.download_max_mb,
     clamavMaxAgeDays: mcp?.clamav_max_age_days ?? d.clamav_max_age_days,
+    openPerMinute: mcp?.open_per_minute ?? d.open_per_minute,
+    loadPerMinute: mcp?.load_per_minute ?? d.load_per_minute,
   };
 }
 

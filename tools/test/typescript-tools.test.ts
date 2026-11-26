@@ -86,10 +86,11 @@ describe("TypeScript under tools/ (ADR-025)", () => {
     expect(run.status).toBe(0);
   });
 
-  it("package.json asks for a Node that does that: 22.18 or later in 22, 24.3 or later", () => {
+  it("package.json asks for a Node that does that: 22.18 or later in 22, 24.3 or later in 24", () => {
     const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
     // 22.17 and 23.0-23.5 cannot run .ts without a flag; 23.6-24.2 print an ExperimentalWarning.
-    expect(pkg.engines.node).toBe("^22.18.0 || >=24.3.0");
+    // Node 26 is left out: surfer's branding patch fails on it (tools/import/check-node.ts).
+    expect(pkg.engines.node).toBe("^22.18.0 || ^24.3.0");
     const [major = 0, minor = 0] = readFileSync(new URL("../../.nvmrc", import.meta.url), "utf8")
       .split(".")
       .map(Number);

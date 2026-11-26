@@ -6,7 +6,7 @@
 // with labels, inside the untrusted-content delimiters (D12, D16; security.md M21), and
 // `f<label>` follows one as a load of its href, never a click, from labels of the current
 // document no older than 120 s; a link to another site is asked as `vimma_open` unless a
-// `vimma_open` grant is in force (D18; M18); follows take slots of the open rate (M20). The
+// `vimma_open` grant is in force (D18; M18); follows take slots of the load rate (M20). The
 // agent's collection is keyed by its tab, so the user's hint mode in the same window is left
 // alone.
 
@@ -26,7 +26,7 @@ const { AgentGate } = ChromeUtils.importESModule(
 const { AgentDrive } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentDrive.sys.mjs",
 );
-const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
+const { McpHost, MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
 );
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -620,21 +620,34 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   await mcp(false);
 });
 
-add_task(async function test_follows_count_towards_the_open_rate() {
+// vimma-mcp decision 46: a follow loads into its tab, so it takes a slot of the load rate.
+add_task(async function test_follows_count_towards_the_load_rate() {
   await mcp(true);
+  const before = McpHost.config;
+  McpHost.configure({
+    workspace: "agent",
+    askTimeout: 50,
+    grantMinutes: 0,
+    grantMaxMinutes: 480,
+    maxReadChars: 200000,
+    notify: false,
+    downloadDir: "~/Downloads/vimma-agent",
+    downloadMaxMb: 200,
+    clamavMaxAgeDays: 7,
+    openPerMinute: 15,
+    loadPerMinute: 1,
+  });
   const tab = await openAgentTab();
+  const other = await openAgentTab(PAGE);
   const c = await agentClient();
-  // Ten opens, the most a minute (M3), under a grant.
-  const id = c.request("agent-open", { url: `${PAGE}?1` });
+  // One load, the most a minute with load_per_minute = 1, under a grant.
+  const id = c.request("agent-open", { url: `${PAGE}?1`, tab: idOf(other) });
   AgentGate.answer((await question()).id, { kind: "grant", minutes: 5 });
   await c.response(id);
-  for (let i = 2; i <= 10; i++) {
-    Assert.ok((await c.call("agent-open", { url: `${PAGE}?x${i}` })).ok, `open ${i}`);
-  }
   // The open's grant covers keys too (mcp-grants G1).
   await keys(c, tab, "f", null);
   let r = await keys(c, tab, `f${LABEL.same}`, null);
-  Assert.equal(r.result.stopped, "denied", "a follow needs a slot of the open rate (M20)");
+  Assert.equal(r.result.stopped, "denied", "a follow needs a slot of the load rate (M20)");
   Assert.equal(r.result.steps[0].ok, false, "the step did not run");
   Assert.equal(r.result.url, LINKS, "and nothing loaded");
   // A cross-site follow is not asked when the rate is used up: a yes would load nothing.
@@ -643,6 +656,7 @@ add_task(async function test_follows_count_towards_the_open_rate() {
   Assert.equal(r.result.stopped, "denied", "a cross-site follow over the rate is denied");
   Assert.equal(AgentGate.waiting.length, 0, "without a vimma_open question");
   c.close();
+  McpHost.configure(before);
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   await mcp(false);
 });

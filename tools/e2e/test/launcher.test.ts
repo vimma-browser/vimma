@@ -906,6 +906,25 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
   const readRecord = (record: string) =>
     JSON.parse(readFileSync(record, "utf8")) as { pid: number; fbdir: string };
 
+  // Waits for the fake Xvfb's record for as long as whatever starts it is still running, and no
+  // longer: a fixed number of polls ran out before a busy machine had started the node processes
+  // behind it (#1540). The test's own timeout bounds a launch that hangs.
+  const waitForRecord = async (record: string, producer: Promise<unknown>) => {
+    let ended = false;
+    void producer.then(
+      () => (ended = true),
+      () => (ended = true),
+    );
+    while (!existsSync(record)) {
+      if (ended) throw new Error(`${record} never appeared: its producer ended first`);
+      await sleep(20);
+    }
+    return readRecord(record);
+  };
+  // Each of these starts node processes (the fake Xvfb, and the CLI in the last), and a busy
+  // machine stretches node's startup past vitest's 5 s default. None of them measures speed.
+  const SPAWNS = { timeout: 30_000 };
+
   // The tests below wait for the record to exist and then read it, so it has to appear whole:
   // a file written in place exists, empty or half written, before its JSON is all there. A
   // second link to a file already at the record's path tells the two apart without a race: a
@@ -933,7 +952,7 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
     expect(readdirSync(dir).sort()).toEqual(["earlier.json", "xvfb.json"]);
   });
 
-  it("teardown during Xvfb startup stops Xvfb and removes its fbdir", async () => {
+  it("teardown during Xvfb startup stops Xvfb and removes its fbdir", SPAWNS, async () => {
     const tmpRoot = tempDir();
     const record = join(tempDir(), "xvfb.json");
     const registered: Array<() => Promise<void>> = [];
@@ -947,8 +966,7 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
       onTeardown: (t: () => Promise<void>) => registered.push(t),
     });
     const outcome = launching.catch((e) => e);
-    for (let i = 0; i < 100 && !existsSync(record); i++) await sleep(20);
-    const { pid, fbdir } = readRecord(record);
+    const { pid, fbdir } = await waitForRecord(record, outcome);
     expect(alive(pid) && existsSync(fbdir)).toBe(true);
     await registered[0]?.();
     expect(await outcome).toBeInstanceOf(Error);
@@ -957,7 +975,7 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
     expect(readdirSync(tmpRoot)).toEqual([]);
   });
 
-  it("an abort signal cancels the launch the same way", async () => {
+  it("an abort signal cancels the launch the same way", SPAWNS, async () => {
     const record = join(tempDir(), "xvfb.json");
     const controller = new AbortController();
     const launching = launch({
@@ -969,12 +987,11 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
       xvfbEnv: { ...process.env, FAKE_XVFB_DELAY_MS: "1500", FAKE_XVFB_RECORD: record },
       signal: controller.signal,
     }).catch((e) => e);
-    for (let i = 0; i < 100 && !existsSync(record); i++) await sleep(20);
+    const { pid, fbdir } = await waitForRecord(record, launching);
     const started = Date.now();
     controller.abort();
     expect(await launching).toBeInstanceOf(Error);
     expect(Date.now() - started).toBeLessThan(3000);
-    const { pid, fbdir } = readRecord(record);
     expect(alive(pid)).toBe(false);
     expect(existsSync(fbdir)).toBe(false);
   });
@@ -999,7 +1016,7 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
     expect(alive(pids[0] as number)).toBe(false);
   });
 
-  it("SIGINT to the CLI while Xvfb starts leaves no Xvfb, fbdir or profile", async () => {
+  it("SIGINT to the CLI while Xvfb starts leaves no Xvfb, fbdir or profile", SPAWNS, async () => {
     const tmp = tempDir();
     const bin = tempDir();
     symlinkSync(FAKE_XVFB, join(bin, "Xvfb"));
@@ -1032,10 +1049,10 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
         stdio: "ignore",
       },
     );
-    for (let i = 0; i < 200 && !existsSync(record); i++) await sleep(20);
-    const { pid, fbdir } = readRecord(record);
+    const exited = new Promise((r) => cli.on("exit", (c) => r(c)));
+    const { pid, fbdir } = await waitForRecord(record, exited);
     cli.kill("SIGINT");
-    const code = await new Promise((r) => cli.on("exit", (c) => r(c)));
+    const code = await exited;
     expect(code).toBe(130);
     expect(alive(pid)).toBe(false);
     expect(existsSync(fbdir)).toBe(false);

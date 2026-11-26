@@ -9,8 +9,9 @@ these status checks must pass:
 - `semgrep (javascript, typescript, rust, secrets, github-actions)` (semgrep.yml)
 - `CodeQL (javascript-typescript)` and `CodeQL (rust)` (codeql.yml)
 
-`mochitest (artifact build, macOS)` (e2e.yml) is deliberately not in this list ("macOS
-mochitests" below).
+The macOS shards `mochitest (artifact build, macOS, shard 1/2)` and `shard 2/2` (e2e.yml) are
+deliberately not in this list ("macOS mochitests" below, with the rule for merging past a red
+shard).
 
 The ruleset also requires CodeQL code scanning results without errors or high-severity alerts.
 `vimma-ctl on macOS` (ci.yml, spec macos-build, sub-PR 2) runs vimma-ctl's clippy and tests on

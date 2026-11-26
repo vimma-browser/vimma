@@ -5,7 +5,7 @@ you move through your code. This guide walks you through it in the order you wil
 first launch, the two key layers, then tabs, panes, workspaces and the settings that make it
 yours.
 
-Vimma is pre-alpha. The guide describes what works now; known gaps are listed in
+Vimma is in alpha. The guide describes what works now; known gaps are listed in
 [limits.md](limits.md).
 
 ## Features at a glance
@@ -13,7 +13,8 @@ Vimma is pre-alpha. The guide describes what works now; known gaps are listed in
 What works today, each with the section that explains it:
 
 - **Vim on the page** ([the two layers](#the-two-layers)): `j`/`k`/`h`/`l` scroll, `d`/`u`
-  half a page, `gg`/`G` top and bottom, `H`/`L` back and forward; `f` link hints (`gF` in a
+  half a page, `gg`/`G` top and bottom, `gs` to choose [which panel](#pages-with-several-scrolling-panels)
+  they move, `H`/`L` back and forward; `f` link hints (`gF` in a
   new tab: in the background, or with an upper-case last key, switching to it); `gh`
   [hovers](#hovering-an-element) what a page shows only under the mouse; `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
   list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
@@ -50,6 +51,8 @@ What works today, each with the section that explains it:
 - **[Sleeping tabs](#sleeping-tabs):** a tab you have not looked at for two hours unloads its
   page and keeps its place, history and scroll position; selecting it loads it again. Tabs on
   screen, playing sound or sharing a camera stay loaded, and `[tabs] sleep_after` sets the time.
+  `:sleep` puts this workspace's other tabs to sleep at once, and `z` in the side panel the
+  highlighted or marked ones.
 - **[Downloads from the keyboard](#downloads):** `ctrl+b d` lists them with live progress, and
   one key opens a file, shows it in its folder, pauses, retries, removes or deletes it, or allows
   a blocked one through Firefox's own warning; the status bar shows `↓ 42%` while they run and
@@ -65,8 +68,9 @@ What works today, each with the section that explains it:
   asks once per session whether to show the update command, and `:update` shows the exact
   commands for how you installed it. The AppImage replaces its own file with a newer release
   checked against the signed update file, and runs it from the next start; a tarball built with
-  Firefox's updater installs a signed update at its next start. Once a security release is in
-  place it asks once per session to restart, and `:restart` restarts into it.
+  Firefox's updater installs a signed update at its next start. Vimma's signed apt, dnf, zypper
+  and pacman [repositories](#package-repositories) update it with the rest of the system. Once a
+  security release is in place it asks once per session to restart, and `:restart` restarts into it.
 - **Firefox underneath** ([privacy defaults](#privacy-defaults)): the same user agent and
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
   uploads; Safe Browsing on; a site's permissions shown and changed from the keyboard with
@@ -116,6 +120,167 @@ details, and [bindings.md](bindings.md) lists every action's config name with it
 
 ### Installing
 
+On Arch Linux, Debian, Ubuntu, Fedora and openSUSE, Vimma's package repository keeps Vimma up to
+date: you set it up once, and from then on the system's own upgrade command updates Vimma with
+everything else ([Package repositories](#package-repositories)). Every release is also a
+set of files to download and install by hand ([Release files](#release-files)), and macOS has a
+`.dmg` and a Homebrew cask ([macOS](#macos)).
+
+#### Package repositories
+
+Vimma publishes signed repositories for pacman, apt, dnf and zypper on `updates.vimma.dev`. Each
+package manager checks a signature made with Vimma's package key before it installs anything, and
+refuses a package or a package list that the key did not sign. The key's fingerprint is
+
+```text
+1106 49CB 2BC1 1400 828D  D0D4 97FD 3D2B 24AD 4390
+```
+
+Compare it with what dnf, zypper or `pacman-key` shows before you accept the key. The
+repositories carry every published release for Linux x86_64, never a pre-release; the package
+files themselves download from the GitHub Release, and the signed package list pins each one's
+checksum.
+
+Arch Linux takes three short steps; on the other distributions one command sets up the
+repository and installs Vimma. Each command stops at the first step that fails and can be run
+again. To split them further, see [Step by step](#step-by-step) below.
+
+**Arch Linux and Omarchy:**
+
+1. Set up the repository (the same on Arch and Omarchy). `--lsign-key` names the key's full
+   fingerprint, so it fails unless the key downloaded is Vimma's:
+
+   ```sh
+   curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add - \
+     && sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390 \
+     && { grep -q '^\[vimma\]' /etc/pacman.conf || printf '\n[vimma]\nSigLevel = Required\nServer = https://updates.vimma.dev/arch/$arch\n' | sudo tee -a /etc/pacman.conf >/dev/null; }
+   ```
+
+2. Update the system the way you usually do, which also reads the new repository:
+   `sudo pacman -Syu` (on Omarchy: `omarchy update`).
+3. Install Vimma:
+
+   ```sh
+   sudo pacman -S --needed vimma-bin
+   ```
+
+Step 3 has no `-y` or `-u`, so it never makes a partial upgrade, and Omarchy's update guard lets
+it through; the system update in step 2 is your usual one. Updates afterwards:
+`sudo pacman -Syu`, or `omarchy update` on Omarchy.
+
+**Debian 12+, Ubuntu 22.04+:**
+
+```sh
+curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources >/dev/null \
+  && sudo apt update && sudo apt install vimma
+```
+
+apt shows no fingerprint; [Step by step](#step-by-step) shows how to check it before the first
+install. `sudo apt update && sudo apt upgrade` updates Vimma from then on.
+
+**Fedora:**
+
+```sh
+sudo dnf config-manager addrepo --overwrite --from-repofile=https://updates.vimma.dev/rpm/vimma.repo \
+  && sudo dnf install vimma
+```
+
+dnf shows the key's fingerprint and asks once whether to import it: compare it with the one
+above. `sudo dnf upgrade` updates Vimma from then on.
+
+**openSUSE:**
+
+```sh
+{ zypper lr vimma >/dev/null 2>&1 || sudo zypper addrepo --refresh --gpgcheck-strict https://updates.vimma.dev/rpm/vimma.repo; } \
+  && sudo zypper refresh && sudo zypper install vimma
+```
+
+zypper shows the key's fingerprint and asks once whether to trust it: compare it with the one
+above. `sudo zypper up` updates Vimma from then on.
+
+##### Step by step
+
+**Arch Linux (pacman).** Import the key and sign it locally, so that pacman trusts it:
+
+```sh
+curl -fsSL https://updates.vimma.dev/vimma-packages.asc | sudo pacman-key --add -
+sudo pacman-key --lsign-key 110649CB2BC11400828DD0D497FD3D2B24AD4390
+```
+
+`--lsign-key` names the full fingerprint, so it fails unless the key you downloaded is that key.
+Then add the repository at the end of `/etc/pacman.conf`:
+
+```ini
+[vimma]
+SigLevel = Required
+Server = https://updates.vimma.dev/arch/$arch
+```
+
+`SigLevel = Required` makes pacman refuse the package list, not only a package, when its
+signature is missing; pacman's default would accept a package list served without one.
+
+Then install the package:
+
+```sh
+sudo pacman -Syu vimma-bin
+```
+
+No build runs on your machine. From then on, `sudo pacman -Syu` updates Vimma. The package has
+the name of the release `PKGBUILD`'s, `vimma-bin`, so a `vimma-bin` you built from a `PKGBUILD`
+moves to the repository's on the next `sudo pacman -Syu`, with nothing to remove first.
+
+**Debian 12+, Ubuntu 22.04+ (apt).** One file sets it up. It carries the key inside it, so apt
+trusts the key for this repository only, never for the rest of the system:
+
+```sh
+curl -fsSL https://updates.vimma.dev/apt/vimma.sources | sudo tee /etc/apt/sources.list.d/vimma.sources
+```
+
+apt does not show the fingerprint, so check it before the first update; this prints it:
+
+```sh
+sed -n 's/^ \.\?//p' /etc/apt/sources.list.d/vimma.sources | gpg --show-keys
+```
+
+Then install Vimma:
+
+```sh
+sudo apt update && sudo apt install vimma
+```
+
+From then on, `sudo apt update && sudo apt upgrade` updates Vimma with the rest of the system.
+
+**Fedora (dnf).**
+
+```sh
+sudo dnf config-manager addrepo --from-repofile=https://updates.vimma.dev/rpm/vimma.repo
+sudo dnf install vimma
+```
+
+dnf shows the key's fingerprint and asks once whether to import it. From then on,
+`sudo dnf upgrade` updates Vimma.
+
+**openSUSE (zypper).**
+
+```sh
+sudo zypper addrepo --refresh --gpgcheck-strict https://updates.vimma.dev/rpm/vimma.repo
+sudo zypper refresh && sudo zypper install vimma
+```
+
+zypper shows the key's fingerprint and asks once whether to trust it. `--gpgcheck-strict` makes
+it check each package's own signature as well as the package list's. From then on,
+`sudo zypper up` updates Vimma.
+
+**Removing a repository.** Remove Vimma as usual (`sudo pacman -R vimma-bin`,
+`sudo apt remove vimma`, `sudo dnf remove vimma` or `sudo zypper remove vimma`), then the
+repository: delete the `[vimma]` section from `/etc/pacman.conf` and run
+`sudo pacman-key --delete 110649CB2BC11400828DD0D497FD3D2B24AD4390`, delete
+`/etc/apt/sources.list.d/vimma.sources` or `/etc/yum.repos.d/vimma.repo`, or run
+`sudo zypper removerepo vimma`. dnf and zypper keep the key in the rpm database;
+`sudo rpm -e gpg-pubkey-24ad4390` removes it.
+
+#### Release files
+
 Each [GitHub Release](https://github.com/vimma-browser/vimma/releases) is titled with both
 versions, such as `Vimma 0.5.2 · Firefox 158.0`, and its notes link the Mozilla security
 advisories of the Firefox it moves to. It carries, for Linux x86_64 (`X.Y.Z` is the Vimma
@@ -123,11 +288,57 @@ version; for a Mac, see [macOS](#macos) below):
 
 | File                              | Install                                                                 |
 | --------------------------------- | ----------------------------------------------------------------------- |
+| `PKGBUILD` (Arch Linux)           | the command in [Arch Linux](#arch-linux) below                          |
 | `vimma_X.Y.Z_amd64.deb`           | `sudo apt install ./vimma_X.Y.Z_amd64.deb` (Debian 12+, Ubuntu 22.04+)  |
 | `vimma-X.Y.Z-1.x86_64.rpm`        | the commands in [Fedora and openSUSE](#fedora-and-opensuse) below       |
 | `vimma-X.Y.Z-x86_64.AppImage`     | `chmod +x vimma-X.Y.Z-x86_64.AppImage && ./vimma-X.Y.Z-x86_64.AppImage` |
 | `vimma-X.Y.Z-linux-x86_64.tar.xz` | `tar -xJf vimma-X.Y.Z-linux-x86_64.tar.xz && ./vimma/vimma`             |
-| `PKGBUILD` (Arch Linux)           | the command in [Arch Linux](#arch-linux) below                          |
+
+To download and install the latest release's file in one command, each of these first asks
+GitHub for the latest version and stops at the first step that fails:
+
+- AppImage, into `~/Applications`, then started:
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && mkdir -p ~/Applications && cd ~/Applications \
+    && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-x86_64.AppImage \
+    && chmod +x vimma-$v-x86_64.AppImage && ./vimma-$v-x86_64.AppImage
+  ```
+
+- Tarball, unpacked into `~/.local/opt/vimma`, then started:
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && mkdir -p ~/.local/opt && cd ~/.local/opt \
+    && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-linux-x86_64.tar.xz \
+    && tar -xJf vimma-$v-linux-x86_64.tar.xz && ./vimma/vimma
+  ```
+
+- `.deb` (Debian 12+, Ubuntu 22.04+):
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && cd "$(mktemp -d)" && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma_${v}_amd64.deb \
+    && sudo apt install ./vimma_${v}_amd64.deb
+  ```
+
+- `.rpm` on Fedora:
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && cd "$(mktemp -d)" && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-1.x86_64.rpm \
+    && sudo dnf install ./vimma-$v-1.x86_64.rpm
+  ```
+
+- `.rpm` on openSUSE, importing Vimma's package key first (to see its fingerprint before you
+  trust it, use the steps in [Fedora and openSUSE](#fedora-and-opensuse)):
+
+  ```sh
+  v=$(curl -fsS -o /dev/null -w '%{redirect_url}' https://github.com/vimma-browser/vimma/releases/latest) && v=${v##*/v} \
+    && cd "$(mktemp -d)" && curl -fL --proto =https -O https://github.com/vimma-browser/vimma/releases/download/v$v/vimma-$v-1.x86_64.rpm \
+    && sudo rpm --import https://updates.vimma.dev/vimma-packages.asc && sudo zypper install ./vimma-$v-1.x86_64.rpm
+  ```
 
 Each of them, and the Mac's `.dmg`, also carries `vimma-ctl`, the client for
 [scripting](#scripting-with-vimma-ctl) and [agents](#connecting-an-agents-tool), next to the
@@ -150,9 +361,10 @@ but never make it your default browser on their own
 (`vimma-X.Y.Z.cdx.json`) and cosign signatures (`*.sigstore.json`); how to check them is in
 [the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging) ("Verify a release").
 
-**Updating.** Install the newer release the way you installed this one: on Arch Linux, run the
-install command again; otherwise, install the newer `.deb`, `.rpm`, AppImage or
-tarball over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
+**Updating.** An install from a [package repository](#package-repositories) updates with the
+system's upgrade command. Otherwise, install the newer release the way you installed this one:
+with the release `PKGBUILD`, run its command again; for a `.deb`, `.rpm`, AppImage or tarball,
+install the newer file over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
 command for your install ([Updates](#updates)); Vimma 0.1.1 never does, so update it this way once.
 An AppImage from a release that includes the self-update replaces its own file when a newer
 release is out; the next start runs it. A tarball from a release built with Firefox's updater
@@ -164,20 +376,98 @@ Firefox's updater ([Updates](#updates)).
 build takes about 40 minutes on a 16-thread machine and needs about 35 GB of disk space
 (`engine/` 27 GB, the sccache compiler cache 6.8 GB, `~/.mozbuild` 3.1 GB, `.surfer/` 0.8 GB).
 
-#### Fedora and openSUSE
+#### Arch Linux
 
-One `.rpm` installs on both, and its package manager pulls in the libraries it needs:
+The [pacman repository](#package-repositories) installs the prebuilt `vimma-bin` package, and
+`sudo pacman -Syu` updates it. Without the repository, each release
+carries a `PKGBUILD` for the same `vimma-bin` package. It needs no other file: it
+downloads the release tarball, checks it against the SHA-256 written into it, and installs Vimma
+to `/opt/vimma` with `vimma`, `vimma-open` and `vimma-ctl` on your `PATH`, a desktop entry and
+icons. Run
+this as your normal user, from any directory:
 
 ```sh
-sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm                           # Fedora
-sudo zypper install --allow-unsigned-rpm ./vimma-X.Y.Z-1.x86_64.rpm   # openSUSE
+mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si
+```
+
+`makepkg -si` installs the libraries Vimma needs with pacman, asks for your password to install
+the package, and refuses to run as root. A first install and every update use the same
+command: it builds in `~/.cache/vimma-build`, so it leaves nothing in the directory you run it
+from, fetches the newest release's `PKGBUILD` each time, and pacman replaces the installed
+version. The folder holds the build files and the last package built (about 450 MB during a
+build), and you can delete it at any time. `:update` shows this command when a new release is
+out ([Updates](#updates)). `sudo pacman -R vimma-bin` removes Vimma; your profile stays in your
+home directory.
+
+A release is built and its files are uploaded before it is published, so a published release
+has its `PKGBUILD` from the start. If `curl` prints `curl: (22) The requested URL returned
+error: 404`, the files are missing (no release is published yet, or one went out without them);
+`curl` then exits, the `PKGBUILD` you already have stays as it was and `makepkg` does not run.
+Try again later.
+
+To check the `PKGBUILD` before you build it, download it with the release's checksums and their
+signature, verify the signature with [cosign](https://github.com/sigstore/cosign), then the
+checksum:
+
+```sh
+mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build
+base=https://github.com/vimma-browser/vimma/releases/latest/download
+curl -fL -O "$base/PKGBUILD" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sigstore.json"
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS   # PKGBUILD: OK
+makepkg -si
+```
+
+The `PKGBUILD` pins the SHA-256 of the tarball it downloads, so checking the `PKGBUILD` covers
+what it installs. Every Linux file of the release is in `SHA256SUMS`, and the macOS `.dmg` and
+Homebrew cask in `SHA256SUMS-macos` ("Verify a release" in
+[the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging)).
+
+The package marks itself as installed by a package manager (`/opt/vimma/is-packaged-app`), as
+Firefox's own distribution packages do; the `.deb`, the `.rpm` and the AppImage carry the same
+file in `usr/lib/vimma/`, and only the tarball has none. The file tells Vimma's update check which
+commands to show, so a `.deb` is updated with apt and an `.rpm` with dnf or zypper, never by
+unpacking a tarball over the files the package manager owns. Like Firefox's packages, a marked install does not show Firefox's warning that "some
+security features may offer less protection" when your kernel does not allow unprivileged user
+namespaces, which the content sandbox uses. On Ubuntu 24.04 that means the `.deb` and the
+AppImage run with a weaker content sandbox without saying so; the tarball still shows the warning
+([limits.md](limits.md#platforms-and-packaging)).
+There is no AUR package for now. The AUR does not accept new account registrations at the
+moment, and a package needs an account to own it, so `vimma-bin` cannot be published there yet.
+On Arch, the pacman repository or the release's `PKGBUILD` above installs and updates Vimma.
+The same package goes to the AUR as `vimma-bin`, for AUR helpers such as `yay -S vimma-bin`,
+once registration opens again.
+
+#### Fedora and openSUSE
+
+The [rpm repository](#package-repositories) is the way to get updates with `dnf upgrade` or
+`zypper up`. To install the release's file instead: one `.rpm` installs on both, and its package
+manager pulls in the libraries it needs:
+
+```sh
+sudo dnf install ./vimma-X.Y.Z-1.x86_64.rpm      # Fedora
+sudo zypper install ./vimma-X.Y.Z-1.x86_64.rpm   # openSUSE, once the key is imported (below)
+```
+
+On openSUSE, import Vimma's package key once first, checking that the fingerprint printed is
+the one in [Package repositories](#package-repositories):
+
+```sh
+curl -fsSLO https://updates.vimma.dev/vimma-packages.asc
+gpg --show-keys vimma-packages.asc
+sudo rpm --import vimma-packages.asc
 ```
 
 It installs to `/usr/lib/vimma`, with `vimma`, `vimma-open` and `vimma-ctl` in `/usr/bin`, as the
 `.deb` does.
-The package carries no OpenPGP signature, so dnf says it skipped the OpenPGP check and zypper
-needs `--allow-unsigned-rpm`. What vouches for it is the release's `SHA256SUMS` and its cosign
-signature; check them before installing ("Verify a release" in
+From 0.1.24 the package carries an OpenPGP signature by Vimma's package key. dnf does not check
+a local file's signature. zypper refuses a signed package whose key it has not imported, even
+with `--allow-unsigned-rpm`, hence the key import above; a release before 0.1.24 has no
+signature and needs `sudo zypper install --allow-unsigned-rpm` instead. What vouches for a file
+installed by hand is the release's `SHA256SUMS` and its cosign signature; check them before
+installing ("Verify a release" in
 [the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging)):
 
 ```sh
@@ -187,9 +477,9 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \
 sha256sum -c --ignore-missing SHA256SUMS   # vimma-X.Y.Z-1.x86_64.rpm: OK
 ```
 
-There is no Vimma repository for dnf or zypper, so `dnf upgrade` and `zypper update` do not
-update it: install the newer `.rpm` the same way, or run the command `:update` shows. To remove
-it, `sudo dnf remove vimma` or `sudo zypper remove vimma`.
+Installed this way, `dnf upgrade` and `zypper up` do not update it until you set up the
+repository: install the newer `.rpm` the same way, or run the command `:update` shows. To
+remove it, `sudo dnf remove vimma` or `sudo zypper remove vimma`.
 
 #### Flatpak (Flathub)
 
@@ -258,7 +548,7 @@ update, install the newer `.dmg` over the old one, or run `brew upgrade --cask v
 stored in macOS (iCloud Keychain) do not work in Vimma yet, notarised or not. Your profile lives in `~/Library/Application Support/Vimma/`, and
 macOS keeps Vimma's window state under its bundle identifier, `dev.vimma.browser`. To
 check the `.dmg` before you open it, verify `SHA256SUMS-macos` with cosign as in "Arch Linux"
-below (same identity), then run `shasum -a 256 -c --ignore-missing SHA256SUMS-macos`.
+above (same identity), then run `shasum -a 256 -c --ignore-missing SHA256SUMS-macos`.
 
 **With Homebrew.** The same `.dmg` installs as a cask from Vimma's own tap,
 [vimma-browser/homebrew-tap](https://github.com/vimma-browser/homebrew-tap):
@@ -289,68 +579,6 @@ command; Vimma counts as a Homebrew install when it runs from `/Applications/Vim
 `--zap` deletes `~/Library/Application Support/Vimma/` (every profile), `~/Library/Caches/Vimma/`,
 and Vimma's preferences and saved window state in `~/Library`; it leaves your configuration in
 `~/.config/vimma/` alone.
-
-#### Arch Linux
-
-Each release carries a `PKGBUILD` for the `vimma-bin` package. It needs no other file: it
-downloads the release tarball, checks it against the SHA-256 written into it, and installs Vimma
-to `/opt/vimma` with `vimma`, `vimma-open` and `vimma-ctl` on your `PATH`, a desktop entry and
-icons. Run
-this as your normal user, from any directory:
-
-```sh
-mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si
-```
-
-`makepkg -si` installs the libraries Vimma needs with pacman, asks for your password to install
-the package, and refuses to run as root. A first install and every update use the same
-command: it builds in `~/.cache/vimma-build`, so it leaves nothing in the directory you run it
-from, fetches the newest release's `PKGBUILD` each time, and pacman replaces the installed
-version. The folder holds the build files and the last package built (about 450 MB during a
-build), and you can delete it at any time. `:update` shows this command when a new release is
-out ([Updates](#updates)). `sudo pacman -R vimma-bin` removes Vimma; your profile stays in your
-home directory.
-
-A release is built and its files are uploaded before it is published, so a published release
-has its `PKGBUILD` from the start. If `curl` prints `curl: (22) The requested URL returned
-error: 404`, the files are missing (no release is published yet, or one went out without them);
-`curl` then exits, the `PKGBUILD` you already have stays as it was and `makepkg` does not run.
-Try again later.
-
-To check the `PKGBUILD` before you build it, download it with the release's checksums and their
-signature, verify the signature with [cosign](https://github.com/sigstore/cosign), then the
-checksum:
-
-```sh
-mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build
-base=https://github.com/vimma-browser/vimma/releases/latest/download
-curl -fL -O "$base/PKGBUILD" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sigstore.json"
-cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
-sha256sum -c --ignore-missing SHA256SUMS   # PKGBUILD: OK
-makepkg -si
-```
-
-The `PKGBUILD` pins the SHA-256 of the tarball it downloads, so checking the `PKGBUILD` covers
-what it installs. Every Linux file of the release is in `SHA256SUMS`, and the macOS `.dmg` and
-Homebrew cask in `SHA256SUMS-macos` ("Verify a release" in
-[the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging)).
-
-The package marks itself as installed by a package manager (`/opt/vimma/is-packaged-app`), as
-Firefox's own distribution packages do; the `.deb`, the `.rpm` and the AppImage carry the same
-file in `usr/lib/vimma/`, and only the tarball has none. The file tells Vimma's update check which
-commands to show, so a `.deb` is updated with apt and an `.rpm` with dnf or zypper, never by
-unpacking a tarball over the files the package manager owns. Like Firefox's packages, a marked install does not show Firefox's warning that "some
-security features may offer less protection" when your kernel does not allow unprivileged user
-namespaces, which the content sandbox uses. On Ubuntu 24.04 that means the `.deb` and the
-AppImage run with a weaker content sandbox without saying so; the tarball still shows the warning
-([limits.md](limits.md#platforms-and-packaging)).
-There is no AUR package for now. The AUR does not accept new account registrations at the
-moment, and a package needs an account to own it, so `vimma-bin` cannot be published there yet.
-On Arch, the release's `PKGBUILD` above is the way to install and update Vimma, and `:update`
-shows that command. The same package goes to the AUR as `vimma-bin`, for AUR helpers such as
-`yay -S vimma-bin`, once registration opens again.
 
 ### First launch, with its own profile
 
@@ -649,13 +877,15 @@ CodeMirror, Ace, ProseMirror, Quill), fields inside web components and inside fr
 other sites. Focusing a checkbox, button or link does not. `Esc` leaves insert: it takes focus
 out of the field and the tab is back in normal. `i` enters insert explicitly: it goes back to
 the text field you were last in on the page, or the first text field if that one is gone, or, on
-a page without one (a game), lets every key through. Insert entered with `i` or `gi` lasts until
-`Esc`, even if the page moves focus itself (a file finder jumping to its result list, a dialog
-taking focus), so the keys you type keep going to the page. Insert entered by clicking or
-tabbing into a field follows the focus: when focus leaves the text fields, the tab is back in
-normal. After `Esc`, a page cannot put you back in insert on its own: a dialog that pulls focus
-back into its field leaves the tab in normal, and you return to typing with `i`, a click into
-the field or `Tab`.
+a page without one (a game), lets every key through. In a field you have not been in yet, such as
+the search field a results page fills with your query, `i`, `gi` and a hint put the caret at the
+end of its text, ready to add to it or delete it; in a field you left, the caret is where you
+left it. Insert entered with `i` or `gi` lasts until `Esc`, even if the page moves focus itself
+(a file finder jumping to its result list, a dialog taking focus), so the keys you type keep
+going to the page. Insert entered by clicking or tabbing into a field follows the focus: when
+focus leaves the text fields, the tab is back in normal. After `Esc`, a page cannot put you back
+in insert on its own: a dialog that pulls focus back into its field leaves the tab in normal,
+and you return to typing with `i`, a click into the field or `Tab`.
 
 In normal mode, `Esc` also takes focus off whatever `Tab` or a click left focused in the page,
 such as a link or a button, so its focus ring goes away. The page has that `Esc` first: a menu
@@ -749,6 +979,24 @@ cancels it.
 "… not implemented yet" in the bottom-right corner for 1.5 s (not while a video or page is
 fullscreen); a single key whose command does not exist reaches the page or Firefox, with no
 message; and the `ctrl+b ?` overlay dims it.
+
+### Pages with several scrolling panels
+
+On pages built from panels that scroll on their own, such as Confluence's page tree beside the
+page, a mail client's folder list or a documentation site's sidebar, you choose which panel the
+scroll keys move. Vim-style, `gs` moves them to the next scroll area and `gS` to the previous
+one, wrapping around; on a page with two panels, `gs` switches between them. A count picks one
+directly: `1gs` is the first area from the left, `2gs` the second. The chosen area is outlined
+for a moment, and the status bar shows `scroll area` while the keys move a panel rather than the
+page's own scroller.
+
+Every scroll key follows the chosen area: `j`, `k`, `h`, `l`, `d`, `u`, `ctrl+d`, `ctrl+u`,
+`ctrl+e`, `ctrl+y`, `gg` and `G`. A click in a panel picks it too, and so does following a link
+in it with `f`; an agent's click never changes where your keys scroll. An area in a frame, from
+the same site or another, is cycled like any other, and choosing it puts the keys in that frame.
+The choice lasts until another `gs`, a click elsewhere, or a new page. Areas are the page itself
+and every panel that shows at least a tenth of the window, in reading order: left to right, then
+top to bottom. `gs` and `gS` can be remapped in `config.toml` like every key.
 
 ### Link hints
 
@@ -1271,6 +1519,32 @@ A site whose login keeps you on the same page leaves focus in its password field
 password?" prompt opens with the `Esc, then` line. In the prompt's own username and password
 fields, every key is the field's: a `y` or an `n` there is typed, and `Tab` is Firefox's, as
 everywhere inside the prompt.
+
+#### Passkeys and security keys
+
+When a site asks for a passkey or a security key, Firefox's prompts hang from the address bar in
+the same theme and take the same keys, with the same half-second wait. In these prompts `n` is
+always the button `Esc` runs (Cancel, or Block in the make-and-model question), and `y` is the
+answer that goes ahead, so `y` never cancels by accident:
+
+- **Touch your security key**, and the notices: several keys found (touch the one to use), the
+  key already holds a passkey for the site, the PIN is not set, too many tries. `n` cancels.
+  They have nothing for `y`, and the line reads `n cancel · Tab buttons`.
+- **Choose a passkey** for the site: `y` signs in with the passkey on the prompt's button and `n`
+  cancels. With more passkeys, the line ends in `Tab, ↓ more`: `Tab` moves focus onto that
+  button, `↓` opens the list of the others, the arrow keys move through it and `Enter` chooses.
+  While the list is open, `y` and `n` are the list's and answer nothing, so they never answer
+  from behind the passkey you highlighted; `Esc` closes the list.
+- **Allow the site to see your key's make and model**: `y` allows and `n` blocks, as in a
+  permission prompt.
+- **Use a passkey saved for another site**: when a site asks for a passkey that belongs to a
+  related site, Firefox asks first; `y` continues and `n` cancels.
+- **The PIN for your key** opens as a dialog over the page ([Answering a dialog](#answering-a-dialog)):
+  every key you type is the PIN, `y` and `n` included, and `Enter` and `Esc` answer it.
+
+These are Firefox's own prompts. A window drawn by the operating system, or a page's own
+"use your phone" screen with a QR code, is not one of them and keeps its own keys. On macOS,
+passkeys stored in iCloud Keychain do not work in Vimma yet (issue #544).
 
 #### Answering a dialog
 
@@ -2121,6 +2395,10 @@ you, and `a` lets it work without asking until it quits, except where
   an agent tab: the link gets a new tab in that workspace. A password-reset or login link is then
   never in reach of an agent. What you open while in the agent workspace (`ctrl+t`, `:open`, the address
   bar, a bookmark) stays there.
+- **Its pages open no tabs or windows of their own.** Pop-ups are blocked there, and a link you
+  ctrl-click (cmd-click on macOS), shift-click or middle-click in an agent tab opens nothing,
+  because a page can script those clicks while you are using it. To open a link in a new tab
+  there, use `gF` (follow a link in a new tab) or the link's context menu, which only you reach.
 
 | Command          | What it does                                                                                                                                                           |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -3022,12 +3300,23 @@ with the rest of your computer.
 - gets page text and titles marked as untrusted web content, so the model is told that
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
-- is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
+- is held by limits: 4 waiting requests per agent and 16 in all, 15 new tabs a minute, 60 pages
+  loaded into its open tabs a minute (by `vimma_open` with a tab, a click, a follow or a fill), 30
   `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots, 30 console reads, 6 `vimma_show` calls and
   6 bookmarklets a minute, and a minute of silence after three noes in a row. A call over one of these rates is refused with the limit it hit and the seconds
   until the next call is allowed, so the agent waits for the rate, not for you; Vimma's own
   agent waits it out by itself, and its step says `waiting 40 s (rate limit)`. An open, a click
-  or a fill over the rate is refused before you are asked.
+  or a fill over the rate is refused before you are asked. The two page limits are yours to set
+  in config.toml, from 1 to 600 a minute; they cannot be turned off, because nothing else stops an
+  agent you allowed that runs in a loop:
+
+  ```toml
+  [mcp]
+  open_per_minute = 15   # new agent tabs a minute
+  load_per_minute = 60   # pages loaded into its open tabs a minute
+  ```
+
+  A saved change holds from the agent's next call, without a restart.
   `vimma-ctl mcp` holds an agent's parallel calls past 4 and sends them as earlier ones finish. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -3112,7 +3401,7 @@ workspace, tab, focus, find bar and hint mode.
 - **A grant covers it:** under a grant each call shows
   `claude-code pressed 2j in "Pricing · Example" (grant)`; a follow adds
   `claude-code followed a link to docs.example.com in "Pricing · Example"`. At most 30 calls a minute; a follow, `gu`, `gU`, `H` and `L`
-  count towards the 10 opens a minute. A find does not run in the tab you are in, since the browser's find would
+  count towards the 60 loads a minute. A find does not run in the tab you are in, since the browser's find would
   put your focus in a text field it matched.
 - **`:mcp log`** lists what agents did, asked or under a grant, each follow with the address it
   loaded, so you can check afterwards what a grant let through. It is kept in memory only and cleared by `:mcp off`.
@@ -3228,7 +3517,7 @@ button inside an embedded frame that updates the page around it reads as no chan
   tab for you; the agent only learns its text, as untrusted content.
 - **A grant covers clicks** (not submissions or payments): each shows
   `claude-code clicked button "Add to list" in "List · Example" (grant)`. A click that
-  loads a page counts as one of the 10 opens a minute, and no click is made while those are used
+  loads a page counts as one of the 60 loads a minute, and no click is made while those are used
   up. At most 30 clicks a minute, none while you are typing in the tab, and each is in
   `:mcp log` with the element, a submission with its destination.
 
@@ -3751,6 +4040,7 @@ highlighted and its number coloured; a tab playing sound shows `♪`, one from a
 | `V`                     | Start a range: `j` / `k` stretch it, and `V` or `space` marks every row in it.                                                                                                                             |
 | `x`                     | Close the highlighted tab; the highlight moves to the next row and the panel stays open, so `x x x` closes three.                                                                                          |
 | `m`                     | Move the highlighted tab to another workspace: the workspace picker opens, `Enter` (or `m`) on a workspace asks first, then moves it ([below](#moving-a-tab-from-the-side-panel)).                         |
+| `z`                     | Put the highlighted tab to sleep, or the marked tabs when you have marked some; the rows turn muted and the panel stays open ([Sleeping tabs](#sleeping-tabs)).                                            |
 | `ctrl+shift+t`          | Reopen the last closed tab, as in Firefox.                                                                                                                                                                 |
 | `ctrl+b )` / `ctrl+b (` | Switch workspace; the panel stays open and lists that one (its marks are dropped).                                                                                                                         |
 | `I`                     | Close the panel and focus the address bar.                                                                                                                                                                 |
@@ -3888,8 +4178,9 @@ No page reloads.
 ### Routing: which workspace a link opens in
 
 `[[routes]]` rules in `config.toml`, or in a `routes.toml` beside it
-([Routes in a file](#routes-in-a-file)), send a site, or every link an app opens, to a workspace
-(and its container), as Zen's Space Routing does. Each rule names a `workspace` and what it
+([Routes in a file](#routes-in-a-file)), send links from other programs to a workspace (and
+its container) by site or by the app that opened them, as Zen's Space Routing does; what you
+open inside Vimma stays in the workspace you are in. Each rule names a `workspace` and what it
 matches; the first rule that matches, top to bottom, wins.
 
 ```toml
@@ -3926,8 +4217,10 @@ workspace = "notes"
   whatever their order: a link from a herdr pane in Ghostty matches `app = "herdr"` before
   `app = "ghostty"`. An `app` rule below a matching rule without `app` never applies to that
   link.
-- A rule naming a workspace that does not exist is skipped (`:route` says so), and so is a rule
-  naming the agent workspace for a link from another app: the next rule applies.
+- A rule naming a workspace that does not exist is skipped (`:route` says so): the next rule
+  applies. A rule naming the agent workspace does nothing: a link from another app passes over
+  it to the next rule, so no tab is ever routed into the agent workspace, and neither the
+  status bar's hint nor `:route move` offers it.
 - **Links from other programs that no rule matches** open where `[routing] default_workspace`
   says, when you set it:
 
@@ -3941,20 +4234,24 @@ workspace = "notes"
   workspace. Every program's links can land there, including an AI agent's, so choose a
   workspace without privileged sign-ins.
 
-**Where rules apply:** an address you type in the address bar or with `:open` / `:tabnew`, a
-bookmark, a link from another app and a new window opened on a URL: what you or Vimma open. A
-link a page opens (a click, middle-click, `gF` hints, `target=_blank`, a pop-up) stays in that
-page's workspace, because a page could otherwise open any site with another workspace's logins;
-when you look at such a tab, the status bar names the workspace its rule would choose and
-`:route move` moves it. Opened in front, the tab takes you to its
-workspace; opened in the background, it waits there and the status bar says
-`opened in "work"`. If you typed the address on an empty new tab, that tab is closed.
+**Where rules apply:** links that come from outside the browser: a link another app opens
+(Slack, a terminal, your mail), `vimma <url>` run from a shell, Vimma started from a link, and
+such a link opened in a new window. Opened in front, the tab takes you to its workspace; opened
+in the background, it waits there and the status bar says `opened in "work"`.
 
-**Where they do not:** a page that navigates in its own tab (a click, a redirect, a sign-in
-bounce) is never moved, because moving reopens the page and would break the load. The status bar
-says `github.com goes to "work" (route 1): :route move` instead; `:route move` moves the tab
-there (it loses its back/forward history, as any move does). A container you chose yourself
-("Open Link in New Container Tab") is kept. Private windows are never routed.
+**Where they do not:** anything you open inside Vimma stays in the workspace you are in: an
+address you type in the address bar or with `:open` / `:tabnew`, a bookmark, history, the start
+page, `p` / `P`, and a new window (`ctrl+n`). Opening a site from a workspace is your choice of
+workspace, so a rule never takes you out of it, and the status bar does not suggest moving it.
+`:route move` moves any tab to the workspace its rule names when you ask (it loses its
+back/forward history, as any move does). A link a page opens (a click, middle-click, `gF` hints,
+`target=_blank`, a pop-up) stays in that page's workspace too, because a page could otherwise
+open any site with another workspace's logins, and a page that navigates in its own tab (a
+redirect, a sign-in bounce) is never moved, because moving reopens the page and would break the
+load. For these two, which you did not choose, the status bar says
+`github.com goes to "work" (route 1): :route move` once per tab and site when the rule names
+another workspace. A container you chose yourself ("Open Link in New Container Tab") is kept.
+Private windows are never routed.
 
 **By application.** Vimma's packages install `vimma-open` and make it the desktop entry's
 command, so when Slack, Discord, a terminal or Neovim opens a link, `vimma-open` looks up which
@@ -4610,6 +4907,23 @@ sleep = false                 # this site's tabs, its subdomains' too, never sle
 
 A change applies at the next check after the file is read, and never wakes a tab.
 
+**Putting tabs to sleep yourself.** To free memory now rather than in two hours:
+
+| Command          | What it does                                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `:sleep`         | Puts this workspace's tabs to sleep, however recently you saw them, and says how many: `4 tabs asleep; 2 stay awake: on screen`.    |
+| `:sleep all`     | The same for every workspace of every window.                                                                                       |
+| `:sleep N`       | Puts tab N (the number `alt+N` and `{N}gt` use) to sleep, even a pinned tab or one whose site has `sleep = false`: `Tab 4 asleep`.  |
+| `z` (side panel) | Puts the highlighted tab to sleep, or the marked ones when you have marked some, as `:sleep N` does for each. The panel stays open. |
+
+They keep the other rules: a tab on screen stays (`Tab 2 is on screen`), and so does a tab playing
+sound or sharing a camera, the agent workspace's tabs while an agent is connected, and a page that
+would ask before you leave it (`Tab 4 stays awake: it would ask before leaving`). In a private
+window they say `Private tabs do not sleep`. The action is `sleep_tabs`, with no key of its own:
+bind one in `[keys]` of `config.toml`, and change `z` under `[modal.panel]`, as every key, the
+prefix and the leader can be remapped. A key bound to `sleep_tabs` takes a count as `{N}gt`
+does: `3` and the key is `:sleep 3`.
+
 ## Add-ons
 
 Add-ons work as in Firefox. Install them from [addons.mozilla.org](https://addons.mozilla.org)
@@ -4897,6 +5211,7 @@ give the rest.
 | `:tabrename [name]`                   | Renames the tab; without a name, opens the rename prompt.                                                                                      |
 | `:ls`                                 | Opens [tab search](#tab-search-and-tab-rename).                                                                                                |
 | `:tab N`, `:tabnext N`, `:tab $`      | Goes to tab N of this workspace, as `{N}gt`; `$` the last, alone the next. Typed in full.                                                      |
+| `:sleep`, `:sleep all`, `:sleep N`    | Puts this workspace's tabs, every workspace's, or tab N to [sleep](#sleeping-tabs) at once.                                                    |
 | `:tabsearch [text]`, `:ts`, `:b`      | Opens tab search with the text already typed.                                                                                                  |
 | `:grep text`, `:grep`                 | Opens [live grep](#live-grep) with that text; alone, with the last query.                                                                      |
 | `:vsplit`/`:vs`, `:split`/`:sp`       | Splits the pane right / down, as `ctrl+b v` / `ctrl+b -`.                                                                                      |
@@ -5173,6 +5488,8 @@ notify = true                   # a desktop notification when an agent asks whil
 download_dir = "~/Downloads/vimma-agent"  # where agent downloads are saved; never opened
 download_max_mb = 200           # agent downloads larger than this are refused, in MB (1–4096)
 clamav_max_age_days = 7         # days before ClamAV definitions stop counting a file clean (1–90)
+open_per_minute = 15            # new tabs an agent may open a minute (1–600)
+load_per_minute = 60            # pages an agent may load into its open tabs a minute (1–600)
 
 # Vimma's own agent (ctrl+b i). A model you pick in its window is added here, never a key.
 # [agent]
@@ -5382,23 +5699,22 @@ Except for the AppImage and such a tarball, it installs nothing; it tells you.
   and is checked against the SHA-512 the signed file gives for it (`sha512sum -c`) before
   anything is installed or replaced, so a file changed on the release page stops the command.
 
-  | Installed with            | `:update` shows                                                                                                                                                  |
-  | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | The release's `PKGBUILD`  | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`  |
-  | AUR `vimma-bin`           | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                   |
-  | `.deb`                    | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
-  | `.rpm`                    | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                   |
-  | Repository (unpublished)  | `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade vimma`, `sudo zypper up vimma` or `sudo pacman -Syu`, once the repository is set up                     |
-  | Tarball                   | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory             |
-  | AppImage                  | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
-  | Flatpak (once on Flathub) | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice        |
-  | Homebrew (macOS)          | `brew upgrade --cask vimma`                                                                                                                                      |
-  | `.dmg` (macOS)            | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos) |
-  | A build from source       | nothing: source builds never check (pull and rebuild)                                                                                                            |
+  | Installed with            | `:update` shows                                                                                                                                                                                                                                                                                                  |
+  | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | The release's `PKGBUILD`  | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`                                                                                                                                                  |
+  | AUR `vimma-bin`           | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                                                                                                                                                                   |
+  | `.deb`                    | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`; one line points at [the repository](#package-repositories)                                                                                                                                                          |
+  | `.rpm`                    | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora), or download Vimma's package key, check it against the SHA-256 built into Vimma, import it with `sudo rpm --import` and `sudo zypper install` the file (openSUSE); one line points at [the repository](#package-repositories) |
+  | A package repository      | `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade vimma`, `sudo zypper up vimma` or `sudo pacman -Syu` (on Omarchy, `omarchy update`)                                                                                                                                                                     |
+  | Tarball                   | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                                                                                                                             |
+  | AppImage                  | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                                                                                                                                                                             |
+  | Flatpak (once on Flathub) | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice                                                                                                                                                        |
+  | Homebrew (macOS)          | `brew upgrade --cask vimma`                                                                                                                                                                                                                                                                                      |
+  | `.dmg` (macOS)            | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos)                                                                                                                                                 |
+  | A build from source       | nothing: source builds never check (pull and rebuild)                                                                                                                                                                                                                                                            |
 
-  Vimma's signed apt, dnf, zypper and pacman repositories are not published yet. Once they
-  are, a `.deb` or `.rpm` installed from one is the same file as the release's, so `:update`
-  tells them apart by the repository's own setup file (`/etc/apt/sources.list.d/vimma.sources`
+  A `.deb` or `.rpm` installed from [Vimma's repository](#package-repositories) is the same
+  file as the release's, so `:update` tells them apart by the repository's own setup file (`/etc/apt/sources.list.d/vimma.sources`
   for a `.deb`; `/etc/yum.repos.d/vimma.repo` or `/etc/zypp/repos.d/vimma.repo` for an `.rpm`):
   it checks only whether the file exists, never reads it, and shows the command of each
   package manager set up for that package's format.
