@@ -451,13 +451,57 @@ add_task(async function a_redirect_inside_a_tab_is_never_moved() {
   const count = gBrowser.tabs.length;
   const loaded = BrowserTestUtils.browserLoaded(page.linkedBrowser, false, `${WORK}?redirect`);
   await SpecialPowers.spawn(page.linkedBrowser, [`${WORK}?redirect`], (url) => {
-    content.location.replace(url);
+    // The page's own script redirects, so the load's triggering principal is the page's.
+    // `content.location.replace(url)` here would run with the test sandbox's system principal,
+    // as what the user opens does (decision 9).
+    const script = content.document.createElement("script");
+    script.textContent = `location.replace(${JSON.stringify(url)});`;
+    content.document.body.append(script);
   });
   await loaded;
   Assert.equal(gBrowser.tabs.length, count, "no tab opens");
   Assert.equal(page.userContextId, home.userContextId, "the tab stays in rt-home's container");
   Assert.equal(gBrowser.selectedTab, page, "and stays selected");
   Assert.equal(activeName(), "rt-home", "the workspace stays");
+  await until(() => noticeText() === HINT, "the page's redirect is hinted");
+  tidy();
+});
+
+const REDIRECT = `${getRootDirectory(gTestPath).replace(
+  "chrome://mochitests/content",
+  "https://example.org",
+)}file_vimma_routes_redirect.sjs`;
+
+add_task(async function a_server_redirect_is_hinted_only_after_a_link_click() {
+  // Decision 9: a server redirect keeps the triggering principal of the load it redirects. A
+  // typed URL on an unrouted site that redirects to a routed one is the user's open (no hint);
+  // the same redirect after a page's link click is the page's navigation (the hint).
+  const typed = await inHome();
+  gURLBar.focus();
+  gURLBar.value = `${REDIRECT}?${encodeURIComponent(`${WORK}?typed`)}`;
+  EventUtils.synthesizeKey("KEY_Enter");
+  Assert.equal(await loadedIn(`${WORK}?typed`), typed, "the typed URL is redirected in its tab");
+  Assert.equal(typed.userContextId, home.userContextId, "in rt-home's container");
+  Assert.equal(activeName(), "rt-home", "and the workspace stays");
+  Assert.ok(!noticeText().includes("goes to"), "no hint after a typed URL's redirect");
+  tidy();
+
+  const clicked = await inHome();
+  const loaded = BrowserTestUtils.browserLoaded(clicked.linkedBrowser, false, `${WORK}?clicked`);
+  await SpecialPowers.spawn(
+    clicked.linkedBrowser,
+    [`${REDIRECT}?${encodeURIComponent(`${WORK}?clicked`)}`],
+    (u) => {
+      const link = content.document.createElement("a");
+      link.href = u;
+      content.document.body.append(link);
+      link.click();
+    },
+  );
+  await loaded;
+  Assert.equal(clicked.userContextId, home.userContextId, "a clicked link's redirect stays too");
+  Assert.equal(activeName(), "rt-home", "and the workspace stays");
+  await until(() => noticeText() === HINT, "but is hinted");
   tidy();
 });
 
