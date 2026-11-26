@@ -236,6 +236,7 @@ support-files = ["file_vimma_urlbar_suggest.sjs"]
 ["browser_vimma_workspace_store.js"]
 
 ["browser_vimma_workspace_routes.js"]
+support-files = ["file_vimma_routes_redirect.sjs"]
 
 ["browser_vimma_workspace_routes_external.js"]
 
