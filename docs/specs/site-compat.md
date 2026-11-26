@@ -245,7 +245,10 @@ needs no dependency.
    4. `yank`: `yy` puts the tab's URL on the clipboard.
    5. `insert`: focusing the site's search field (its `search` selector, else the first visible
       search or text input) gives insert mode; Esc gives normal mode and the field loses focus.
-      `skip` when the page has no such field.
+      `skip` when the page has no such field. (Since changed: when Esc left a field the page
+      focused at load, the check also clicks the field, because after that Esc a focus from the
+      page's script stays in normal mode by design, [insert-focus](insert-focus.md) behaviour 6,
+      and a click on the field is the user's; regex101 autofocuses its editor.)
    6. `prefix`: `ctrl+b` in normal mode and in a focused field gives `pending: "prefix"`, and the
       page sees no `ctrl+b` keydown.
    7. `shortcuts` (`info`): Vimma's single normal-mode keys, dispatched to the page as synthetic

@@ -23,7 +23,7 @@ declare const ChromeUtils: {
 
 declare const gBrowser: {
   selectedTab: Element;
-  selectedBrowser: { fullZoom: number };
+  selectedBrowser: { fullZoom: number; getBoundingClientRect(): DOMRect };
   isFindBarInitialized?(): boolean;
   getCachedFindBar(): { hidden: boolean; close(noAnimation?: boolean): void } | null;
 };
@@ -31,4 +31,6 @@ declare const gBrowser: {
 // engine/dom/webidl/Window.webidl (chrome-only part)
 interface Window {
   readonly browsingContext: { readonly currentWindowContext: unknown };
+  // engine/dom/webidl/Window.webidl: offsets in this window's CSS pixels; true if prevented.
+  synthesizeMouseEvent(type: string, offsetX: number, offsetY: number): boolean;
 }

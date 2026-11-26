@@ -3,7 +3,8 @@
 // nothing from this module's scope. `content*` ones run in the tab's page (as the DevTools
 // console does: the page cannot see the evaluation), `chrome*` ones in the parent process's
 // browser window. They read, except: the keydown recorder on the page's window, focusing the
-// search field, the consent click, leaving fullscreen, and the clipboard sentinel. Each returns
+// search field and the click on it, the consent click, leaving fullscreen, and the clipboard
+// sentinel. Each returns
 // JSON text, so only a string crosses the protocol.
 
 /** The source to evaluate: `fn(arg)`, its result as JSON. */
@@ -105,7 +106,8 @@ export function contentScrollSnapshot() {
  * Focus the site's search field: `selector`, else the first visible search-like input that takes
  * the focus, else the first visible textarea or contenteditable text box that does (a code
  * editor). A visible field can refuse the focus: a component library's hidden form input (a
- * select's value on regex101) is one, so the next candidate is tried.
+ * select's value on regex101) is one, so the next candidate is tried. `at` is the focused
+ * field's centre in the page's CSS pixels, for a click on it (chromeClickAt).
  */
 export function contentFocusField({ selector }: { selector: string | null }) {
   const visible = (el: Element) => {
@@ -130,11 +132,15 @@ export function contentFocusField({ selector }: { selector: string | null }) {
       if (!visible(el)) continue;
       first ??= el;
       el.focus();
-      if (document.activeElement === el) return { found: true, desc: describe(el), focused: true };
+      if (document.activeElement === el) {
+        const r = el.getBoundingClientRect();
+        const at = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        return { found: true, desc: describe(el), focused: true, at };
+      }
     }
   }
-  if (!first) return { found: false, desc: null, focused: false };
-  return { found: true, desc: describe(first), focused: false };
+  if (!first) return { found: false, desc: null, focused: false, at: null };
+  return { found: true, desc: describe(first), focused: false, at: null };
 }
 
 /** The focused element: is it a text field? */
@@ -590,6 +596,22 @@ export function chromeTabBusy() {
 /** The status bar's mode segment, e.g. "NORMAL". */
 export function chromeStatusbarMode() {
   return document.querySelector("#vimma-statusbar [data-segment=mode]")?.textContent ?? null;
+}
+
+/**
+ * A click at `x`, `y` in the selected tab's content CSS pixels, as the user's: a trusted
+ * mousedown and mouseup sent into the browser window, which Firefox passes on to the page's
+ * process as input. A focus a page's script makes after Esc does not enter insert mode
+ * (docs/specs/insert-focus.md, behaviour 6); a click on the field does (decision 9).
+ */
+export function chromeClickAt({ x, y }: { x: number; y: number }) {
+  const browser = gBrowser.selectedBrowser;
+  const zoom = Number(browser.fullZoom) || 1;
+  const r = browser.getBoundingClientRect();
+  const left = r.left + x * zoom;
+  const top = r.top + y * zoom;
+  for (const type of ["mousedown", "mouseup"]) window.synthesizeMouseEvent(type, left, top);
+  return true;
 }
 
 /** The hint labels drawn now, with their top-left in content CSS pixels. */
