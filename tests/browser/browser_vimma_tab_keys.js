@@ -412,25 +412,32 @@ async function windowWithOneTab() {
   return win;
 }
 
-add_task(async function closing_the_last_tab_closes_the_window() {
-  await SpecialPowers.pushPrefEnv({ set: [["browser.tabs.closeWindowWithLastTab", true]] });
+// docs/specs/close-last-tab.md: a user close of a window's last tab follows `[tabs] close_last`.
+// By default ("picker") a second window with nothing else in it closes, as ctrl+shift+w would;
+// "new_tab" keeps it with a fresh tab, as Firefox with closeWindowWithLastTab off.
+add_task(async function closing_the_last_tab_closes_a_window_with_nothing_else() {
   const win = await windowWithOneTab();
   const closed = BrowserTestUtils.domWindowClosed(win);
   EventUtils.synthesizeKey("x", {}, win);
   await closed;
-  Assert.ok(win.closed, "x on the last tab closes the window, as ctrl+w does");
-  await SpecialPowers.popPrefEnv();
+  Assert.ok(win.closed, "x on the last tab closes the window");
 });
 
-add_task(async function closing_the_last_tab_keeps_the_window_when_firefox_says_so() {
-  await SpecialPowers.pushPrefEnv({ set: [["browser.tabs.closeWindowWithLastTab", false]] });
-  const win = await windowWithOneTab();
-  const first = win.gBrowser.selectedTab;
-  EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
-  EventUtils.synthesizeKey("X", { shiftKey: true }, win);
-  await TestUtils.waitForCondition(() => !first.isConnected, "the tab is closed");
-  Assert.ok(!win.closed, "the window stays (closeWindowWithLastTab = false; M3's setting)");
-  Assert.equal(win.gBrowser.tabs.length, 1, "with a fresh tab");
-  await BrowserTestUtils.closeWindow(win);
-  await SpecialPowers.popPrefEnv();
+add_task(async function closing_the_last_tab_keeps_the_window_with_close_last_new_tab() {
+  const { CloseLastTab } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/close-last-ops.mjs",
+  );
+  CloseLastTab.configure("new_tab");
+  try {
+    const win = await windowWithOneTab();
+    const first = win.gBrowser.selectedTab;
+    EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
+    EventUtils.synthesizeKey("X", { shiftKey: true }, win);
+    await TestUtils.waitForCondition(() => !first.isConnected, "the tab is closed");
+    Assert.ok(!win.closed, 'the window stays (close_last = "new_tab")');
+    Assert.equal(win.gBrowser.tabs.length, 1, "with a fresh tab");
+    await BrowserTestUtils.closeWindow(win);
+  } finally {
+    CloseLastTab.configure("picker");
+  }
 });
