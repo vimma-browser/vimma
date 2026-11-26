@@ -21,6 +21,9 @@ on:
       - tools/package/macos-dmg.sh
       - tools/package/macos-icons.ts
       - tools/package/render-icon.swift
+      - src/toolkit/xre/MacApplicationDelegate-mm.patch
+      - tools/e2e/macos-app-routes.ts
+      - tools/package/test/link-opener.swift
 
 permissions: {}
 
@@ -230,6 +233,14 @@ jobs:
             node tools/e2e/e2e.ts --headless --build "$APP" \
               --vimma-ctl tools/vimma-ctl/target/release/vimma-ctl --filter "$scenario"
           done
+
+      # Spec app-routes, sub-PR 3: a helper app opens links with Vimma through NSWorkspace, as
+      # Slack or Ghostty do, and MacApplicationDelegate-mm.patch names it for [[routes]] app
+      # rules, with Vimma running and from a cold start; a VIMMA_FROM inherited through `open`
+      # names nothing (R7). With windows: a headless start receives no Apple Events.
+      - name: Links from other apps name the app
+        timeout-minutes: 10
+        run: node tools/e2e/macos-app-routes.ts --app "$APP"
 
       - name: Upload the rendered icon and the screenshot
         if: always()

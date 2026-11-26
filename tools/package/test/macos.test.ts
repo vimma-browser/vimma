@@ -284,18 +284,23 @@ describe("macos.yml", () => {
     const on = doc.on as Record<string, any>;
     expect(Object.keys(on).sort()).toEqual(["pull_request", "schedule", "workflow_dispatch"]);
     expect(on.schedule).toHaveLength(1);
-    expect(on.pull_request.paths.sort()).toEqual([
-      ".github/workflows/macos.yml",
-      "configs/branding/vimma/**",
-      "configs/macos/**",
-      "src/browser/branding/vimma/**",
-      "tools/package/fetch-rcodesign.sh",
-      "tools/package/macos-app-check.sh",
-      "tools/package/macos-dmg-check.sh",
-      "tools/package/macos-dmg.sh",
-      "tools/package/macos-icons.ts",
-      "tools/package/render-icon.swift",
-    ]);
+    expect(on.pull_request.paths.sort()).toEqual(
+      [
+        ".github/workflows/macos.yml",
+        "configs/branding/vimma/**",
+        "configs/macos/**",
+        "src/browser/branding/vimma/**",
+        "tools/package/fetch-rcodesign.sh",
+        "tools/package/macos-app-check.sh",
+        "tools/package/macos-dmg-check.sh",
+        "tools/package/macos-dmg.sh",
+        "tools/package/macos-icons.ts",
+        "tools/package/render-icon.swift",
+        "src/toolkit/xre/MacApplicationDelegate-mm.patch",
+        "tools/e2e/macos-app-routes.ts",
+        "tools/package/test/link-opener.swift",
+      ].sort(),
+    );
   });
 
   it("no release or nightly workflow calls it, so it cannot block a Linux build", () => {
@@ -388,6 +393,18 @@ describe("macos.yml", () => {
     expect(index(smoke, "Build vimma-ctl")).toBeLessThan(index(smoke, "The e2e smoke scenarios"));
     expect(index(smoke, "actions/setup-node@")).toBeLessThan(
       index(smoke, "The e2e smoke scenarios"),
+    );
+  });
+
+  // Spec app-routes, sub-PR 3: a helper app opens links with Vimma through NSWorkspace, with
+  // windows, since a headless start receives no Apple Events.
+  it("smokes links from another app, with windows, after the headless checks", () => {
+    const routes = step(smoke, "Links from other apps name the app");
+    expect(routes["timeout-minutes"]).toBeLessThanOrEqual(10);
+    expect(routes.run).toBe('node tools/e2e/macos-app-routes.ts --app "$APP"');
+    expect(routes.env ?? {}).not.toHaveProperty("MOZ_HEADLESS");
+    expect(index(smoke, "The e2e smoke scenarios")).toBeLessThan(
+      index(smoke, "Links from other apps name the app"),
     );
   });
 

@@ -32,7 +32,7 @@ S9 or M62), so a citation that gives only those ("security.md M62", "§12") find
 | Section | Page                                                                            | Rules                 |
 | ------- | ------------------------------------------------------------------------------- | --------------------- |
 | §1      | [Control socket](01-control-socket.md)                                          | S1 to S15             |
-| §2      | [Workspace routing](02-workspace-routing.md)                                    | R1 to R6, R8 to R10   |
+| §2      | [Workspace routing](02-workspace-routing.md)                                    | R1 to R10             |
 | §3      | [Workspace deletion and containers](03-workspace-deletion-and-containers.md)    | W1 to W8              |
 | §4      | [Opening URLs from untrusted text](04-opening-urls-from-untrusted-text.md)      | U1 to U8              |
 | §5      | [Add-ons](05-add-ons.md)                                                        | A1 to A3              |

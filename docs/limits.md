@@ -101,8 +101,11 @@ the [user guide](guide.md); planned work is on the
   sandboxed apps, from apps that open links through the desktop portal (Ghostty's link clicks
   on Linux), from apps started through systemd (`uwsm app`), or from a program that has exited
   before its link arrives. Behind a tmux, zellij or detached herdr server, the names end at the
-  multiplexer: a rule for the terminal behind it does not match. On macOS, app rules do not
-  apply yet.
+  multiplexer: a rule for the terminal behind it does not match. On macOS, app rules apply to
+  links from apps; links from command-line tools carry no names yet, because `vimma-open` is
+  not in the app bundle, and neither do links a tool opens with `open` or `osascript`, nor
+  Handoff. When two links from different apps start Vimma at once, the first window's tab
+  carries no names.
 
 ## Bookmarks
 
