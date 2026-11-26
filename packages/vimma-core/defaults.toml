@@ -451,6 +451,8 @@ notify = true                   # a desktop notification when an agent asks whil
 download_dir = "~/Downloads/vimma-agent"  # where agent downloads are saved; never opened
 download_max_mb = 200           # agent downloads larger than this are refused, in MB (1–4096)
 clamav_max_age_days = 7         # days before ClamAV definitions stop counting a file clean (1–90)
+open_per_minute = 15            # new tabs an agent may open a minute (1–600)
+load_per_minute = 60            # pages an agent may load into its open tabs a minute (1–600)
 
 # Vimma's own agent (ctrl+b i). A model you pick in its window is added here, never a key.
 # [agent]

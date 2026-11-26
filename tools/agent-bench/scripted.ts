@@ -31,7 +31,8 @@ export type ScriptTurn = {
 export type Script = (req: ScriptRequest) => ScriptTurn;
 
 /**
- * A pace that keeps the shopper under Vimma's open rate (10 a minute) on every list: the longest
+ * A pace that keeps the shopper under an open rate of 10 a minute on every list (Vimma's own
+ * defaults, 15 new tabs and 60 loads a minute, are looser; vimma-mcp decision 46): the longest
  * list opens its tenth search and the checkout 21 model turns apart, so turns of 3 seconds
  * spread them over more than a minute, whatever the tools take.
  */

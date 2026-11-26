@@ -355,11 +355,16 @@ add_task(async function test_grants_cannot_flood() {
     "at most 4 agent requests of one connection run at once",
   );
 
-  // Opens under the same grant: at most 10 a minute.
+  // New tabs under the same grant: at most 15 a minute by default (vimma-mcp decision 46).
   const opened = [];
-  for (let i = 0; i < 11; i++) opened.push(await c.call("agent-open", { url: `${PAGE}?f${i}` }));
-  Assert.equal(opened.filter((r) => r.ok).length, 10, "10 opens a minute");
+  for (let i = 0; i < 16; i++) opened.push(await c.call("agent-open", { url: `${PAGE}?f${i}` }));
+  Assert.equal(opened.filter((r) => r.ok).length, 15, "15 new tabs a minute");
   Assert.equal(opened.at(-1)?.error?.reason, "busy", "the rest are busy");
+  Assert.equal(
+    opened.at(-1)?.error?.message,
+    "too many new tabs from this agent in the last minute (at most 15, [mcp] open_per_minute)",
+    "naming the new-tab limit",
+  );
   c.close();
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   await setSwitches({});
@@ -372,19 +377,99 @@ add_task(async function test_a_used_up_open_rate_refuses_before_asking() {
   // An open that asked anyway ends at this timeout instead of hanging the test.
   Services.prefs.setIntPref(ASK_TIMEOUT, 2000);
   const c = await agentClient();
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 15; i++) {
     const id = c.request("agent-open", { url: `${PAGE}?a${i}` });
     await answer({ kind: "once" });
     Assert.ok((await c.response(id)).ok, `open ${i + 1} runs after its yes`);
   }
   const asked = AgentGate.log.length;
-  const r = await c.call("agent-open", { url: `${PAGE}?a10` });
-  Assert.equal(r.error?.reason, "busy", "the 11th open in a minute is refused as busy");
+  const r = await c.call("agent-open", { url: `${PAGE}?a15` });
+  Assert.equal(r.error?.reason, "busy", "the 16th open in a minute is refused as busy");
   Assert.ok((r.error?.retryAfter ?? 0) > 0, "with the wait for the next one");
   Assert.equal(AgentGate.waiting.length, 0, "and no question waits");
   Assert.equal(AgentGate.log.length, asked, "nor was the user asked");
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  await setSwitches({});
+});
+
+// Issue #1561, vimma-mcp decision 46: a load into an existing agent tab adds no tab, so it has
+// a rate of its own (60 a minute by default), apart from the new tabs' 15.
+add_task(async function test_loads_into_a_tab_have_their_own_rate() {
+  await setSwitches({ mcp: true });
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  let id = c.request("agent-open", { url: `${PAGE}?n0` });
+  await answer({ kind: "grant", minutes: 5 });
+  Assert.ok((await c.response(id)).ok, "the first new tab, under a grant");
+  for (let i = 1; i < 15; i++) {
+    Assert.ok((await c.call("agent-open", { url: `${PAGE}?n${i}` })).ok, `new tab ${i + 1}`);
+  }
+  Assert.equal(
+    (await c.call("agent-open", { url: `${PAGE}?n15` })).error?.reason,
+    "busy",
+    "the new tabs' rate is used up",
+  );
+  const loads = [];
+  for (let i = 0; i < 61; i++) {
+    loads.push(await c.call("agent-open", { url: `${PAGE}?l${i}`, tab: idOf(tab) }));
+  }
+  Assert.equal(loads.filter((r) => r.ok).length, 60, "while 60 loads into a tab still run");
+  const last = loads.at(-1)?.error;
+  Assert.equal(last?.reason, "busy", "and the 61st is busy");
+  Assert.equal(
+    last?.message,
+    "too many loads from this agent in the last minute (at most 60, [mcp] load_per_minute)",
+    "naming the load limit",
+  );
+  Assert.ok((last?.retryAfter ?? 0) > 0, "with the wait for the next one");
+  c.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  await setSwitches({});
+});
+
+// vimma-mcp decision 46: `[mcp] open_per_minute` and `load_per_minute` are read at each call,
+// so a config.toml change holds from the next call on, as ask_timeout and max_read_chars do.
+add_task(async function test_a_changed_rate_applies_to_the_next_call() {
+  await setSwitches({ mcp: true });
+  const before = McpHost.config;
+  const base = {
+    workspace: "agent",
+    askTimeout: 50,
+    grantMinutes: 0,
+    grantMaxMinutes: 480,
+    maxReadChars: 200000,
+    notify: false,
+    downloadDir: "~/Downloads/vimma-agent",
+    downloadMaxMb: 200,
+    clamavMaxAgeDays: 7,
+  };
+  McpHost.configure({ ...base, openPerMinute: 2, loadPerMinute: 1 });
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  let id = c.request("agent-open", { url: `${PAGE}?c0` });
+  await answer({ kind: "grant", minutes: 5 });
+  Assert.ok((await c.response(id)).ok, "new tab 1");
+  Assert.ok((await c.call("agent-open", { url: `${PAGE}?c1` })).ok, "new tab 2");
+  let r = await c.call("agent-open", { url: `${PAGE}?c2` });
+  Assert.equal(
+    r.error?.message,
+    "too many new tabs from this agent in the last minute (at most 2, [mcp] open_per_minute)",
+    "the third is over open_per_minute = 2",
+  );
+  Assert.ok((await c.call("agent-open", { url: `${PAGE}?d0`, tab: idOf(tab) })).ok, "load 1");
+  r = await c.call("agent-open", { url: `${PAGE}?d1`, tab: idOf(tab) });
+  Assert.equal(
+    r.error?.message,
+    "too many loads from this agent in the last minute (at most 1, [mcp] load_per_minute)",
+    "the second load is over load_per_minute = 1",
+  );
+  McpHost.configure({ ...base, openPerMinute: 3, loadPerMinute: 2 });
+  Assert.ok((await c.call("agent-open", { url: `${PAGE}?c3` })).ok, "raised: a third new tab");
+  Assert.ok((await c.call("agent-open", { url: `${PAGE}?d2`, tab: idOf(tab) })).ok, "a 2nd load");
+  c.close();
+  McpHost.configure(before);
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   await setSwitches({});
 });
