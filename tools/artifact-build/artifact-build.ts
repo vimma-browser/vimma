@@ -21,6 +21,8 @@
  * - the launcher's built-in app data is Mozilla's (Name=Firefox, Vendor=Mozilla). Tests run with
  *   XUL_APP_FILE=dist/bin/browser/application.ini, our application.ini plus `UAName=` from
  *   MOZ_APP_UA_NAME, which a full build compiles into libxul instead.
+ * On macOS it also gives dist/Vimma.app its own bundle id and no http/https handlers
+ * (testBundlePlist): this build is never released, and must not take links from other apps.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -231,13 +233,60 @@ export function linkLauncher(engine: string, binaryName: string): string {
   return launcher;
 }
 
+/** The bundle id of an artifact build's .app; the release keeps surfer.json's appId. */
+export const TEST_BUNDLE_ID = "dev.vimma.browser.artifact";
+
+/**
+ * LaunchServices sends a link clicked in another app to the default browser's bundle id, and
+ * prefers a running app with that id, then the highest CFBundleVersion, over the installed one:
+ * a headless lane build with the release id took the user's links (issue #1571). Its own id
+ * keeps it out of that lookup and out of the release's preferences domain; without http/https
+ * URL types it cannot be offered as a browser either.
+ * @param plist Contents/Info.plist as browser/app/macbuild/Contents/Info.plist.in makes it
+ */
+export function testBundlePlist(plist: string): string {
+  const id = /(<key>CFBundleIdentifier<\/key>\s*<string>)[^<]*(<\/string>)/;
+  if (!id.test(plist)) throw new Error("Info.plist has no CFBundleIdentifier");
+  const webUrlType =
+    /[ \t]*<dict>(?:(?!<\/?dict>)[\s\S])*<key>CFBundleURLSchemes<\/key>\s*<array>\s*<string>https?<\/string>\s*<\/array>\s*<\/dict>\n?/g;
+  return plist.replace(id, `$1${TEST_BUNDLE_ID}$2`).replace(webUrlType, "");
+}
+
+/** Drops the .app's LaunchServices record, which still names the release id until relaunch. */
+function lsUnregister(app: string) {
+  const lsregister =
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework" +
+    "/Support/lsregister";
+  if (process.platform === "darwin") spawnSync(lsregister, ["-u", app], { stdio: "ignore" });
+}
+
+/**
+ * Applies testBundlePlist to dist/Vimma.app, which `mach build` regenerates with the release id.
+ * @param engine path of engine/
+ * @param unregister called with the .app's path when its Info.plist changed
+ * @returns whether Info.plist changed; false when there is no .app (Linux)
+ */
+export function markTestBundle(engine: string, unregister = lsUnregister): boolean {
+  const app = join(engine, ARTIFACT_OBJDIR, "dist", "Vimma.app");
+  const path = join(app, "Contents", "Info.plist");
+  if (!existsSync(path)) return false;
+  const plist = readFileSync(path, "utf8");
+  const marked = testBundlePlist(plist);
+  if (marked === plist) return false;
+  writeFileSync(path, marked);
+  unregister(app);
+  return true;
+}
+
 /**
  * Writes dist/bin/browser/application.ini (the file tests load via XUL_APP_FILE) from the
- * build's current application.ini, so a later bare `./mach build` never leaves it stale.
+ * build's current application.ini, and marks the .app (markTestBundle), so a later bare
+ * `./mach build` never leaves either stale.
  * @param engine path of engine/
+ * @param unregister see markTestBundle
  * @returns the written path
  */
-export function refreshAppIni(engine: string): string {
+export function refreshAppIni(engine: string, unregister = lsUnregister): string {
   const bin = join(engine, ARTIFACT_OBJDIR, "dist", "bin");
   const out = join(bin, "browser", "application.ini");
   const ini = appIniForArtifact(
@@ -245,6 +294,7 @@ export function refreshAppIni(engine: string): string {
     uaName(readFileSync(join(engine, "browser", "moz.configure"), "utf8")),
   );
   writeFileSync(out, ini);
+  markTestBundle(engine, unregister);
   return out;
 }
 
