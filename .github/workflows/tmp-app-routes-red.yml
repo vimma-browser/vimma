@@ -1,0 +1,40 @@
+# Temporary, removed before the pull request opens: runs the app-routes smoke against the last
+# unpatched macOS build (run 45682340662), for the red half of sub-PR 3's test evidence.
+name: tmp-app-routes-red
+
+on:
+  push:
+    branches: [feat/macos-app-sender]
+
+permissions: {}
+
+jobs:
+  smoke:
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: vimma-0.1.24-firefox-161.0-macos-aarch64
+          path: dmg
+          run-id: 45682340662
+          github-token: ${{ github.token }}
+      - name: Mount the dmg and copy the app out
+        run: |
+          set -- dmg/*.dmg
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/vimma-dmg" "$1"
+          ditto "$RUNNER_TEMP/vimma-dmg/Vimma.app" "$RUNNER_TEMP/Vimma.app"
+          hdiutil detach "$RUNNER_TEMP/vimma-dmg"
+          echo "APP=$RUNNER_TEMP/Vimma.app" >> "$GITHUB_ENV"
+      - name: Links from other apps name the app
+        timeout-minutes: 10
+        run: node tools/e2e/macos-app-routes.ts --app "$APP"

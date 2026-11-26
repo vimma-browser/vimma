@@ -1,0 +1,51 @@
+diff --git a/toolkit/xre/MacApplicationDelegate.mm b/toolkit/xre/MacApplicationDelegate.mm
+index 75c0af1..067389e 100644
+--- a/toolkit/xre/MacApplicationDelegate.mm
++++ b/toolkit/xre/MacApplicationDelegate.mm
+@@ -486,8 +486,35 @@ - (void)application:(NSApplication*)application
+   NSLog(@"Failed to continue user activity %@: %@", userActivityType, error);
+ }
+ 
++// Vimma (app-routes, decision 11): a kAEGetURL sender's bundle identifier and,
++// unless sandboxed, executable name, lower-cased, for [[routes]] app rules.
++static NSString* VimmaSenderNames(NSAppleEventDescriptor* aEvent) {
++  if (aEvent.eventClass != kInternetEventClass || aEvent.eventID != kAEGetURL) return nil;
++  pid_t pid = [aEvent attributeDescriptorForKeyword:keySenderPIDAttr].int32Value;
++  if (pid <= 0 || pid == getpid()) return nil;
++  NSRunningApplication* app = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
++  NSString* exe = [aEvent attributeDescriptorForKeyword:keySenderApplicationSandboxed].booleanValue
++                      ? nil
++                      : app.executableURL.lastPathComponent;
++  NSMutableArray<NSString*>* names = [NSMutableArray array];
++  for (NSString* name in @[ app.bundleIdentifier ?: @"", exe ?: @"" ]) {
++    NSString* lower = name.lowercaseString;
++    if ([lower rangeOfString:@"^[a-z0-9][a-z0-9._+-]{0,63}$" options:NSRegularExpressionSearch]
++            .length) {
++      [names addObject:lower];
++    }
++  }
++  return names.count ? [names componentsJoinedByString:@","] : nil;
++}
++
+ - (BOOL)openURLs:(NSArray<NSURL*>*)urls {
+   LOG_STARTUP_RUN_LOOP_EVENT("urls");
++  // Vimma: a cold start's names go in VIMMA_FROM, never an inherited one.
++  NSString* vimmaFrom =
++      VimmaSenderNames(NSAppleEventManager.sharedAppleEventManager.currentAppleEvent);
++  if (sLaunchStatus == LaunchStatus::CollectingURLs) {
++    vimmaFrom ? setenv("VIMMA_FROM", vimmaFrom.UTF8String, 1) : unsetenv("VIMMA_FROM");
++  }
+   nsTArray<const char*> args([urls count] * 2 + 2);
+   // Placeholder for unused program name.
+   args.AppendElement(nullptr);
+@@ -520,6 +547,10 @@ - (BOOL)openURLs:(NSArray<NSURL*>*)urls {
+       continue;
+     }
+ 
++    if (args.Length() == 1 && vimmaFrom) {
++      args.AppendElement("-vimma-from");
++      args.AppendElement(vimmaFrom.UTF8String);
++    }
+     args.AppendElement(shouldOpenInBackground ? "-url-background" : "-url");
+     args.AppendElement(urlString);
+   }
