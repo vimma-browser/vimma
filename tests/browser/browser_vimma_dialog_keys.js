@@ -370,6 +370,68 @@ add_task(async function a_dialog_closed_gives_focus_back_to_the_hidden_address_b
   gBrowser.selectedBrowser.focus();
 });
 
+// Firefox gives focus back from the window-modal <dialog>'s close (gDialogBox.open, after the
+// dialog's frame unloads), some time after SubDialog's `dialogclose`; until then the rest of the
+// window is inert and refuses focus. On a slow runner (#1423, macOS) that close came after the
+// address bar's reveal had already settled back to hidden, and focus was lost.
+add_task(async function a_window_dialog_slow_to_close_gives_focus_back_to_the_hidden_address_bar() {
+  gURLBar.focus();
+  await until(() => gURLBar.focused, "the address bar has focus");
+  const shown = nextDialog();
+  /** @type {boolean | undefined} */
+  let answer;
+  setTimeout(() => (answer = Services.prompt.confirm(window, "Vimma", "Turn it on?")), 0);
+  const w = await shown;
+  await until(() => lineShows(w, "y ok · n cancel"), "a window dialog names the keys");
+  const modal = /** @type {HTMLDialogElement} */ (document.getElementById("window-modal-dialog"));
+  modal.close = () => setTimeout(() => HTMLDialogElement.prototype.close.call(modal), 200);
+  try {
+    press("n", w);
+    await until(() => answer !== undefined, "the dialog answered");
+  } finally {
+    // @ts-expect-error -- drops the own property, back to HTMLDialogElement.prototype.close
+    delete modal.close;
+  }
+  await until(() => gURLBar.focused, "the address bar has focus again");
+  Assert.ok(
+    gURLBar.inputField.checkVisibility({ visibilityProperty: true }),
+    "in the minimal bar, visible",
+  );
+  EventUtils.synthesizeKey("KEY_Escape");
+  gBrowser.selectedBrowser.focus();
+});
+
+// A caller that asks again as soon as its first window dialog is answered (the caret browsing
+// question came twice for one F7 sent over the control socket) opens the second before Vimma
+// has looked at the focus, with the first dialog's elements as what had focus before it: focus
+// goes back to the address bar the first one was opened from once the second is answered too.
+add_task(async function a_window_dialog_asked_again_gives_focus_back_to_the_address_bar() {
+  gURLBar.focus();
+  await until(() => gURLBar.focused, "the address bar has focus");
+  /** @type {(boolean | undefined)[]} */
+  const answers = [];
+  let shown = nextDialog();
+  setTimeout(() => {
+    answers[0] = Services.prompt.confirm(window, "Vimma", "First?");
+    answers[1] = Services.prompt.confirm(window, "Vimma", "Second?");
+  }, 0);
+  const first = await shown;
+  await until(() => lineShows(first, "y ok · n cancel"), "the first dialog names the keys");
+  shown = nextDialog();
+  press("n", first);
+  const second = await shown;
+  await until(() => lineShows(second, "y ok · n cancel"), "the second dialog names the keys");
+  press("n", second);
+  await until(() => answers[1] !== undefined, "both dialogs answered");
+  await until(() => gURLBar.focused, "the address bar has focus again");
+  Assert.ok(
+    gURLBar.inputField.checkVisibility({ visibilityProperty: true }),
+    "in the minimal bar, visible",
+  );
+  EventUtils.synthesizeKey("KEY_Escape");
+  gBrowser.selectedBrowser.focus();
+});
+
 // The window may not be the active one when its dialog closes (another window in front, or the
 // window manager slow to give the activation back, as on a loaded macOS runner): the address bar
 // still has the focus once the window is in front again (#1423).

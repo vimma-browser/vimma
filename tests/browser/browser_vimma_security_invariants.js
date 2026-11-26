@@ -351,8 +351,8 @@ add_task(async function the_update_checks_test_prefs_are_read_only_in_automation
     [
       'const TEST_TYPE_PREF = "vimma.update.installType";',
       'const TEST_REPO_ROOT_PREF = "vimma.update.testRepoRoot";',
+      'return inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";',
       'const forced = inAutomation() ? Services.prefs.getStringPref(TEST_TYPE_PREF, "") : "";',
-      'const root = inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";',
     ],
     "each pref is declared, and read once, behind inAutomation()",
   );

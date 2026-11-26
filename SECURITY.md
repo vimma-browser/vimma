@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-Vimma is pre-alpha. Only the latest `main` is supported: fixes land there, and there are no
-release branches or backports.
+Vimma is in alpha. Only the latest release and the latest `main` are supported: fixes land on
+`main` and ship in the next release, and there are no release branches or backports.
 
 ## Reporting a vulnerability
 

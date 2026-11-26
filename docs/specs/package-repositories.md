@@ -1,8 +1,6 @@
 # Spec: package-repositories
 
-Status: accepted (sub-PR 1, the signer, the repository tool and the smoke test, sub-PR 2,
-package signing, and sub-PR 3, publishing, implemented; sub-PR 4, the browser's hints, built;
-the certificate committed; the repositories are not published yet) ·
+Status: implemented (the repositories are published from release 0.1.24) ·
 Area: `tools/package/repos.ts` (new), `tools/package/repos-smoke.sh` (new),
 `tools/package/package.ts`, `.github/workflows/release.yml`,
 `.github/workflows/update-publish.yml`, `.github/workflows/pkgbuild.yml`,
@@ -388,6 +386,10 @@ smoke test", the last item below).
     `vimma-bin`, the AUR's name, so a `PKGBUILD` install moves to the repository on its next
     `pacman -Syu` without removing anything. Rejected: building in the user's `makepkg` from a
     repository of `PKGBUILD`s, because pacman has no such repository type.
+    (Since changed: the guide's `[vimma]` section sets `SigLevel = Required`, because under the
+    default `Required DatabaseOptional` pacman accepts a `vimma.db` served without its `.sig`
+    (Research), which would let a tampered host hold users on an older signed release; the guide's
+    snippet adds that line to Behaviour 4's.)
 11. **Metadata only on the update host; package requests redirect to the GitHub Release.** The
     host serves `/apt/`, `/rpm/` and `/arch/x86_64/` metadata, `vimma-packages.asc` and the setup
     files. Its `_redirects` file sends package requests to
@@ -477,6 +479,13 @@ smoke test", the last item below).
     the upgrade command does nothing without the repository, and the download command works
     either way. Rejected: a second marker for repository installs, because the package file is
     identical. The check reads only whether those paths exist, never their content.
+    (Since changed: on Omarchy, the pacman package's hint is `omarchy update`, because the
+    omarchy package's pacman hook (`00-omarchy-update-guard.hook`) aborts a direct
+    `pacman -Syu` whenever any package has an update, and `omarchy update` runs that upgrade
+    past its guard. The update check tells Omarchy by whether `/usr/bin/omarchy-update`, the
+    command the same package installs, exists, never by its content; elsewhere the hint stays
+    `sudo pacman -Syu`. Both are fixed strings, and the hint never names the guard's bypass
+    variable. [#1550](https://github.com/vimma-browser/vimma/issues/1550).)
 
 ### Host, retention and key lifetime
 
@@ -524,6 +533,9 @@ smoke test", the last item below).
     `PACKAGE_REPOS_ENABLED` is a repository variable that a browser build cannot read, and until
     the maintainer sets it, the line and the setup commands would point users at a repository
     that does not exist; a build released in between still shows a command that works.
+    (Since changed: the repositories are published from release 0.1.24, so Delivery step 5
+    removed `vimma.feature.packageRepos`; the line shows for every `.deb` or `.rpm` without its
+    repository file.)
 26. **An `.rpm` hint names only the package managers whose repository file exists.** With
     `/etc/yum.repos.d/vimma.repo` alone the hint is `sudo dnf upgrade vimma`, with
     `/etc/zypp/repos.d/vimma.repo` alone `sudo zypper up vimma`, and with both, both. Reason: a
