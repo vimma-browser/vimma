@@ -417,13 +417,16 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   without it; a top-level document it loads over HTTP loses its `Cross-Origin-Opener-Policy`,
   which Firefox refuses in a sandboxed tab, since an agent tab has no opener and opens no window)
   and launch no other app through an external protocol (Firefox's chooser is wrapped for the
-  agent container). A link clicked with ctrl or cmd, shift or the middle button in an agent tab
-  opens nothing either: Firefox opens such a click itself (`ClickHandlerChild` to
+  agent container). A link click in an agent tab that Firefox would open in a new tab or window,
+  or save (ctrl or cmd, shift, the middle button, alt with `browser.altClickSave`), opens
+  nothing either: Firefox opens such a click itself (`ClickHandlerChild` to
   `ClickHandlerParent.contentAreaClick` to `openLinkIn`), outside the sandbox flags and outside
   both rates of M3, and accepts a page's scripted click while the page holds the user's
   activation, so `contentAreaClick` is wrapped and drops every such click whose tab (its top
-  browsing context) is in the agent container, the user's own included (issue #1568). Their
-  downloads follow M11-M13. A tab of another workspace
+  browsing context, so a frame's click too) is in the agent container, the user's own included
+  (issue #1568). This covers what a page can start; the user's own deliberate actions in Firefox's
+  interface (`gF`, the context menu's "Open Link in New Tab", dragging a link onto the tab strip)
+  still open a tab in the agent workspace, uncounted. Their downloads follow M11-M13. A tab of another workspace
   still asks, opens pop-ups and downloads as before.
   [`test_the_agent_container_asks_for_nothing`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_another_workspace_still_asks`](../../tests/browser/browser_vimma_mcp_agent_pages.js),

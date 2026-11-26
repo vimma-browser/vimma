@@ -50,6 +50,7 @@ interface VimmaModules {
       removeContentClickListener(listener: object): void;
     };
   };
+  // engine/toolkit/modules/PrivateBrowsingUtils.sys.mjs
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs": {
     PrivateBrowsingUtils: LazyModules["PrivateBrowsingUtils"] & {
       // For the browser tests; product code must not call it.

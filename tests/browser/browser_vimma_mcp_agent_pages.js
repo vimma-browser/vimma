@@ -417,9 +417,12 @@ add_task(async function test_agent_tabs_open_nothing_on_modified_clicks() {
     );
   };
   const accel = AppConstants.platform === "macosx" ? { metaKey: true } : { ctrlKey: true };
-  /** A link the page's script clicks, with the user's activation. */
-  const scripted = (/** @type {MozBrowser} */ browser, /** @type {MouseEventInit} */ init) =>
-    SpecialPowers.spawn(browser, [init], (opts) => {
+  /** A link the page's (or a frame's) script clicks, with the user's activation. */
+  const scripted = (
+    /** @type {MozBrowser | BrowsingContext} */ target,
+    /** @type {MouseEventInit} */ init,
+  ) =>
+    SpecialPowers.spawn(target, [init], (opts) => {
       const a = content.document.createElement("a");
       a.href = "https://example.org/browser/?scripted";
       a.textContent = "link";
@@ -434,14 +437,34 @@ add_task(async function test_agent_tabs_open_nothing_on_modified_clicks() {
   const previous = gBrowser.selectedTab;
   gBrowser.selectedTab = tab;
   const before = gBrowser.tabs.length;
-  const windows = BrowserWindowTracker.windowCount;
+  // openWindow notifies domwindowopened synchronously, inside contentAreaClick; the window
+  // tracker would count the window only once it has loaded.
+  let windowsOpened = 0;
+  const onWindow = (/** @type {unknown} */ _subject, /** @type {string} */ topic) => {
+    if (topic === "domwindowopened") windowsOpened++;
+  };
+  Services.ww.registerNotification(onWindow);
+  registerCleanupFunction(() => Services.ww.unregisterNotification(onWindow));
   for (const init of [accel, { button: 1 }, { shiftKey: true }]) {
     const done = handled(tab.linkedBrowser);
     await scripted(tab.linkedBrowser, init);
     await done;
     Assert.equal(gBrowser.tabs.length, before, `a scripted ${JSON.stringify(init)} opens no tab`);
-    Assert.equal(BrowserWindowTracker.windowCount, windows, "and no window");
+    Assert.equal(windowsOpened, 0, "and no window");
   }
+  // A cross-origin frame's script: the guard goes by the tab's top browsing context.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
+    const frame = content.document.createElement("iframe");
+    frame.src = "https://example.org/browser/";
+    const loaded = new Promise((r) => frame.addEventListener("load", r, { once: true }));
+    content.document.body.append(frame);
+    await loaded;
+  });
+  const frameBC = /** @type {BrowsingContext} */ (contextOf(tab.linkedBrowser).children[0]);
+  const frameDone = handled(tab.linkedBrowser);
+  await scripted(frameBC, accel);
+  await frameDone;
+  Assert.equal(gBrowser.tabs.length, before, "a cross-origin frame's scripted click opens no tab");
   // The user's own (trusted) ctrl-click and middle click on a link the page shows.
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
     const a = content.document.createElement("a");
