@@ -399,7 +399,9 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
 5. **A rule naming the agent workspace is passed over, and matching goes on.** At the external
    routing points `matchRoute` gets `skip: [<agent workspace>]` and treats such a rule as one whose
    workspace does not exist, so a later rule can still apply; about:vimma marks it
-   `never for links from other apps: the agent workspace`. Reason: a rule naming a workspace that
+   `never for links from other apps: the agent workspace` (Since changed: now
+   `never applies: the agent workspace`, as such a rule routes nothing once typed opens are not
+   routed; workspace-routing decision 9). Reason: a rule naming a workspace that
    does not exist is already skipped this way (workspace-routing, decision 2), and stopping at a
    rule that can never apply would make later rules depend on a rule the user cannot see working.
    This changes today's behaviour, which falls through to Firefox's guess; the existing test
@@ -575,7 +577,9 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
 13. **Names reach only the external routing points.** `externalUserContextId` and `firstTab` match
     with them; `routeLinkIn` (the URL bar, `:open`, bookmarks) matches with none, as today, because
     what the user types has no opener program. A page's navigation is never moved
-    (workspace-routing, decision 5).
+    (workspace-routing, decision 5). (Since changed: `routeLinkIn` no longer routes, and
+    a new window's first tab is routed only for a link from another program; names and rules
+    alike apply only at the external routing points; see workspace-routing, decision 9.)
 14. **A tab placed by an app rule is not hinted back.** When an app rule places a tab,
     `WorkspaceRouter` keeps that tab's names and host in a `WeakMap` (the names of the routed open
     are held until `TabOpen` adopts the tab `openURI` creates, which happens in the same task). The
@@ -599,7 +603,10 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
     `url` is absent or covers `i`'s, and `j` is not skipped (a missing workspace, or the agent
     workspace, which applies only to typed opens); a rule with `app` below a covering rule without
     one is inert (decision 3). A rule with `app` never shadows one without, since the latter also
-    applies to typed opens. The section marks rule `i` `shadowed by rule N`.
+    applies to typed opens. The section marks rule `i` `shadowed by rule N`. (Since changed: typed
+    opens are no longer routed (workspace-routing, decision 9), so a rule naming the agent
+    workspace routes no open at all, and a rule with `app` still never shadows one without
+    because the latter matches the links of every other program.)
     Reason: with app and domain rules mixed, an unreachable rule is the likeliest mistake.
 16. **`[routing] default_workspace` catches the links from other programs that no rule
     matches.** A new table, `[routing]` (schema 2), with one key, `default_workspace`, a workspace

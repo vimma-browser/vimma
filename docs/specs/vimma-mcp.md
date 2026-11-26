@@ -112,9 +112,10 @@ answer for the user, and that never disturbs what the user is doing.
   container (decision 6); background opens never switch workspace (decision 12).
 - **Routing** is applied by Vimma's own open paths (`host/route-ops.mjs`, the URL bar and
   `:open`) and the `-vimma-from` handler (`workspaces/WorkspaceRouter.sys.mjs`). The socket's
-  `open` calls `gBrowser.addTab` directly and is not routed. An open with an explicit
-  `userContextId` keeps it: the `Tabbrowser` hunks only fill a missing value (m3-workspaces
-  decision 3, `??=`).
+  `open` calls `gBrowser.addTab` directly and is not routed. (Since changed: rules apply only to
+  links from other apps, never to the URL bar or `:open`; see workspace-routing decision 9.) An
+  open with an explicit `userContextId` keeps it: the `Tabbrowser` hunks only fill a missing value
+  (m3-workspaces decision 3, `??=`).
 - **The y/N line** is `RenamePrompt.ask` (`ui/rename-prompt.mjs`): any key but `y` says no, a held
   key (`e.repeat`) is ignored, the line is an `alertdialog`, refuses to open over DOM full screen,
   and takes focus when it opens: right for a question the user's own key opened, wrong for one an
@@ -922,7 +923,9 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     meant to go, and showing an agent a page is a reason to be there. A restored session keeps each
     tab in the container it was saved with. Workspace routing's own rules for opens from the URL bar
     and `:open` are unchanged, so a rule naming the agent workspace still applies to what the user
-    types.
+    types. (Since changed: rules no longer apply to what the user types, and links from other
+    apps pass over a rule naming the agent workspace, so such a rule routes nothing; see
+    workspace-routing decision 9.)
 
 ### K. ClamAV's definitions and clamd
 

@@ -459,12 +459,12 @@ add_task(async function about_vimma_marks_an_agent_rule_and_an_agent_default() {
     );
     Assert.deepEqual(
       states,
-      ["never for links from other apps: the agent workspace", "in force"],
+      ["never applies: the agent workspace", "in force"],
       "the agent rule is marked",
     );
     Assert.stringContains(
       doc.getElementById("route-default")?.textContent ?? "",
-      "never for links from other apps: the agent workspace",
+      "never applies: the agent workspace",
       "and so is a default workspace naming it",
     );
   } finally {
