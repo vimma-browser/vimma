@@ -79,6 +79,7 @@ describe("defaults.toml as the config.toml reference (#1443)", () => {
         "statusbar.tab",
         "tabs.sleep_after",
         "tabs.sleep_on_low_memory",
+        "tabs.close_last",
         "updates.check",
         "mcp.enabled",
         "mcp.workspace",

@@ -49,6 +49,7 @@ import {
 import { openUrl } from "../host/tab-ops.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 import { PrivateSwap } from "../host/private-swap.mjs";
+import { CloseLastTab } from "../host/close-last-ops.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
@@ -263,6 +264,7 @@ function apply(next, text) {
   for (const win of windows) applyToWindow(win, config);
   ThemeHost.setConfig(config.theme);
   PrivateSwap.configure(config.private.placement);
+  CloseLastTab.configure(config.tabs.closeLast);
   PanelNumbers.set(config.panel.numbers);
   VimmaActors.setScrollStep(config.scroll.step);
   McpHost.configure(config.mcp);

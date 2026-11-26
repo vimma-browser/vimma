@@ -56,6 +56,7 @@ import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
 import { GrepSession } from "./grep.mjs";
 import { closeTabById, selectableTabs } from "./tab-ops.mjs";
+import { lastTabRule } from "./close-last-ops.mjs";
 import { sleepRows } from "./sleep-ops.mjs";
 import { firefoxIds } from "./browser-ops.mjs";
 import {
@@ -497,7 +498,8 @@ export function newWindowState(host, win, keymap, env) {
       },
       closeTab: (tabId) => {
         const tab = tabById(win, tabId);
-        if (tab) closeTabById(win, tab);
+        // `x` in the side panel is a user close (docs/specs/close-last-tab.md, decision 11).
+        if (tab) closeTabById(win, tab, lastTabRule(state));
       },
       sleep: (rows) => {
         /** @type {{ tab: MozTabbrowserTab, number: number }[]} */

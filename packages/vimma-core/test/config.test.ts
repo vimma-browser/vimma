@@ -427,7 +427,7 @@ describe("mergeWithDefaults", () => {
         tablineWidth: 14,
       },
       statusbar: { tab: true },
-      tabs: { sleepAfter: 120, sleepOnLowMemory: true },
+      tabs: { sleepAfter: 120, sleepOnLowMemory: true, closeLast: "picker" },
       updates: { check: true },
       search: null,
       agent: {
@@ -495,11 +495,16 @@ describe("reloadConfig keeps the last good config", () => {
 // docs/specs/tab-sleep.md decisions 11 and 12, Behaviour 6.
 describe("[tabs] and [sites] sleep", () => {
   test("[tabs] sleep_after accepts 0 and 5 to 10080, and rejects other numbers and types", () => {
-    expect(parseConfig(toml()).config?.tabs).toEqual({ sleepAfter: 120, sleepOnLowMemory: true });
+    expect(parseConfig(toml()).config?.tabs).toEqual({
+      sleepAfter: 120,
+      sleepOnLowMemory: true,
+      closeLast: "picker",
+    });
     for (const v of [0, 5, 120, 10080]) {
       expect(parseConfig(toml("[tabs]", `sleep_after = ${v}`)).config?.tabs).toEqual({
         sleepAfter: v,
         sleepOnLowMemory: true,
+        closeLast: "picker",
       });
     }
     for (const v of ["1", "4", "10081", "-5"]) {
@@ -530,11 +535,12 @@ describe("[tabs] and [sites] sleep", () => {
       expect(parseConfig(toml("[tabs]", `sleep_on_low_memory = ${v}`)).config?.tabs).toEqual({
         sleepAfter: 120,
         sleepOnLowMemory: v,
+        closeLast: "picker",
       });
     }
     expect(
       parseConfig(toml("[tabs]", "sleep_after = 0", "sleep_on_low_memory = true")).config?.tabs,
-    ).toEqual({ sleepAfter: 0, sleepOnLowMemory: true });
+    ).toEqual({ sleepAfter: 0, sleepOnLowMemory: true, closeLast: "picker" });
     expect(oneError(toml("[tabs]", 'sleep_on_low_memory = "no"'))).toEqual({
       line: 2,
       path: "tabs.sleep_on_low_memory",
@@ -566,5 +572,42 @@ describe("[tabs] and [sites] sleep", () => {
       /^\[tabs\]\nsleep_after = 120 .*\nsleep_on_low_memory = true .*$/m,
     );
     expect(formatDefaultsToml()).toMatch(/^# sleep = false +# .*$/m);
+  });
+});
+
+// docs/specs/close-last-tab.md, behaviour 1: [tabs] close_last.
+describe("[tabs] close_last", () => {
+  test('defaults to "picker" when absent', () => {
+    expect(parseConfig("").config?.tabs.closeLast).toBe("picker");
+    expect(mergeWithDefaults({}).tabs.closeLast).toBe("picker");
+    expect(formatDefaultsToml()).toMatch(/^close_last = "picker" +# .*$/m);
+  });
+
+  test.each([["picker"], ["new_tab"], ["ask"], ["quit"], ["keep"]])(
+    'close_last = "%s" is accepted',
+    (value) => {
+      const r = parseConfig(toml("[tabs]", `close_last = "${value}"`));
+      expect(r.errors).toEqual([]);
+      expect(r.config?.tabs.closeLast).toBe(value);
+    },
+  );
+
+  test("any other value or type is an error, with the nearest value when one is close", () => {
+    expect(oneError(toml("[tabs]", 'close_last = "close"'))).toEqual({
+      line: 2,
+      path: "tabs.close_last",
+      message: 'must be "picker", "new_tab", "ask", "quit" or "keep"',
+    });
+    expect(oneError(toml("[tabs]", 'close_last = "newtab"'))).toEqual({
+      line: 2,
+      path: "tabs.close_last",
+      message: 'must be "picker", "new_tab", "ask", "quit" or "keep"',
+      suggestion: "new_tab",
+    });
+    expect(oneError(toml("[tabs]", "close_last = true"))).toEqual({
+      line: 2,
+      path: "tabs.close_last",
+      message: "expected a string, got a boolean",
+    });
   });
 });

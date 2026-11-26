@@ -18,6 +18,7 @@ import {
 } from "./defaults.mjs";
 import { INSERT_SITE_MODES } from "../keys/editable.mjs";
 import { SLEEP_AFTER } from "../workspaces/tabsleep.mjs";
+import { CLOSE_LAST_DEFAULT, CLOSE_LAST_VALUES } from "../workspaces/closelast.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels } from "../page/hints.mjs";
 import { KeymapError, compileKeymap } from "../keys/keymap.mjs";
 import { MODES, isKeymapTable } from "../keys/modes.mjs";
@@ -57,6 +58,7 @@ import {
 import { hasControl } from "../text/strings.mjs";
 
 /** @import { Keymap } from "../keys/keymap.mjs" */
+/** @import { CloseLast } from "../workspaces/closelast.mjs" */
 /** @import { UserConfig } from "./defaults.mjs" */
 /** @import { Path } from "./toml.mjs" */
 /** @import { ThemeConfig } from "./theme.mjs" */
@@ -127,9 +129,11 @@ import { hasControl } from "../text/strings.mjs";
  *   `tabline` and `tablineWidth`, the tab line (docs/specs/tab-line.md decisions 3 and 4)
  * @property {{ tab: boolean }} statusbar  `[statusbar]`: whether the status bar keeps
  *   its tab and title while the tab line is drawn (docs/specs/tab-line.md decision 16)
- * @property {{ sleepAfter: number, sleepOnLowMemory: boolean }} tabs  `[tabs]`: `sleepAfter` is
- *   `sleep_after`, minutes a tab stays loaded unseen, 0 never; `sleepOnLowMemory` is
- *   `sleep_on_low_memory`, whether Firefox's low-memory unloader runs (docs/specs/tab-sleep.md)
+ * @property {{ sleepAfter: number, sleepOnLowMemory: boolean, closeLast: CloseLast }} tabs
+ *   `[tabs]`: `sleepAfter` is `sleep_after`, minutes a tab stays loaded unseen, 0 never;
+ *   `sleepOnLowMemory` is `sleep_on_low_memory`, whether Firefox's low-memory unloader runs
+ *   (docs/specs/tab-sleep.md); `closeLast` is `close_last`, what closing a window's last tab
+ *   does (docs/specs/close-last-tab.md)
  * @property {ResolvedSearch | null} search              `[search]`, null without it;
  *   docs/specs/search-engines.md
  * @property {{ check: boolean }} updates                `[updates]`,
@@ -257,8 +261,8 @@ export const PANES_NEW_TAB_MODES = Object.freeze(["alone", "pane"]);
 export const MAIN_SIZE_MIN = 20;
 export const MAIN_SIZE_MAX = 80;
 const SITE_KEYS = ["insert", "unbind", "sleep"];
-/** `[tabs]` (docs/specs/tab-sleep.md, decision 11). */
-const TABS_KEYS = ["sleep_after", "sleep_on_low_memory"];
+/** `[tabs]` (docs/specs/tab-sleep.md, decision 11; docs/specs/close-last-tab.md). */
+const TABS_KEYS = ["sleep_after", "sleep_on_low_memory", "close_last"];
 const MODAL_KEYS = ["leader", "timeout_ms", "hint_chars", "insert_editing"];
 const FIREFOX_KEYS = ["disable", "enable"];
 const FIREFOX_DISABLE = 'must be "all" or a list of keys like "ctrl+w"';
@@ -817,6 +821,15 @@ function validate(raw, warnings = []) {
       if (key === "sleep_on_low_memory") {
         // Decision 21: Firefox's low-memory unloader, on by default.
         if (typeof v !== "boolean") typeError(path, v, "a boolean");
+      } else if (key === "close_last") {
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else if (!CLOSE_LAST_VALUES.includes(/** @type {CloseLast} */ (v))) {
+          fail(
+            path,
+            'must be "picker", "new_tab", "ask", "quit" or "keep"',
+            closest(v, CLOSE_LAST_VALUES),
+          );
+        }
       } else if (key !== "sleep_after") unknownKey(path, key, TABS_KEYS);
       else if (typeof v !== "bigint") typeError(path, v, "an integer");
       else if (v !== 0n && (v < BigInt(SLEEP_AFTER.min) || v > BigInt(SLEEP_AFTER.max))) {
@@ -1394,6 +1407,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     tabs: {
       sleepAfter: user.tabs?.sleep_after ?? SLEEP_AFTER.default,
       sleepOnLowMemory: user.tabs?.sleep_on_low_memory ?? true,
+      closeLast: user.tabs?.close_last ?? CLOSE_LAST_DEFAULT,
     },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },

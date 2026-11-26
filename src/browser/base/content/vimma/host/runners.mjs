@@ -29,6 +29,7 @@ import { runAgentCommand } from "./agent-chat-ops.mjs";
 import { AgentUi } from "./agent-ui.mjs";
 import { bookmarkContext, openBookmarkByTitle, quickAdd } from "./bookmark-actions.mjs";
 import { browserRunners, openSettings, xulElementById } from "./browser-ops.mjs";
+import { lastTabRule } from "./close-last-ops.mjs";
 import { ControlHost } from "./control-ops.mjs";
 import { HostServices } from "./host-services.mjs";
 import { copyModeRunners, yankLink } from "./copy-mode.mjs";
@@ -328,7 +329,8 @@ export function hostRunners(host, page) {
     "tab.goto": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
     // Firefox's alt+9: the workspace's last visible tab (docs/specs/firefox-keys.md).
     "tab.goto_last": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
-    "tab.close": (/** @type {WindowState} */ s) => closeTab(s.win),
+    // The window's last tab follows `[tabs] close_last` (docs/specs/close-last-tab.md).
+    "tab.close": (/** @type {WindowState} */ s) => closeTab(s.win, lastTabRule(s)),
     // `:sleep [all|N]` (docs/specs/tab-sleep.md Behaviour 9-13); the notice says what it did.
     "tab.sleep": (
       /** @type {WindowState} */ s,
@@ -341,7 +343,8 @@ export function hostRunners(host, page) {
       );
     },
     // The focused pane; the last pane closes the tab (`:q`, prefix+x; m4-split-panes).
-    "pane.close": paneRunner(closePane, emit),
+    "pane.close": (/** @type {WindowState} */ s, /** @type {Action} */ a) =>
+      paneRunner((win, action) => closePane(win, action, lastTabRule(s)), emit)(s, a),
     "pane.split_vertical": paneRunner(splitPane, emit),
     "pane.split_horizontal": paneRunner(splitPane, emit),
     "pane.focus_left": paneRunner(focusPane, emit),
@@ -531,7 +534,7 @@ export function hostRunners(host, page) {
     // The shown tab is named by its row: a pinned tab has none, and the model's active row is
     // then another tab (pinned tabs are in no workspace), which must not close.
     "panel.close_active_tab": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
-      if (!s.panel.isOpen) return closeTab(s.win);
+      if (!s.panel.isOpen) return closeTab(s.win, lastTabRule(s));
       const shown = s.win.gBrowser.selectedTab;
       const row = s.panel.state?.rows.find((r) => tabById(s.win, r.tabId) === shown);
       s.panel.action({ ...a, shown: row?.tabId ?? null });

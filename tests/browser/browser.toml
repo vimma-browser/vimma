@@ -458,6 +458,10 @@ support-files = ["file_vimma_plain.html"]
 ["browser_vimma_close_active_tab.js"]
 support-files = ["file_vimma_close_active_tab.html"]
 
+["browser_vimma_close_last_tab.js"]
+
+["browser_vimma_close_last_tab_windows.js"]
+
 ["browser_vimma_side_panel_marks.js"]
 
 ["browser_vimma_side_panel_unsplit.js"]

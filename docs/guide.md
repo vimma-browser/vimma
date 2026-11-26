@@ -1794,7 +1794,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `]s` / `[s`                                                                             | Normal mode: shows the workspace's next / previous split, wrapping; on a tab shown alone, the split shown last ([Several splits](#several-splits)).                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `ctrl+b shift+s`                                                                        | The split picker: the workspace's splits with their colour, pane count and titles; a digit or `Enter` shows one, `/` filters by title ([Several splits](#several-splits)).                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b space`                                                                          | Cycles the layout presets, as tmux does; the status bar names the one you get ([Layouts](#layouts)). `:layout tiled` picks one.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `ctrl+b shift+x`, `x`, `ctrl+F4`                                                        | Closes the tab, as Firefox's `ctrl+w` did: on a pinned tab it selects the first unpinned tab instead; closing the last tab opens a new tab and keeps the window ([Firefox behaviour Vimma changes](#firefox-behaviour-vimma-changes)). `x` in normal mode. `ctrl+shift+t` reopens the last closed tab, in every mode.                                                                                                                                                                                                                                                    |
+| `ctrl+b shift+x`, `x`, `ctrl+F4`                                                        | Closes the tab, as Firefox's `ctrl+w` did: on a pinned tab it selects the first unpinned tab instead. Closing a window's last tab opens the workspace picker when other workspaces hold tabs, and quits Vimma when nothing else is open ([Closing the last tab](#closing-the-last-tab)). `x` in normal mode. `ctrl+shift+t` reopens the last closed tab, in every mode.                                                                                                                                                                                                  |
 | `ctrl+b` then anything else                                                             | Never leaks to the page. A binding without a command shows "… not implemented yet" for 1.5 s; an unbound key does nothing. Firefox's `ctrl+b` bookmarks sidebar is off.                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Firefox's keys                                                                          | Vimma bindings with Firefox's meaning ([below](#firefoxs-keys-are-vimma-bindings)): `ctrl+shift+w` close window, `ctrl+shift+n` reopen it, `ctrl+q` quit (Firefox asks first), `ctrl+plus` / `ctrl+minus` / `ctrl+0` page zoom, `F11` full screen, `ctrl+s` save, `ctrl+p` print, `ctrl+m` mute the tab, `alt+home` home page, `ctrl+shift+y` downloads, `ctrl+shift+f` add-ons, `ctrl+shift+h` / `ctrl+shift+o` history / bookmarks (the Library), `ctrl+}` Picture-in-Picture, `ctrl+alt+r` Reader View, `ctrl+shift+s` screenshot, `ctrl+shift+delete` clear history. |
 | Developer tools                                                                         | Exactly as in Firefox: `F12` / `ctrl+shift+i` the toolbox, `ctrl+shift+c` Inspector, `ctrl+shift+k` Web Console, `ctrl+shift+z` Debugger (in a text field: redo), `ctrl+shift+e` Network, `shift+F7` Style Editor, `shift+F5` Performance, `shift+F9` Storage, `shift+F12` Accessibility, `ctrl+shift+m` Responsive Design Mode, `ctrl+shift+j` Browser Console, `ctrl+alt+shift+i` Browser Toolbox. Each is an action you can rebind in `[keys]`.                                                                                                                       |
@@ -2359,6 +2359,38 @@ tab never moves out: `m` on a normal row from the private workspace, and `:wsmov
 The [agent workspace](#agent-workspace) is the last normal row, `◇ agent`, with its number and
 tab count. `m` on it asks
 `Move this tab to "agent"? Agents you allow can read it there. It is reopened with the agent's cookies; … y/N`.
+
+### Closing the last tab
+
+When you close the last tab of a window while other workspaces still hold tabs, the workspace
+picker opens over a new tab, headed `last tab closed`, so you go on where your other work is in
+one key. It lists only the window's workspaces that have tabs (the first one selected), then
+`◆ private` when private tabs are open and this is your only window, then `quit Vimma` (`close this window` when another
+window is open). `Enter` on a workspace switches there and closes the new tab, leaving the closed
+tab's workspace empty; `Enter` on `quit Vimma` quits. `Esc` or `q` keeps the new tab, and never
+quits. When nothing else is open anywhere, closing the last tab quits Vimma, as `:q` on Vim's last
+window does; in a window that is not the last one it closes only that window, which
+`ctrl+shift+n` reopens with its workspaces.
+
+This applies to the close keys: `x`, `ctrl+b shift+x`, `ctrl+F4`, `ctrl+b x` and `:q` on a tab
+with one pane, and `x` in the side panel. A quit is Firefox's own quit, so the next start brings
+back every other workspace with its tabs and pane layouts, and the closed tab is in
+`ctrl+shift+t`. Private tabs cannot come back, so a quit that would discard them asks first:
+`quit Vimma? 2 private tabs are discarded y/N`. In the private workspace, closing its last tab
+closes the private workspace and returns you to your normal window.
+
+`[tabs] close_last` in `config.toml` chooses another behaviour:
+
+| Value       | Closing a window's last tab                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| `"picker"`  | The default, as above.                                                                                             |
+| `"new_tab"` | Opens a new tab in the workspace, as Firefox does with `browser.tabs.closeWindowWithLastTab` off.                  |
+| `"ask"`     | Quits, after `quit Vimma? 14 tabs in 3 other workspaces come back at the next start y/N` when other tabs are open. |
+| `"quit"`    | Quits without a question (private tabs are still asked about).                                                     |
+| `"keep"`    | Refuses: the page stays, and the command line says `last tab: not closed`.                                         |
+
+In a window that is not the last one, a value that would quit closes only that window (`"ask"`
+asks `close this window? … y/N` first when the window holds other workspaces' tabs).
 
 ### Agent workspace
 
@@ -5201,50 +5233,50 @@ type reaches the page, and `ctrl+b` sequences still work.
 The table lists the main commands; the completion list shows every one, and the other sections
 give the rest.
 
-| Command                               | What it does                                                                                                                                   |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:open text`                          | As the address bar would: `example.com` a web address, `@gh words` that alias's engine, a bookmark keyword its bookmark, other words a search. |
-| `:tabnew`, `:tabnew text`             | Opens a new tab; with text, opens it there (as `:open`).                                                                                       |
-| `:q`, `:quit`                         | Closes the pane, as `ctrl+b x`; with one pane the tab, as `x`: a pinned tab is kept and the next one selected.                                 |
-| `:map`, `:help`, `:h`                 | Shows every binding (the `ctrl+b ?` overlay).                                                                                                  |
-| `:scroll_down`, `:tab.next`…          | Any action by its name in [bindings.md](bindings.md), or by its dotted id. Actions take no argument.                                           |
-| `:tabrename [name]`                   | Renames the tab; without a name, opens the rename prompt.                                                                                      |
-| `:ls`                                 | Opens [tab search](#tab-search-and-tab-rename).                                                                                                |
-| `:tab N`, `:tabnext N`, `:tab $`      | Goes to tab N of this workspace, as `{N}gt`; `$` the last, alone the next. Typed in full.                                                      |
-| `:sleep`, `:sleep all`, `:sleep N`    | Puts this workspace's tabs, every workspace's, or tab N to [sleep](#sleeping-tabs) at once.                                                    |
-| `:tabsearch [text]`, `:ts`, `:b`      | Opens tab search with the text already typed.                                                                                                  |
-| `:grep text`, `:grep`                 | Opens [live grep](#live-grep) with that text; alone, with the last query.                                                                      |
-| `:vsplit`/`:vs`, `:split`/`:sp`       | Splits the pane right / down, as `ctrl+b v` / `ctrl+b -`.                                                                                      |
-| `:layout [name]`                      | Arranges the panes in the named preset ([Layouts](#layouts)); Tab completes the names. Without one, the next preset.                           |
-| `:wsnext`/`:wn`, `:wsprev`/`:wp`      | Next / previous workspace, as `ctrl+b )` / `ctrl+b (`.                                                                                         |
-| `:workspace name`, `:ws 2`, `:ws #`   | Switches to the workspace with that name, that number in workspace order, or the previous one (`ctrl+^`). `Tab` completes names.               |
-| `:workspace`, `:ws`, `:workspaces`    | Opens the workspace picker.                                                                                                                    |
-| `:wa name`, `:wd [name]`              | `:wsnew`, `:wsdelete` ([Workspaces as Vim buffers](#workspaces-as-vim-buffers)).                                                               |
-| `:private`, `:priv`, `:private close` | Goes to the [private workspace](#private-workspace) and back, as `ctrl+b shift+p`; `close` closes it (asks `y/N`).                             |
-| `:sidebar`                            | Opens or closes the side panel, as `ctrl+b b`.                                                                                                 |
-| `:route`, `:route add`, `:route move` | Workspace routing rules: list them, add one for this site, move this tab ([Routing](#routing-which-workspace-a-link-opens-in)).                |
-| `:bookmarks`                          | Opens or closes the [bookmarks panel](#bookmarks), as `ctrl+b shift+b`.                                                                        |
-| `:bookmark [path]`                    | Bookmarks the page under `path` (`work/docs/title`); without one, opens the prompt, as `ctrl+b a`.                                             |
-| `:bookmarkopen [title]`               | Opens the bookmark with that title in this tab; a partial or shared title, or none, opens a picker ([Bookmarks](#bookmarks)).                  |
-| `:bookmarktab [title]`                | The same in a new tab in front.                                                                                                                |
-| `:source`                             | Reads `config.toml` now instead of within 2 seconds (see [config.toml](#configtoml)).                                                          |
-| `:source path`                        | Loads that TOML file instead of `config.toml` until `config.toml` changes or a plain `:source`.                                                |
-| `:config`                             | Opens `config.toml` in a new tab (read-only view); creates it from a commented template when it is missing.                                    |
-| `:mcp [on\|off\|revoke\|forget]`      | Agents and the [agent workspace](#agent-workspace): the status, on (asks `y/N`), off, revoke the grants, or forget its logins (asks `y/N`).    |
-| `:control [on N\|off]`                | Full control for `vimma-ctl`: the status, on for `N` minutes (asks `y/N`), or off now ([below](#agent-workspace)).                             |
-| `:theme [dark\|light\|system]`        | The built-in palette dark, light or as the system is; bare, the other of dark and light (see [Colours](#colours-and-themes)).                  |
-| `:about`, `:vimma`                    | Opens [about:vimma](#aboutvimma) in a new tab.                                                                                                 |
-| `:settings [pane]`, `:prefs`          | Opens Settings, or selects its open tab in this workspace; `home`, `search`, `privacy`, `sync` (`Tab`) go to that pane.                        |
-| `:addons`                             | Opens the [add-on picker](#add-ons), as `ctrl+b e`.                                                                                            |
-| `:downloads`                          | Opens the [downloads picker](#downloads), as `ctrl+b d`.                                                                                       |
-| `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
-| `:site`, `:permissions`               | Opens the [site permissions](#site-permissions) picker for the selected tab.                                                                   |
-| `:popups`                             | Opens the [blocked pop-ups picker](#blocked-pop-ups): allow, reset or block the site, open one.                                                |
-| `:siteunbind [--save] [key …]`        | Gives the keys to this site's page until restart, or for good with `--save`; bare, lists them ([Keys a site keeps](#keys-a-site-keeps)).       |
-| `:sitebind [--delete] key …`          | Gives the keys back to Vimma on this site; `--delete` also removes them from `config.toml` ([Keys a site keeps](#keys-a-site-keeps)).          |
-| `:bug`                                | Opens `about:vimma` and copies its redacted report to the clipboard, for a bug report.                                                         |
-| `:update`                             | Checks for a newer Vimma now; when there is one, opens `about:vimma`'s Updates section with the exact commands ([Updates](#updates)).          |
-| `:restart`                            | Restarts Vimma; tabs come back, and an installed update applies. Asks first while private tabs are open ([Updates](#updates)).                 |
+| Command                               | What it does                                                                                                                                                                                                      |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:open text`                          | As the address bar would: `example.com` a web address, `@gh words` that alias's engine, a bookmark keyword its bookmark, other words a search.                                                                    |
+| `:tabnew`, `:tabnew text`             | Opens a new tab; with text, opens it there (as `:open`).                                                                                                                                                          |
+| `:q`, `:quit`                         | Closes the pane, as `ctrl+b x`; with one pane the tab, as `x`: a pinned tab is kept and the next one selected; the window's last tab follows `[tabs] close_last` ([Closing the last tab](#closing-the-last-tab)). |
+| `:map`, `:help`, `:h`                 | Shows every binding (the `ctrl+b ?` overlay).                                                                                                                                                                     |
+| `:scroll_down`, `:tab.next`…          | Any action by its name in [bindings.md](bindings.md), or by its dotted id. Actions take no argument.                                                                                                              |
+| `:tabrename [name]`                   | Renames the tab; without a name, opens the rename prompt.                                                                                                                                                         |
+| `:ls`                                 | Opens [tab search](#tab-search-and-tab-rename).                                                                                                                                                                   |
+| `:tab N`, `:tabnext N`, `:tab $`      | Goes to tab N of this workspace, as `{N}gt`; `$` the last, alone the next. Typed in full.                                                                                                                         |
+| `:sleep`, `:sleep all`, `:sleep N`    | Puts this workspace's tabs, every workspace's, or tab N to [sleep](#sleeping-tabs) at once.                                                                                                                       |
+| `:tabsearch [text]`, `:ts`, `:b`      | Opens tab search with the text already typed.                                                                                                                                                                     |
+| `:grep text`, `:grep`                 | Opens [live grep](#live-grep) with that text; alone, with the last query.                                                                                                                                         |
+| `:vsplit`/`:vs`, `:split`/`:sp`       | Splits the pane right / down, as `ctrl+b v` / `ctrl+b -`.                                                                                                                                                         |
+| `:layout [name]`                      | Arranges the panes in the named preset ([Layouts](#layouts)); Tab completes the names. Without one, the next preset.                                                                                              |
+| `:wsnext`/`:wn`, `:wsprev`/`:wp`      | Next / previous workspace, as `ctrl+b )` / `ctrl+b (`.                                                                                                                                                            |
+| `:workspace name`, `:ws 2`, `:ws #`   | Switches to the workspace with that name, that number in workspace order, or the previous one (`ctrl+^`). `Tab` completes names.                                                                                  |
+| `:workspace`, `:ws`, `:workspaces`    | Opens the workspace picker.                                                                                                                                                                                       |
+| `:wa name`, `:wd [name]`              | `:wsnew`, `:wsdelete` ([Workspaces as Vim buffers](#workspaces-as-vim-buffers)).                                                                                                                                  |
+| `:private`, `:priv`, `:private close` | Goes to the [private workspace](#private-workspace) and back, as `ctrl+b shift+p`; `close` closes it (asks `y/N`).                                                                                                |
+| `:sidebar`                            | Opens or closes the side panel, as `ctrl+b b`.                                                                                                                                                                    |
+| `:route`, `:route add`, `:route move` | Workspace routing rules: list them, add one for this site, move this tab ([Routing](#routing-which-workspace-a-link-opens-in)).                                                                                   |
+| `:bookmarks`                          | Opens or closes the [bookmarks panel](#bookmarks), as `ctrl+b shift+b`.                                                                                                                                           |
+| `:bookmark [path]`                    | Bookmarks the page under `path` (`work/docs/title`); without one, opens the prompt, as `ctrl+b a`.                                                                                                                |
+| `:bookmarkopen [title]`               | Opens the bookmark with that title in this tab; a partial or shared title, or none, opens a picker ([Bookmarks](#bookmarks)).                                                                                     |
+| `:bookmarktab [title]`                | The same in a new tab in front.                                                                                                                                                                                   |
+| `:source`                             | Reads `config.toml` now instead of within 2 seconds (see [config.toml](#configtoml)).                                                                                                                             |
+| `:source path`                        | Loads that TOML file instead of `config.toml` until `config.toml` changes or a plain `:source`.                                                                                                                   |
+| `:config`                             | Opens `config.toml` in a new tab (read-only view); creates it from a commented template when it is missing.                                                                                                       |
+| `:mcp [on\|off\|revoke\|forget]`      | Agents and the [agent workspace](#agent-workspace): the status, on (asks `y/N`), off, revoke the grants, or forget its logins (asks `y/N`).                                                                       |
+| `:control [on N\|off]`                | Full control for `vimma-ctl`: the status, on for `N` minutes (asks `y/N`), or off now ([below](#agent-workspace)).                                                                                                |
+| `:theme [dark\|light\|system]`        | The built-in palette dark, light or as the system is; bare, the other of dark and light (see [Colours](#colours-and-themes)).                                                                                     |
+| `:about`, `:vimma`                    | Opens [about:vimma](#aboutvimma) in a new tab.                                                                                                                                                                    |
+| `:settings [pane]`, `:prefs`          | Opens Settings, or selects its open tab in this workspace; `home`, `search`, `privacy`, `sync` (`Tab`) go to that pane.                                                                                           |
+| `:addons`                             | Opens the [add-on picker](#add-ons), as `ctrl+b e`.                                                                                                                                                               |
+| `:downloads`                          | Opens the [downloads picker](#downloads), as `ctrl+b d`.                                                                                                                                                          |
+| `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                                                                                        |
+| `:site`, `:permissions`               | Opens the [site permissions](#site-permissions) picker for the selected tab.                                                                                                                                      |
+| `:popups`                             | Opens the [blocked pop-ups picker](#blocked-pop-ups): allow, reset or block the site, open one.                                                                                                                   |
+| `:siteunbind [--save] [key …]`        | Gives the keys to this site's page until restart, or for good with `--save`; bare, lists them ([Keys a site keeps](#keys-a-site-keeps)).                                                                          |
+| `:sitebind [--delete] key …`          | Gives the keys back to Vimma on this site; `--delete` also removes them from `config.toml` ([Keys a site keeps](#keys-a-site-keeps)).                                                                             |
+| `:bug`                                | Opens `about:vimma` and copies its redacted report to the clipboard, for a bug report.                                                                                                                            |
+| `:update`                             | Checks for a newer Vimma now; when there is one, opens `about:vimma`'s Updates section with the exact commands ([Updates](#updates)).                                                                             |
+| `:restart`                            | Restarts Vimma; tabs come back, and an installed update applies. Asks first while private tabs are open ([Updates](#updates)).                                                                                    |
 
 A command whose action has no implementation says so for a moment, as its keys do.
 
@@ -5430,6 +5462,7 @@ write_back = "all"       # changes saved to bookmarks.toml: "all", "vimma" (Vimm
 [tabs]
 sleep_after = 120             # minutes unseen before a tab sleeps (5–10080); 0: never
 sleep_on_low_memory = true    # false: Firefox never unloads tabs when memory runs low
+close_last = "picker"         # closing the last tab: "picker", "new_tab", "ask", "quit" or "keep"
 
 # Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update
 # channel and the platform.
@@ -5817,9 +5850,12 @@ any server about the pages you visit.
 Vimma changes these Firefox defaults for workspaces; each one can be changed back in
 `about:config`:
 
-- **Closing the last tab keeps the window** and opens a new tab in the workspace, so a window
-  never closes with other workspaces' tabs in it (`browser.tabs.closeWindowWithLastTab` =
-  `false`).
+- **Closing the last tab never lets Firefox close the window** (`browser.tabs.closeWindowWithLastTab`
+  = `false`), because Firefox counts only the shown workspace's tabs and its close would leave
+  every other workspace's tabs out of the next session. What Vimma's close keys do at a window's
+  last tab is `[tabs] close_last` ([Closing the last tab](#closing-the-last-tab)); a page's own
+  `window.close()`, an agent's close, Firefox's `ctrl+w` given back with `[firefox] enable` and
+  the tab context menu open a new tab in the workspace, as before.
 - **No preloaded new tab page** (`browser.newtab.preload` = `false`): Firefox only uses it for
   tabs without a container, and every Vimma tab is in one.
 - **Restart restores your session**: tabs, workspaces, pane layouts and scroll positions come

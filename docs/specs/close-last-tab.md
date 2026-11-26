@@ -1,9 +1,11 @@
 # Spec: close-last-tab
 
-Status: accepted · Area: core (`packages/vimma-core/src/config/config.mjs`,
+Status: implemented · Area: core (`packages/vimma-core/src/config/config.mjs`,
 `packages/vimma-core/src/config/defaults.mjs`, `packages/vimma-core/defaults.toml`, a new
 `packages/vimma-core/src/workspaces/closelast.mjs`), chrome (`host/tab-ops.mjs`,
-`host/pane-ops.mjs`, `host/browser-ops.mjs`) · Upstream patches: none · ADR: none
+`host/pane-ops.mjs`, `host/runners.mjs`, `host/window-state.mjs`, a new `host/close-last-ops.mjs`,
+the workspace picker in `ui/picker.mjs`, `config/ConfigHost.sys.mjs`) · Upstream patches: none ·
+ADR: none
 
 Issue: [#1428](https://github.com/vimma-browser/vimma/issues/1428)
 
@@ -99,8 +101,8 @@ Terms used below:
    that is not the last, works as always.
 8. Closing a window under behaviours 3 to 6 is the window close that `ctrl+shift+w` runs: the
    window goes to the recently closed windows (`ctrl+shift+n`), and the other windows stay as
-   they are. Vimma quits only from the last normal window. That it reopens with all its
-   workspaces is to be checked (decision 9).
+   they are. Vimma quits only from the last normal window. It reopens with all its
+   workspaces (decision 9).
 9. A quit from behaviours 3 to 6 is Firefox's own quit, so what can stop `ctrl+q` stops it too:
    a page that asks before it is left, or downloads in progress. When the quit, or a window
    close, is stopped, the window keeps the new tab that `"new_tab"` would have opened.
@@ -180,9 +182,12 @@ Firefox paths are relative to `engine/`, checked against Firefox 160.0.1 (`surfe
    what happens.
 3. **The host decides, before the tab closes, and quits through Firefox's quit.** `removeTab` in
    `host/tab-ops.mjs` tests for the last tab of a window before it removes the tab, passes
-   `closeWindowWithLastTab: false` always, and then, when the setting says so, quits with
-   `canQuitApplication` and `Services.startup.quit(eAttemptQuit)`, and closes a window with
-   `closeWindow(true, …)`, as `cmd_closeWindow` (`ctrl+shift+w`) does. Quitting rather than
+   `closeWindowWithLastTab: false` whenever the setting acts after the close, and then quits with
+   Firefox's `goQuitApplication` (which runs `canQuitApplication` and
+   `Services.startup.quit(eAttemptQuit)`), or closes a window as `cmd_closeWindow`
+   (`ctrl+shift+w`) does: `closeWindow(false)`, every page's beforeunload through
+   `CanCloseWindow`, then `window.close()`. A pop-up without a toolbar is left to Firefox, which
+   closes it with its last tab, because it holds no workspaces. Quitting rather than
    closing the last window keeps the session whole (Research) and quits on macOS too, where
    closing the last window would leave Vimma running with no window. The tab closes first, so
    that it is in the recently closed tabs and the next start does not bring it back. The rule
@@ -201,9 +206,11 @@ Firefox paths are relative to `engine/`, checked against Firefox 160.0.1 (`surfe
 6. **Vimma's question replaces Firefox's quit and close warnings.** The quit passes a source other
    than the shortcut, and a window close passes no warning to `closeWindow`, so neither Firefox's
    `browser.warnOnQuitShortcut` question nor its `browser.tabs.warnOnClose` question follows Vimma's
-   own, because two questions for one key press is one too many. `"ask"` with no other tabs does not
-   ask at all, because nothing else is open to lose. Questions from pages and downloads still run,
-   because they protect data Vimma cannot see.
+   own, because two questions for one key press is one too many. Firefox's quit observer still
+   asks its own tabs question when `browser.tabs.warnOnClose` is on (off by default) and private
+   windows hold tabs, because it counts every window's shown tabs and Vimma does not override
+   it. `"ask"` with no other tabs does not ask at all, because nothing else is open to lose.
+   Questions from pages and downloads still run, because they protect data Vimma cannot see.
 7. **Private tabs always get a question before a quit**, under `"picker"` and `"quit"` too,
    because they cannot come back at the next start; every other tab can.
 8. **`"keep"` refuses the close and says so**, because a user may want the close key to stop at
@@ -212,8 +219,8 @@ Firefox paths are relative to `engine/`, checked against Firefox 160.0.1 (`surfe
    window**, because closing windows the user did not touch is a surprise, and it is what
    `ctrl+shift+w` and Firefox's own last-tab rule do. Each value applies per window: the picker
    lists that window's workspaces, `"ask"` asks about that window's other tabs, and `"keep"`
-   refuses in every window. Whether a window closed this way reopens with all its workspaces
-   from `ctrl+shift+n` is not yet checked, so the implementing pull request tests it.
+   refuses in every window. A window closed this way reopens with all its workspaces from
+   `ctrl+shift+n`, as `browser_vimma_close_last_tab_windows.js` checks.
 10. **The private workspace's last tab closes the private workspace, not Vimma**, because the
     normal window is still open behind it and the user is closing private browsing, not the
     browser. No question is asked, because the closing tab is the private workspace's only tab,
@@ -247,7 +254,8 @@ so (decision 7).
   workspace's last tab.
 - Vitest, `packages/vimma-core/test/config.test.ts`: `close_last` accepts the five values,
   defaults to `"picker"` when absent, and reports an error for any other value or type.
-- Mochitest, `tests/browser/browser_vimma_close_last_tab.js` (the quit is caught with a
+- Mochitests, `tests/browser/browser_vimma_close_last_tab.js` and, for several windows and the
+  private workspace, `browser_vimma_close_last_tab_windows.js` (the quit is caught with a
   `quit-application-requested` observer that cancels it): `"picker"` with another workspace's
   tabs opens the picker without empty workspaces, `Enter` on a workspace switches there and
   closes the new tab, `Esc` leaves the new tab and does not quit, the `quit Vimma` row quits and

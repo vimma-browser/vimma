@@ -63,6 +63,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/bookmarks-merge.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-merge.mjs");
   "chrome://browser/content/vimma/core/bookmarks-toolbar.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-toolbar.mjs");
   "chrome://browser/content/vimma/core/bookmarks.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks.mjs");
+  "chrome://browser/content/vimma/core/closelast.mjs": typeof import("../src/browser/base/content/vimma/core/closelast.mjs");
   "chrome://browser/content/vimma/core/cmdline.mjs": typeof import("../src/browser/base/content/vimma/core/cmdline.mjs");
   "chrome://browser/content/vimma/core/config.mjs": typeof import("../src/browser/base/content/vimma/core/config.mjs");
   "chrome://browser/content/vimma/core/control.mjs": typeof import("../src/browser/base/content/vimma/core/control.mjs");
@@ -153,6 +154,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/host/bookmark-actions.mjs": typeof import("../src/browser/base/content/vimma/host/bookmark-actions.mjs");
   "chrome://browser/content/vimma/host/bookmark-ops.mjs": typeof import("../src/browser/base/content/vimma/host/bookmark-ops.mjs");
   "chrome://browser/content/vimma/host/browser-ops.mjs": typeof import("../src/browser/base/content/vimma/host/browser-ops.mjs");
+  "chrome://browser/content/vimma/host/close-last-ops.mjs": typeof import("../src/browser/base/content/vimma/host/close-last-ops.mjs");
   "chrome://browser/content/vimma/host/control-ops.mjs": typeof import("../src/browser/base/content/vimma/host/control-ops.mjs");
   "chrome://browser/content/vimma/host/copy-mode.mjs": typeof import("../src/browser/base/content/vimma/host/copy-mode.mjs");
   "chrome://browser/content/vimma/host/dialog-keys.mjs": typeof import("../src/browser/base/content/vimma/host/dialog-keys.mjs");
