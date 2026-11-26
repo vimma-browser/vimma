@@ -417,11 +417,16 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   without it; a top-level document it loads over HTTP loses its `Cross-Origin-Opener-Policy`,
   which Firefox refuses in a sandboxed tab, since an agent tab has no opener and opens no window)
   and launch no other app through an external protocol (Firefox's chooser is wrapped for the
-  agent container). Known gap: while the user's own input in an agent tab gives the page
-  transient activation, the page can open one new tab per gesture through Firefox's
-  modified-click path (`ClickHandlerChild` to `openLinkIn`), which the sandbox flags do not cover
-  and neither rate of M3 counts; an agent's own clicks carry no user activation and open nothing
-  this way (issue #1568). Their downloads follow M11-M13. A tab of another workspace
+  agent container). A link click in an agent tab that Firefox would open in a new tab or window,
+  or save (ctrl or cmd, shift, the middle button, alt with `browser.altClickSave`), opens
+  nothing either: Firefox opens such a click itself (`ClickHandlerChild` to
+  `ClickHandlerParent.contentAreaClick` to `openLinkIn`), outside the sandbox flags and outside
+  both rates of M3, and accepts a page's scripted click while the page holds the user's
+  activation, so `contentAreaClick` is wrapped and drops every such click whose tab (its top
+  browsing context, so a frame's click too) is in the agent container, the user's own included
+  (issue #1568). This covers what a page can start; the user's own deliberate actions in Firefox's
+  interface (`gF`, the context menu's "Open Link in New Tab", dragging a link onto the tab strip)
+  still open a tab in the agent workspace, uncounted. Their downloads follow M11-M13. A tab of another workspace
   still asks, opens pop-ups and downloads as before.
   [`test_the_agent_container_asks_for_nothing`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_another_workspace_still_asks`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
@@ -430,6 +435,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_a_page_from_a_service_worker_is_denied_too`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_a_sweep_reloads_agent_tabs_that_loaded_unsandboxed`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_agent_pages_launch_no_app`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
+  [`test_agent_tabs_open_nothing_on_modified_clicks`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_builtin_agent_opens_coop_pages`](../../tests/browser/browser_vimma_agent_coop.js),
   [`test_mcp_agent_opens_coop_pages`](../../tests/browser/browser_vimma_agent_coop.js)
 - M11. A download from the agent workspace (by its container, its tab's container, or being written

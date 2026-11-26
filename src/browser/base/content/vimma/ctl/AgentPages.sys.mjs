@@ -17,6 +17,10 @@
 //   SANDBOXED_AUXILIARY_NAVIGATION, as Firefox's own hidden page reader does
 //   (toolkit/components/pageextractor/PageExtractorParent.sys.mjs); window.open and
 //   target=_blank open nothing. CanonicalBrowsingContext::ReplacedBy copies the flags.
+// - Modified clicks (issue #1568): Firefox opens a ctrl-, shift- or middle-clicked link itself
+//   (ClickHandlerChild sends it, ClickHandlerParent.contentAreaClick calls openLinkIn), outside
+//   the sandbox flags, and a page with the user's activation can script that click. The method
+//   is wrapped, so such a click in an agent tab opens nothing.
 // - Downloads (decision 31): every agent tab's top browsing context downloads into the
 //   quarantine folder (`downloadFolderOverride`), and AgentDownloads asks and checks each.
 // The agent container is WorkspaceStore.agent's, read at each check.
@@ -24,8 +28,9 @@
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { AgentDownloads } from "./AgentDownloads.sys.mjs";
 
-const lazy = /** @type {Lazy<"Integration" | "nsContentDispatchChooser">} */ ({});
+const lazy = /** @type {Lazy<"BrowserUtils" | "Integration" | "nsContentDispatchChooser">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  BrowserUtils: "resource://gre/modules/BrowserUtils.sys.mjs",
   Integration: "resource://gre/modules/Integration.sys.mjs",
   nsContentDispatchChooser: "resource://gre/modules/ContentDispatchChooser.sys.mjs",
 });
@@ -298,6 +303,38 @@ function wrapChooser() {
   );
 }
 
+/**
+ * Modified clicks (security.md M10, issue #1568): ClickHandlerParent.contentAreaClick opens a
+ * link clicked with ctrl or cmd, shift or the middle button with openLinkIn, which no sandbox
+ * flag reaches; ClickHandlerChild accepts a page's scripted click while the page holds the
+ * user's activation, so a page could open one tab or window per gesture, in the agent
+ * container and counted by neither agent rate. In an agent tab (by its top browsing context,
+ * so a frame's click too) such a click is dropped: the page stays as it is, as with a pop-up.
+ * A plain click ("current") goes to Firefox unchanged; the page's own navigation follows it.
+ * The wrapper is on the prototype, which every ClickHandler actor shares; the module is the one
+ * the actor loads (resource:///actors/, a singleton in the parent).
+ */
+function guardModifiedClicks() {
+  const { ClickHandlerParent } = ChromeUtils.importESModule(
+    "resource:///actors/ClickHandlerParent.sys.mjs",
+  );
+  const proto = ClickHandlerParent.prototype;
+  const original = proto.contentAreaClick;
+  if (typeof original !== "function") throw new Error("no ClickHandlerParent.contentAreaClick");
+  /** @this {typeof proto} @param {ClickHandlerData} data */
+  proto.contentAreaClick = function (data) {
+    const top = this.manager?.browsingContext?.top;
+    if (
+      isAgentContainer(top?.originAttributes?.userContextId) &&
+      lazy.BrowserUtils.whereToOpenLink(data) !== "current"
+    ) {
+      console.warn("vimma: a modified click in an agent tab opens no new tab or window");
+      return undefined;
+    }
+    return original.call(this, data);
+  };
+}
+
 export const AgentPages = {
   /**
    * Test-only: the chooser agent-free loads go to, in place of Firefox's.
@@ -316,6 +353,11 @@ export const AgentPages = {
       wrapChooser();
     } catch (e) {
       console.error("vimma agent pages: external protocols not guarded", e);
+    }
+    try {
+      guardModifiedClicks();
+    } catch (e) {
+      console.error("vimma agent pages: modified clicks not guarded", e);
     }
     Services.obs.addObserver(observe, "browsing-context-attached");
     Services.obs.addObserver(observe, "window-global-created");

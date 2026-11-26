@@ -575,6 +575,17 @@ interface nsIPrincipal {
 // `/** @type {Lazy<"setTimeout" | "PrivateBrowsingUtils">} */ ({})`: the getters fill it on the
 // next line, which is why the empty object may be asserted to the full shape. Firefox modules
 // list only the members Vimma calls.
+// engine/browser/actors/ClickHandlerChild.sys.mjs: the event-like data a Content:Click carries,
+// with the fields ClickHandlerParent fills in (fillInClickEvent); only those Vimma reads.
+interface ClickHandlerData {
+  button: number;
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  href: string | null;
+}
+
 interface LazyModules {
   // engine/toolkit/modules/Timer.sys.mjs: ids are numbers; clearing an unknown id (null, a
   // finished timer) does nothing. The callback gets the extra arguments (a promise's resolve
@@ -591,6 +602,21 @@ interface LazyModules {
     isWindowPrivate(win: Window): boolean;
     readonly permanentPrivateBrowsing: boolean;
     readonly enabled: boolean;
+  };
+  // engine/toolkit/modules/BrowserUtils.sys.mjs: where a click event (or ClickHandlerParent's
+  // event-like data) opens its link: "current", "tab", "tabshifted", "window", "save" …
+  BrowserUtils: {
+    whereToOpenLink(
+      event: {
+        button?: number;
+        shiftKey?: boolean;
+        ctrlKey?: boolean;
+        metaKey?: boolean;
+        altKey?: boolean;
+      },
+      ignoreButton?: boolean,
+      ignoreAlt?: boolean,
+    ): string;
   };
   // engine/toolkit/modules/AppConstants.sys.mjs
   AppConstants: {

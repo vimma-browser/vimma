@@ -34,6 +34,22 @@ interface VimmaModules {
       initPlaces(): void;
     };
   };
+  // engine/toolkit/modules/BrowserUtils.sys.mjs
+  "resource://gre/modules/BrowserUtils.sys.mjs": { BrowserUtils: LazyModules["BrowserUtils"] };
+  // engine/browser/actors/ClickHandlerParent.sys.mjs: AgentPages wraps contentAreaClick (#1568);
+  // the browser tests listen for each click it handled.
+  "resource:///actors/ClickHandlerParent.sys.mjs": {
+    ClickHandlerParent: {
+      readonly prototype: {
+        readonly manager: WindowGlobalParent;
+        contentAreaClick(data: ClickHandlerData): void;
+      };
+      addContentClickListener(listener: {
+        onContentClick(browser: MozBrowser, data: ClickHandlerData): void;
+      }): void;
+      removeContentClickListener(listener: object): void;
+    };
+  };
   // engine/toolkit/modules/PrivateBrowsingUtils.sys.mjs
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs": {
     PrivateBrowsingUtils: LazyModules["PrivateBrowsingUtils"] & {
