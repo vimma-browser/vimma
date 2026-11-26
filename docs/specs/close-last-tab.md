@@ -12,11 +12,11 @@ Issue: [#1428](https://github.com/vimma-browser/vimma/issues/1428)
 A new `config.toml` setting, `[tabs] close_last`, decides what closing the last tab of a window
 does. By default (`"picker"`) the workspace picker opens and lists the workspaces that still have
 tabs, so the user goes on where their other work is; when no other tab is open anywhere, Vimma
-quits, as `:q` on Vim's last window does and as closing tmux's last pane ends its session. The
-other values keep today's new tab (`"new_tab"`), quit after a y/N question when other workspaces
-still hold tabs (`"ask"`), quit (`"quit"`), or refuse the close (`"keep"`). With several windows
-only the window closes, and Vimma quits only from the last one. Quitting goes through Firefox's
-own quit, so every other workspace's tabs come back at the next start.
+quits, as `:q` on Vim's last window does and as closing tmux's last pane ends its session. The other
+values keep today's new tab (`"new_tab"`), quit after a y/N question when other workspaces still
+hold tabs (`"ask"`), quit (`"quit"`), or refuse the close (`"keep"`). With several windows a value
+that would quit closes only that window, and Vimma quits only from the last one. Quitting goes
+through Firefox's own quit, so every other workspace's tabs come back at the next start.
 
 ## Problem
 
@@ -41,11 +41,15 @@ Terms used below:
   closing one of its panes never closes the last tab; closing the last pane of a split's last
   tab does.
 - **The window's other tabs** are the open tabs of the window's other workspaces (the agent
-  workspace included) and, when it is open, the tabs of the private workspace.
+  workspace included) and, in the last normal window only, the tabs of the private workspace
+  when it is open: only a quit discards them, and closing any other window leaves the private
+  workspace as it is.
 - **Other tabs** are the window's other tabs and the tabs of every other normal window.
 - A **normal window** is any window but the private workspace's. The **last normal window** is
-  the only one open.
-- A **user close** is one of the closing actions a key runs: `tab.close` (`x`,
+  the only normal window open.
+- A **user close** is one of the closing actions a key runs, typed or sent with the full role's
+  `vimma-ctl send-keys`, which already acts as the user's keyboard
+  ([control socket](../security/01-control-socket.md)): `tab.close` (`x`,
   `ctrl+b shift+x`, `ctrl+f4`), `pane.close` (`ctrl+b x`, `:q`) on a tab with one pane,
   `panel.close_tab` (`x` in the side panel) and `panel.close_active_tab`.
 
@@ -57,17 +61,23 @@ Terms used below:
    closes and Firefox opens a new tab in the same workspace.
 3. With `"picker"`, when the window has other tabs, a user close of its last tab **must** close
    the tab, open a new tab in its place as `"new_tab"` does, and open the workspace picker over
-   it, headed `last tab closed`. The picker lists only the workspaces that have tabs, each with
-   its number, name and tab count as under `ctrl+b w`, then the private workspace when it is
-   open, then a last row, `quit Vimma` (`close this window` when another normal window is open).
+   it, headed `last tab closed`. The picker lists only the window's other workspaces that have
+   tabs, each with its number, name and tab count as under `ctrl+b w`, the first one selected,
+   then the private workspace when it is among the window's other tabs, then a last row,
+   `quit Vimma` (`close this window` when another normal window is open).
    - `Enter` on a workspace switches to it and closes the new tab, so the closed tab's workspace
      is left with no tabs; going back to it later opens its start page, as for any empty
      workspace.
+   - `Enter` on the private workspace switches to it and leaves the new tab in the normal
+     window, because the private workspace is a window of its own, so closing the new tab would
+     close the normal window's last tab again.
    - `Enter` on `quit Vimma` quits without another question, unless private tabs are open: then
-     it asks the private part of behaviour 5's question, `quit Vimma? 2 private tabs are
-discarded y/N`. `Enter` on `close this window` closes the window (behaviour 8).
+     it asks the private part of behaviour 5's question,
+     `quit Vimma? 2 private tabs are discarded y/N`. `Enter` on `close this window` closes the
+     window (behaviour 8).
    - `Esc` or `q`, or the picker closing any other way, **must** leave the new tab in the
-     workspace and **must not** quit Vimma or close the window.
+     workspace and **must not** quit Vimma or close the window. Closing that new tab again opens
+     the picker again.
    - `m` is not offered, because the only tab in the workspace is the new tab.
 4. With `"picker"`, when the window has no other tabs, a user close of its last tab **must**
    close the tab and quit Vimma without a question in the last normal window, and close only the
@@ -79,16 +89,18 @@ discarded y/N`. `Enter` on `close this window` closes the window (behaviour 8).
    `esc` or any other key does what `"new_tab"` does. When private tabs are open, the question
    says so: `… 2 private tabs are discarded y/N`. In any other normal window it closes only the
    window: without a question when the window has no other tabs, and otherwise after
-   `close this window? 14 tabs in 3 other workspaces go to the recently closed windows y/N`.
+   `close this window? 14 tabs in 3 other workspaces go to the recently closed windows y/N`;
+   `y` closes the window, and any other key does what `"new_tab"` does.
 6. With `"quit"`, a user close of the last tab of the last normal window **must** close the tab
    and quit Vimma without a question, unless private tabs are open: then it asks the question of
    behaviour 5. In any other normal window it closes the window without a question.
 7. With `"keep"`, a user close of the last tab of a window **must not** close it: the page stays
    open, and the command line says `last tab: not closed`. Closing a pane of a split, or any tab
    that is not the last, works as always.
-8. Closing a window under behaviours 3 to 6 is Firefox's own window close, as `ctrl+shift+w` is:
-   its other workspaces' tabs go to the recently closed windows (`ctrl+shift+n`), and the other
-   windows stay as they are. Vimma quits only from the last normal window.
+8. Closing a window under behaviours 3 to 6 is the window close that `ctrl+shift+w` runs: the
+   window goes to the recently closed windows (`ctrl+shift+n`), and the other windows stay as
+   they are. Vimma quits only from the last normal window. That it reopens with all its
+   workspaces is to be checked (decision 9).
 9. A quit from behaviours 3 to 6 is Firefox's own quit, so what can stop `ctrl+q` stops it too:
    a page that asks before it is left, or downloads in progress. When the quit, or a window
    close, is stopped, the window keeps the new tab that `"new_tab"` would have opened.
@@ -96,13 +108,14 @@ discarded y/N`. `Enter` on `close this window` closes the window (behaviour 8).
     tabs and pane layouts, and the closed tab's workspace with a new tab. The closed tab is in
     the recently closed tabs (`ctrl+shift+t`).
 11. In the private workspace, a user close of its last tab with `"picker"`, `"ask"` or `"quit"`
-    **must** close the private workspace and return to the normal window, as `:private close`
-    does but without its question, and **must not** quit Vimma. With `"new_tab"` it opens a new
-    private tab, as today; with `"keep"` it is refused as in behaviour 7.
-12. A close that is not a user close **must not** quit Vimma, close a window, open the picker or
-    be refused: a page's own `window.close()`, an agent's `vimma_close_tab`, a command over the
-    control socket, Firefox's `ctrl+w` given back with `[firefox] enable`, and the tab context
-    menu. Those keep Firefox's behaviour under `browser.tabs.closeWindowWithLastTab`.
+    **must** close the private workspace and return to the normal window it was opened from, as
+    `:private close` does but without its question, and **must not** quit Vimma. With `"new_tab"` it
+    opens a new private tab, as today; with `"keep"` it is refused as in behaviour 7.
+12. A close that is not a user close **must not** quit Vimma, close a window, open the picker or be
+    refused: a page's own `window.close()`, an agent's `vimma_close_tab`, a control socket command
+    other than the full role's `send-keys`, Firefox's `ctrl+w` given back with `[firefox] enable`,
+    and the tab context menu. Those keep Firefox's behaviour under
+    `browser.tabs.closeWindowWithLastTab`.
 13. The setting is the same for every window and every workspace.
 
 The setting in `config.toml`:
@@ -168,26 +181,29 @@ Firefox paths are relative to `engine/`, checked against Firefox 160.0.1 (`surfe
 3. **The host decides, before the tab closes, and quits through Firefox's quit.** `removeTab` in
    `host/tab-ops.mjs` tests for the last tab of a window before it removes the tab, passes
    `closeWindowWithLastTab: false` always, and then, when the setting says so, quits with
-   `canQuitApplication` and `Services.startup.quit(eAttemptQuit)`. Quitting rather than closing
-   the last window keeps the session whole (Research) and quits on macOS too, where closing the
-   last window would leave Vimma running with no window. The tab closes first, so that it is in
-   the recently closed tabs and the next start does not bring it back. The rule that maps the
+   `canQuitApplication` and `Services.startup.quit(eAttemptQuit)`, and closes a window with
+   `closeWindow(true, …)`, as `cmd_closeWindow` (`ctrl+shift+w`) does. Quitting rather than
+   closing the last window keeps the session whole (Research) and quits on macOS too, where
+   closing the last window would leave Vimma running with no window. The tab closes first, so
+   that it is in the recently closed tabs and the next start does not bring it back. The rule that maps the
    setting, the window's other tabs, the other windows and the private tabs to an outcome
-   (`new_tab`, `picker`, `ask`, `quit`, `close_window` or `keep`) is a pure function in
-   `packages/vimma-core/src/workspaces/closelast.mjs`, so that vitest covers every case.
+   (`new_tab`, `picker`, `ask`, `quit`, `ask_close_window`, `close_window`, `close_private` or
+   `keep`) is a pure function in `packages/vimma-core/src/workspaces/closelast.mjs`, so that
+   vitest covers every case.
 4. **The picker lists only workspaces that have tabs, and a way out.** An empty workspace is
    left out, because its row would lead only to a start page, which the new tab already is. The
    last row quits (or closes the window), so that a user who wanted to end the browser still
    does it from the same picker in one key; it asks nothing more, because choosing a row that
-   says `quit Vimma` is already the answer, except for private tabs (decision 6).
+   says `quit Vimma` is already the answer, except for private tabs (decision 7).
 5. **Dismissing the picker never quits**, because `Esc` is the key a user presses to back out,
    and backing out must not end the browser. It leaves the new tab, so that the window is as
    `"new_tab"` would leave it.
-6. **Vimma's question replaces Firefox's quit warning.** The quit passes a source other than the
-   shortcut, so Firefox's `browser.warnOnQuitShortcut` question does not follow Vimma's own,
-   because two questions for one key press is one too many. `"ask"` with no other tabs does not
-   ask at all, because nothing else is open to lose. Questions from pages and downloads still
-   run, because they protect data Vimma cannot see.
+6. **Vimma's question replaces Firefox's quit and close warnings.** The quit passes a source other
+   than the shortcut, and a window close passes no warning to `closeWindow`, so neither Firefox's
+   `browser.warnOnQuitShortcut` question nor its `browser.tabs.warnOnClose` question follows Vimma's
+   own, because two questions for one key press is one too many. `"ask"` with no other tabs does not
+   ask at all, because nothing else is open to lose. Questions from pages and downloads still run,
+   because they protect data Vimma cannot see.
 7. **Private tabs always get a question before a quit**, under `"picker"` and `"quit"` too,
    because they cannot come back at the next start; every other tab can.
 8. **`"keep"` refuses the close and says so**, because a user may want the close key to stop at
@@ -202,13 +218,15 @@ Firefox paths are relative to `engine/`, checked against Firefox 160.0.1 (`surfe
     normal window is still open behind it and the user is closing private browsing, not the
     browser. No question is asked, because the closing tab is the private workspace's only tab,
     so nothing else is discarded.
-11. **Every user close key follows the setting**: `x`, `ctrl+b shift+x`, `ctrl+b x` and `:q` on
-    a tab with one pane, and the side panel's `x`, because one rule for every close key is
+11. **Every user close key follows the setting**: each action under "user close" (`x`,
+    `ctrl+b shift+x`, `ctrl+f4`, `ctrl+b x` and `:q` on a tab with one pane, and the side panel's
+    `x`), because one rule for every close key is
     easier to predict than one that depends on which key closed the tab.
 12. **Only the user's keys quit.** The rule runs only for the actions listed under "user close",
-    all of which run from the window's trusted `keydown` through the dispatcher, because a page,
-    an agent or a script on the control socket must not be able to end the browser or close a
-    window by closing a tab. The agent's close already opts out (Research).
+    all of which run through the dispatcher from the window's trusted `keydown` or the full
+    role's `send-keys`, because a page, an agent or another control socket command must not be
+    able to end the browser or close a window by closing a tab. The full role can already quit
+    with `app.quit`, so its keys gain nothing new. The agent's close already opts out (Research).
 13. **The agent workspace counts like any other workspace.** Its tabs are other tabs, and it is a
     row of the picker when it has tabs, because quitting ends an agent's connection exactly as
     `ctrl+q` does today, and a separate rule would be one more thing to learn.
@@ -216,7 +234,8 @@ Firefox paths are relative to `engine/`, checked against Firefox 160.0.1 (`surfe
 ## Security and privacy
 
 No new surface. The setting changes what a user's own close key does; pages, agents and the
-control socket cannot reach it (decision 12), so none of them can quit Vimma or close a window
+control socket's agent role cannot reach it, and the full role's `send-keys` could already run
+`app.quit` (decision 12), so none of them can quit Vimma or close a window
 through it. A quit discards private tabs only after the user answers `y` to a question that says
 so (decision 7).
 
@@ -235,11 +254,16 @@ so (decision 7).
   asks first when a private tab is open; `"picker"` with no other tabs quits; `"new_tab"` opens
   a new tab as today; `"ask"` with one workspace quits without a question; `"ask"` with another
   workspace asks, `n` leaves a new tab, `y` quits; `"quit"` quits without a question; `"quit"`
-  with a private tab asks; `"keep"` keeps the page and shows its notice; with two normal
-  windows, each value closes only the window, the other window stays and nothing quits, and
-  `ctrl+shift+n` reopens the closed window with its workspaces; `:q` and the side panel's `x`
-  follow the setting; a page's `window.close()` and the agent's close never quit, close the
-  window, open the picker or get refused; a quit a page cancels leaves the new tab.
+  with a private tab asks; `"keep"` keeps the page and shows its notice, also in the private
+  workspace; `Enter` on the private row switches there and keeps the new tab. With two normal
+  windows nothing quits and the other window stays: `"picker"` with no other tabs and `"quit"`
+  close the window; `"picker"` with other tabs shows `close this window`, and `Enter` on it
+  closes the window; `"ask"` asks `close this window?`, `n` leaves a new tab and `y` closes;
+  `"new_tab"` and `"keep"` leave both windows open; `ctrl+shift+n` reopens the closed window
+  with its workspaces; a window close a page stops leaves the new tab. Also: `:q`, the side
+  panel's `x` and `vimma-ctl send-keys x` follow the setting; a page's `window.close()` and the
+  agent's close never quit, close the window, open the picker or get refused; a quit a page
+  cancels leaves the new tab.
 
 ## Docs and changelog
 
@@ -265,7 +289,7 @@ None. The answers are decisions in Design:
 2. **Does "nothing happens" mean today's new tab, or a refused close?** Answered: both, as
    `"new_tab"` and a new value `"keep"`, decisions 1 and 8.
 3. **With `"ask"` and other workspaces' tabs, what does the user see?** Answered: the y/N
-   question of behaviour 5; the picker became the default value instead, decisions 2 and 4.
+   question of behaviour 5, with the picker as the default value, decisions 2 and 4.
 4. **With several normal windows, what does a value that quits do?** Answered: close only this
    window, and quit only from the last normal window, decision 9.
 5. **Which keys follow the setting?** Answered: every user close, decision 11.
