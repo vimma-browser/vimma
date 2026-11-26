@@ -216,7 +216,9 @@ npm run mochitest -- --artifact tests/browser/  # headless
 
 `tools/upstream/firefox-source.sh` deletes `engine/` without asking, objdir included; in an
 existing checkout use `npx surfer download` and `npm run verify-source` instead, as in "Build and
-run". The artifact build's app is `engine/obj-artifact/dist/Vimma.app`.
+run". The artifact build's app is `engine/obj-artifact/dist/Vimma.app`, with its own bundle id
+(`dev.vimma.browser.artifact`) and no `http` or `https` handlers, so links clicked in other apps
+keep going to the installed Vimma while it runs.
 
 Pull requests run the same steps on hosted Macs, split into two shards
 (`mochitest (artifact build, macOS, shard 1/2)` and `shard 2/2` in `e2e.yml`); those checks are

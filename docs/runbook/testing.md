@@ -85,6 +85,11 @@ existing value is kept), so a dev or lane build never reads or writes the instal
 once broke the installed release's config. The e2e harness sets the same pref inside each
 throwaway profile; mochitests set `/nonexistent/vimma-test/config.toml` in `browser.toml`.
 
+On macOS the artifact build's `Vimma.app` has its own bundle id (`dev.vimma.browser.artifact`)
+and no `http` or `https` URL types, so a link clicked in another app always goes to the installed
+Vimma, never to a dev or lane build that happens to run ("Parallel browser lanes" has why). It
+cannot be made the default browser, and it keeps its macOS preferences apart from the release's.
+
 It merges `security.sandbox.content.read_path_whitelist=<repo>/src/` into the profile's `user.js`.
 In a local objdir the chrome files are symlinks into `engine/`, which `surfer import` links to the
 repo's `src/`, outside the Firefox tree; the content sandbox then refuses them and the console

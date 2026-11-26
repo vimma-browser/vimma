@@ -67,6 +67,15 @@ Limits:
   the dev build is needed. Do not download an engine per lane instead: several downloads and
   artifact builds at once overloaded a 12-core machine (load average 22 after the 160.0 bump).
 
+- **On macOS a lane's app takes no links from other apps.** `tools/artifact-build` gives
+  `dist/Vimma.app` the bundle id `dev.vimma.browser.artifact` and drops its `http` and `https`
+  URL types, and removes the app's old LaunchServices record (`lsregister -u`); every
+  `npm run mochitest` and `npm start` does it again after a bare `./mach build` rewrote
+  `Info.plist`. LaunchServices sends a link clicked in another app to the default browser's
+  bundle id and prefers a running app with that id, then the highest version: with the release
+  id, a headless lane build once took a link meant for the installed Vimma, which lost the link
+  and aborted the test run (issue #1571). Release builds come from the full build in
+  `release.yml` and keep `dev.vimma.browser`.
 - **CPU:** an artifact build is CPU-bound (the front-end build). On a 16-thread machine run at
   most about 3 artifact builds at once, and none while the main checkout runs a full build;
   mochitests are light, a few in parallel are fine.
