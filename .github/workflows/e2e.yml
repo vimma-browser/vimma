@@ -375,14 +375,23 @@ jobs:
   # Not on a version run (upstream autopilot, Beta canary): macOS never blocks a Linux release
   # (decision 13). No vimma-ctl build (its macOS tests are in ci.yml) and no e2e scenarios
   # (sub-PR 4).
+  # Issue #1569: two parallel shards, split by file on the measured per-file times
+  # (tools/mochitest-shards.ts, tools/mochitest-times.json), because one 35 to 44 minute job on a
+  # shared 3-vCPU runner whose speed varies by 1.3 to 1.5 times left every test close to its
+  # limits. fail-fast: false, so one shard's failure does not cancel the other's results.
   mochitest-macos:
-    name: mochitest (artifact build, macOS)
+    name: mochitest (artifact build, macOS, shard ${{ matrix.shard }}/2)
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.docs-only != 'true' && inputs.firefox-version == '' }}
     runs-on: macos-15
-    # About 1.5 times the measured job, 44 min (docs/runbook/ci-macos-mochitests.md), so the
-    # growing suite does not hit the limit while a hung run still fails here with its own log.
-    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    # About 1.5 times a shard's measured run: 23.6 to 27.2 min, median 24.5, in three runs of
+    # November 2026, of which 16.4 min are mochitests (docs/runbook/ci-macos-mochitests.md). The
+    # growing suite does not hit the limit, while a hung run still fails here with its own log.
+    timeout-minutes: 37
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -436,17 +445,21 @@ jobs:
       # tests that load and read hidden tabs timed out on every run (15 failures against 1 with
       # the pref off, docs/runbook/ci-macos-mochitests.md "macOS mochitests"). Agent commands raise their own tab
       # (agent-commands.mjs, raisePriority), which browser_vimma_mcp_agent.js checks either way.
-      - name: Mochitests (npm run mochitest -- --artifact tests/browser/)
+      # --shard=N/2 runs this shard's files of tests/browser/ (tools/mochitest-shards.ts).
+      - name: Mochitests (npm run mochitest -- --artifact --shard=N/2)
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           npm run mochitest -- --artifact "--log-tbpl=$RUNNER_TEMP/mochitest.tbpl.log" \
-            --setpref=threads.lower_mainthread_priority_in_background.enabled=false tests/browser/
+            --setpref=threads.lower_mainthread_priority_in_background.enabled=false \
+            "--shard=$SHARD/2"
           df -k .
 
       - name: Upload logs (TBPL log, configure log)
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: mochitest-macos-logs
+          name: mochitest-macos-logs-${{ matrix.shard }}
           path: |
             ${{ runner.temp }}/mochitest.tbpl.log
             engine/obj-artifact/config.log

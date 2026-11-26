@@ -257,7 +257,9 @@ describe("workflow wiring", () => {
   it("e2e.yml: the macOS job runs unless docs-only, and only on the pinned version", () => {
     const text = workflow("e2e.yml");
     const mac = job(text, "mochitest-macos");
-    expect(mac).toMatch(/^ {4}name: mochitest \(artifact build, macOS\)$/m);
+    expect(mac).toMatch(
+      /^ {4}name: mochitest \(artifact build, macOS, shard \$\{\{ matrix.shard \}\}\/2\)$/m,
+    );
     expect(mac).toMatch(/^ {4}runs-on: macos-15$/m);
     expect(mac).toMatch(/^ {4}needs: changes$/m);
     expect(jobIf(mac)).toBe(`\${{ !cancelled() && ${RUNS} && inputs.firefox-version == '' }}`);
@@ -285,7 +287,9 @@ describe("workflow wiring", () => {
   it("e2e.yml: the macOS job runs unless docs-only, and only on the pinned version", () => {
     const text = workflow("e2e.yml");
     const mac = job(text, "mochitest-macos");
-    expect(mac).toMatch(/^ {4}name: mochitest \(artifact build, macOS\)$/m);
+    expect(mac).toMatch(
+      /^ {4}name: mochitest \(artifact build, macOS, shard \$\{\{ matrix.shard \}\}\/2\)$/m,
+    );
     expect(mac).toMatch(/^ {4}runs-on: macos-15$/m);
     expect(mac).toMatch(/^ {4}needs: changes$/m);
     expect(jobIf(mac)).toBe(`\${{ !cancelled() && ${RUNS} && inputs.firefox-version == '' }}`);

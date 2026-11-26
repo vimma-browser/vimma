@@ -371,7 +371,7 @@ hold secrets are in security.md §10 and §14.
 | Workflow                   | Runs on                     | What it does                                                                                                                          |
 | -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `ci.yml`                   | Pull requests, `main`       | Lint, typecheck, Vitest with coverage, the bench gate, commitlint, licences, vimma-ctl tests.                                         |
-| `e2e.yml`                  | Pull requests               | Artifact build, mochitests (Linux and macOS), e2e scenarios, the recorded-site gate.                                                  |
+| `e2e.yml`                  | Pull requests               | Artifact build, mochitests (Linux, and macOS in two shards), e2e scenarios, the recorded-site gate.                                   |
 | `key-guard.yml`            | Pull requests               | Holds a change to Mozilla's pinned release key until a maintainer labels it.                                                          |
 | `pkgbuild.yml`             | Packaging changes           | Installs the Arch package, `.rpm` and Homebrew cask from a stub; tests the package repositories.                                      |
 | `flatpak.yml`              | Packaging changes, releases | Builds and runs the Flatpak.                                                                                                          |
