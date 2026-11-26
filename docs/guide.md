@@ -1505,6 +1505,32 @@ password?" prompt opens with the `Esc, then` line. In the prompt's own username 
 fields, every key is the field's: a `y` or an `n` there is typed, and `Tab` is Firefox's, as
 everywhere inside the prompt.
 
+#### Passkeys and security keys
+
+When a site asks for a passkey or a security key, Firefox's prompts hang from the address bar in
+the same theme and take the same keys, with the same half-second wait. In these prompts `n` is
+always the button `Esc` runs (Cancel, or Block in the make-and-model question), and `y` is the
+answer that goes ahead, so `y` never cancels by accident:
+
+- **Touch your security key**, and the notices: several keys found (touch the one to use), the
+  key already holds a passkey for the site, the PIN is not set, too many tries. `n` cancels.
+  They have nothing for `y`, and the line reads `n cancel · Tab buttons`.
+- **Choose a passkey** for the site: `y` signs in with the passkey on the prompt's button and `n`
+  cancels. With more passkeys, the line ends in `Tab, ↓ more`: `Tab` moves focus onto that
+  button, `↓` opens the list of the others, the arrow keys move through it and `Enter` chooses.
+  While the list is open, `y` and `n` are the list's and answer nothing, so they never answer
+  from behind the passkey you highlighted; `Esc` closes the list.
+- **Allow the site to see your key's make and model**: `y` allows and `n` blocks, as in a
+  permission prompt.
+- **Use a passkey saved for another site**: when a site asks for a passkey that belongs to a
+  related site, Firefox asks first; `y` continues and `n` cancels.
+- **The PIN for your key** opens as a dialog over the page ([Answering a dialog](#answering-a-dialog)):
+  every key you type is the PIN, `y` and `n` included, and `Enter` and `Esc` answer it.
+
+These are Firefox's own prompts. A window drawn by the operating system, or a page's own
+"use your phone" screen with a QR code, is not one of them and keeps its own keys. On macOS,
+passkeys stored in iCloud Keychain do not work in Vimma yet (issue #544).
+
 #### Answering a dialog
 
 Firefox's dialogs over a page or over the window take the same keys: "This page is asking you to

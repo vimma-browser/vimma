@@ -42,6 +42,11 @@
 // clock. Their buttons are whatever the feature behind the bar chose, so no letter answers them.
 // The bar names its keys in the same line; the status bar does not, as the bar says what it is.
 //
+// Firefox's passkey and security key prompts (WebAuthn, docs/specs/webauthn-prompts.md) are
+// doorhangers too, but make Cancel their main button: `n` presses the button Esc runs and `y` the
+// other one (core doorhangerButtons), and with several passkeys the line names the list Firefox
+// keeps on the first passkey's button. The PIN entry is a tab dialog (dialog-keys.mjs).
+//
 // Firefox's dialogs over a tab or the window ("Leave page?", a page's confirm) take the same keys
 // with the same guards (docs/specs/firefox-dialogs.md, host/dialog-keys.mjs); a key typed in one
 // is the dialog's alone.
@@ -49,6 +54,7 @@
 import {
   barHint,
   barKey,
+  doorhangerButtons,
   doorhangerHint,
   doorhangerKey,
   popupBarHint,
@@ -327,6 +333,39 @@ export class PromptKeys {
   }
 
   /**
+   * The buttons `y` and `n` press in `n` (core doorhangerButtons), and the buttons themselves.
+   * @param {MozPopupNotification} n
+   */
+  buttonsOf(n) {
+    const options = /** @type {{ options?: { escAction?: string } }} */ (notificationOf(n) ?? {})
+      .options;
+    const which = doorhangerButtons({
+      popupid: n.getAttribute("popupid") ?? "",
+      escAction: options?.escAction,
+      secondary: !n.hasAttribute("secondarybuttonhidden"),
+    });
+    /** @param {"main" | "secondary" | null} b */
+    const el = (b) => (b === "main" ? n.button : b === "secondary" ? n.secondaryButton : null);
+    /** @param {"main" | "secondary" | null} b */
+    const label = (b) =>
+      b === "main"
+        ? // The add-on notice keeps Firefox's default label on the button itself (OK).
+          n.getAttribute("buttonlabel") || n.button?.getAttribute("label") || ""
+        : b === "secondary"
+          ? (n.getAttribute("secondarybuttonlabel") ?? "")
+          : "";
+    return {
+      yes: el(which.yes),
+      no: el(which.no),
+      yesLabel: label(which.yes),
+      noLabel: label(which.no),
+      // The other passkeys are in the secondary button's list (PopupNotifications._refreshPanel
+      // shows its dropmarker for a second secondary action).
+      more: which.yes === "secondary" && !n.hasAttribute("dropmarkerhidden"),
+    };
+  }
+
+  /**
    * The keys line in `n`, made and labelled after its buttons if need be; hidden while it is
    * made.
    * @param {MozPopupNotification} n
@@ -341,12 +380,12 @@ export class PromptKeys {
       hint.setAttribute("aria-hidden", "true");
       (n.buttonGroup ?? n).before(hint);
     }
-    const secondaryHidden = n.hasAttribute("secondarybuttonhidden");
     const focus = this.focusIn(n);
+    const buttons = this.buttonsOf(n);
     const text = doorhangerHint({
-      // The add-on notice keeps Firefox's default label on the button itself (OK).
-      main: n.getAttribute("buttonlabel") || n.button?.getAttribute("label") || "",
-      secondary: secondaryHidden ? "" : (n.getAttribute("secondarybuttonlabel") ?? ""),
+      main: buttons.yesLabel,
+      secondary: buttons.noLabel,
+      more: buttons.more,
       toggle: this.toggleOf(n)?.getAttribute("label") ?? "",
       // Hint, copy and element mode keep y and n as well; Esc leaves them too.
       inField: (focus.inField || this.host.modeKeys()) && !focus.inPrompt,
@@ -654,18 +693,29 @@ export class PromptKeys {
       toggle: !!toggle,
       // Only the notice leaves `n` to Vimma: it stays open until answered.
       secondary: !this.isNotice(n) || !n.hasAttribute("secondarybuttonhidden"),
+      listOpen: listOpen(n),
     });
     if (result.kind === "pass") return false;
     e.preventDefault();
     e.stopPropagation();
-    if (result.kind === "allow") n.button?.click();
-    else if (result.kind === "block") {
-      if (!n.hasAttribute("secondarybuttonhidden")) n.secondaryButton?.click();
-    } else if (result.kind === "toggle") toggle?.click();
+    // A click runs the button's own action, with Firefox's delay check (_onButtonEvent).
+    if (result.kind === "allow") this.buttonsOf(n).yes?.click();
+    else if (result.kind === "block") this.buttonsOf(n).no?.click();
+    else if (result.kind === "toggle") toggle?.click();
     // The add-on notice's checkbox comes first: Space toggles it there, and Tab goes on to OK.
     else if (result.kind === "focus") (toggle ?? n.footerFocusableButtons?.[0])?.focus();
     return true;
   }
+}
+
+/**
+ * Whether the list on the prompt's secondary button (popupnotification.js, `menupopup`: the
+ * other passkeys) is open or opening.
+ * @param {MozPopupNotification} n
+ */
+function listOpen(n) {
+  const state = /** @type {{ menupopup?: XULPopupElement }} */ (n).menupopup?.state;
+  return state === "open" || state === "showing";
 }
 
 /**
