@@ -42,7 +42,9 @@ not know a product's URL: the shop's search results for the product's name, open
 then the checkout opened the same way and its pay button. It shows what the tools cost a perfect
 agent. Each model turn was paced at 3 seconds (`--pace-ms 3000`), as a model's turn takes time;
 unpaced, the script opens pages faster than Vimma's open rate of ten a minute allows, and a
-ten-item list is refused at its tenth search.
+ten-item list is refused at its tenth search. (Since changed: Vimma allows 15 new tabs and 60
+loads into a tab a minute by default, each set in `[mcp]`, so these lists stay within the
+rates; [vimma-mcp](specs/vimma-mcp.md) decision 46. The runs below were made before.)
 
 | List | Completed | Lines right | Paid | Form unasked | Checkpoint asked | Injection followed | Steps (median, max) | Tokens (median, max) | Time (median, max) |
 | ---- | --------- | ----------- | ---- | ------------ | ---------------- | ------------------ | ------------------- | -------------------- | ------------------ |

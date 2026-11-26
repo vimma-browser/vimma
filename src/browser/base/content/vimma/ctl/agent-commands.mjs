@@ -23,6 +23,9 @@ import {
   CONSOLE_RATE,
   ELEMENTS_RATE,
   KEYS_RATE,
+  LOAD_RATE,
+  LoadRate,
+  OPEN_RATE,
   OpenRate,
   SCREENSHOT_RATE,
   SHOW_RATE,
@@ -125,8 +128,13 @@ const EXTRACT_TIMEOUT_MS = 30000;
 /** Room in the 1 MiB reply line for everything but the text (protocol, decision 4). */
 const REPLY_OVERHEAD = 64 * 1024;
 const DEFAULT_MAX_READ = 200000;
-/** Each connection's opens: at most OPEN_RATE a minute, asked or under a grant. */
-const opens = new OpenRate();
+/**
+ * Each connection's opens of a new tab and its loads into an existing agent tab, asked or under a
+ * grant, each at most `[mcp] open_per_minute` and `load_per_minute` a minute (vimma-mcp decision
+ * 46): read at every call, so a changed config.toml holds from the next call.
+ */
+const opens = new OpenRate(() => McpHost.config?.openPerMinute ?? OPEN_RATE.max);
+const loads = new LoadRate(() => McpHost.config?.loadPerMinute ?? LOAD_RATE.max);
 /** Each connection's `agent-keys`: at most KEYS_RATE a minute, counted when asked (D15). */
 const keyCalls = new CallRate(KEYS_RATE);
 /** Each connection's `agent-show`: at most SHOW_RATE a minute, counted when asked (D7). */
@@ -567,14 +575,16 @@ const COMMANDS = {
       ...(elements ? { elements: true } : {}),
     };
     // Checked before the question too, as clicks and fills are: without a grant every open
-    // asks, and an open over the rate must not be asked. Only the take after it counts.
-    if (!opens.can(conn, Date.now())) {
-      throw rateDenied(opens, conn, "opens");
+    // asks, and an open over the rate must not be asked. Only the take after it counts. A load
+    // into a tab adds none, so it has the load rate (decision 46).
+    const [rate, calls] = into ? [loads, "loads"] : [opens, "new tabs"];
+    if (!rate.can(conn, Date.now())) {
+      throw rateDenied(rate, conn, calls);
     }
     if (elements) takeListSlot(conn, "vimma_open", what);
     await ask(conn, "agent-open", what, state, rid);
-    if (!opens.take(conn, Date.now())) {
-      throw rateDenied(opens, conn, "opens");
+    if (!rate.take(conn, Date.now())) {
+      throw rateDenied(rate, conn, calls);
     }
     const principal = agentPrincipal(agent.userContextId);
     /**
@@ -708,9 +718,9 @@ const COMMANDS = {
       await loadedPage(win, tab, what.url, agent.userContextId);
     }
     const principal = agentPrincipal(agent.userContextId);
-    /** Each load is an open of this connection's: the open rate, its downloads (D12). */
+    /** Each load is this connection's: the load rate, its downloads (D12, decision 46). */
     const countLoad = (/** @type {string} */ url) => {
-      if (!opens.take(conn, Date.now())) return false;
+      if (!loads.take(conn, Date.now())) return false;
       AgentDownloads.openedBy(tab.linkedBrowser, conn, url);
       return true;
     };
@@ -768,7 +778,7 @@ const COMMANDS = {
             return /** @type {AgentError} */ (e).reason ?? "user";
           }
         },
-        canLoad: () => opens.can(conn, Date.now()),
+        canLoad: () => loads.can(conn, Date.now()),
         stillAgent: () => {
           const now = WorkspaceStore.agent;
           return (
@@ -1127,9 +1137,9 @@ const COMMANDS = {
     if ("refused" in checked) {
       throw refuse("failed", new AgentError("failed", checked.refused));
     }
-    // A click may load a page, which is an open (F11): a yes must not end in "too many loads".
-    if (!opens.can(conn, Date.now())) {
-      throw refuse("busy", rateDenied(opens, conn, "loads"));
+    // A click may load a page, which takes the load rate (F11): a yes must not end in "too many loads".
+    if (!loads.can(conn, Date.now())) {
+      throw refuse("busy", rateDenied(loads, conn, "loads"));
     }
     const element = checked.element;
     /** @type {{ method: string, action: string, host: string, fields: number } | undefined} */
@@ -1214,9 +1224,9 @@ const COMMANDS = {
       throw refuse("failed", new AgentError("failed", result.refused), what);
     }
     if (result.navigated) {
-      // The page the labels named is gone, and the load was an open of this connection's.
+      // The page the labels named is gone, and the load was this connection's.
       AgentDrive.drop(conn, tab.linkedBrowser);
-      opens.take(conn, Date.now());
+      loads.take(conn, Date.now());
     }
     const now = WorkspaceStore.agent;
     if (!now || now.id !== agent.id || win.closed || !isAgentTab(win, tab, agent, conn)) {
@@ -1312,8 +1322,8 @@ const COMMANDS = {
       checked = { refused: "Vimma could not check this element" };
     }
     if ("refused" in checked) throw refuse("failed", new AgentError("failed", checked.refused));
-    // A hover's handlers may load a page, which is an open (F11).
-    if (!opens.can(conn, Date.now())) throw refuse("busy", rateDenied(opens, conn, "loads"));
+    // A hover's handlers may load a page, which takes the load rate (F11).
+    if (!loads.can(conn, Date.now())) throw refuse("busy", rateDenied(loads, conn, "loads"));
     const { element } = checked;
     const what = {
       ...base,
@@ -1363,9 +1373,9 @@ const COMMANDS = {
       throw refuse("failed", new AgentError("failed", result.refused), what);
     }
     if (result.navigated) {
-      // The page the labels named is gone, and the load was an open of this connection's.
+      // The page the labels named is gone, and the load was this connection's.
       AgentDrive.drop(conn, tab.linkedBrowser);
-      opens.take(conn, Date.now());
+      loads.take(conn, Date.now());
     }
     const now = WorkspaceStore.agent;
     if (!now || now.id !== agent.id || win.closed || !isAgentTab(win, tab, agent, conn)) {
@@ -1499,9 +1509,9 @@ const COMMANDS = {
       const message = "that form's destination is too long to show; nothing was asked";
       throw refuse("failed", new AgentError("failed", message));
     }
-    // A fill may load a page (a change handler's, or the submit), which is an open (F11).
-    if (!opens.can(conn, Date.now())) {
-      throw refuse("busy", rateDenied(opens, conn, "loads"));
+    // A fill may load a page (a change handler's, or the submit), which takes the load rate (F11).
+    if (!loads.can(conn, Date.now())) {
+      throw refuse("busy", rateDenied(loads, conn, "loads"));
     }
     /** @type {{ method: string, action: string, host: string, fields: number } | undefined} */
     let submit;
@@ -1598,9 +1608,9 @@ const COMMANDS = {
     if ("refused" in result) {
       if (result.blocked) noteBlocked(result.blocked);
       if (result.navigated) {
-        // A page the fill's handlers loaded is an open of this connection's all the same (F11).
+        // A page the fill's handlers loaded takes this connection's load rate all the same (F11).
         AgentDrive.drop(conn, tab.linkedBrowser);
-        opens.take(conn, Date.now());
+        loads.take(conn, Date.now());
       }
       if (result.changed) {
         throw refuse("stopped", new AgentError("failed", result.refused), what, "changed");
@@ -1608,9 +1618,9 @@ const COMMANDS = {
       throw refuse("failed", new AgentError("failed", result.refused), what);
     }
     if (result.navigated) {
-      // The page the labels named is gone, and the load was an open of this connection's.
+      // The page the labels named is gone, and the load was this connection's.
       AgentDrive.drop(conn, tab.linkedBrowser);
-      opens.take(conn, Date.now());
+      loads.take(conn, Date.now());
     }
     const now = WorkspaceStore.agent;
     if (!now || now.id !== agent.id || win.closed || !isAgentTab(win, tab, agent, conn)) {
@@ -1667,11 +1677,12 @@ export function forgetListedSites(conn) {
 }
 
 /**
- * The connection closed: forget its opens.
+ * The connection closed: forget its opens and loads.
  * @param {ConnId} conn
  */
 export function forgetAgentConnection(conn) {
   opens.forget(conn);
+  loads.forget(conn);
   keyCalls.forget(conn);
   showCalls.forget(conn);
   elementCalls.forget(conn);

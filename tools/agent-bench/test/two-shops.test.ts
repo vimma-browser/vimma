@@ -4,6 +4,13 @@ import {
   AGENT_INSTRUCTIONS,
 } from "../../../packages/vimma-core/src/agent/agent-tools.mjs";
 import { OPEN_RATE } from "../../../packages/vimma-core/src/agent/agent.mjs";
+
+/**
+ * The fake Vimma's one rate, for opens and the loads a click may make: a config with
+ * `[mcp] open_per_minute = 10` and `load_per_minute = 10` (vimma-mcp decision 46). Vimma's
+ * defaults leave these lists inside both rates; these runs are about waiting one out.
+ */
+const RATE = { max: 10, ms: OPEN_RATE.ms };
 import { runOne, waitOutRate } from "../run.ts";
 import { passes } from "../score.ts";
 import { SCRIPTED_PROVIDER, scriptedFetch } from "../scripted.ts";
@@ -411,16 +418,16 @@ function fakeVimma({
   /** A used-up open rate, or null. */
   const rate = () => {
     const now = clock();
-    while (opens.length && opens[0]! <= now - OPEN_RATE.ms) opens.shift();
-    if (opens.length < OPEN_RATE.max) return null;
-    const s = Math.max(1, Math.ceil((opens[0]! + OPEN_RATE.ms - now) / 1000));
+    while (opens.length && opens[0]! <= now - RATE.ms) opens.shift();
+    if (opens.length < RATE.max) return null;
+    const s = Math.max(1, Math.ceil((opens[0]! + RATE.ms - now) / 1000));
     return {
       isError: true,
       ...text(
         oldBusy
           ? OLD_BUSY
           : `Vimma's rate limit for this agent: too many loads from this agent in the last ` +
-              `minute (at most ${OPEN_RATE.max}). No question is waiting for the user. The next ` +
+              `minute (at most ${RATE.max}). No question is waiting for the user. The next ` +
               `call is allowed in ${s} s.`,
       ),
     };

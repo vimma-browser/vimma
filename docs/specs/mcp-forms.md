@@ -482,7 +482,9 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     Every navigation an activation causes takes a slot of the open rate (`OPEN_RATE`), shared
     with `vimma_open` and follows, so that a granted click loop cannot load pages faster than
     opens can; while that rate is used up no click is made, because a click that loads cannot be
-    told from one that does not until it has run.
+    told from one that does not until it has run. (Since changed: a navigation an activation
+    causes takes a slot of the load rate, shared with loads into a tab and follows but not with
+    new tabs; vimma-mcp decision 46.)
 
 ### D. Filling: `vimma_fill`
 

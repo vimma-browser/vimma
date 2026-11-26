@@ -415,6 +415,8 @@ describe("mergeWithDefaults", () => {
         downloadDir: "~/Downloads/vimma-agent",
         downloadMaxMb: 200,
         clamavMaxAgeDays: 7,
+        openPerMinute: 15,
+        loadPerMinute: 60,
       },
       ui: {
         toolbar: "hidden",

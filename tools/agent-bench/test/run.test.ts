@@ -5,10 +5,18 @@ import {
 } from "../../../packages/vimma-core/src/agent/agent-tools.mjs";
 import { answerer, grantSession, parseArgs, runOne, waitOutRate } from "../run.ts";
 import { OPEN_RATE } from "../../../packages/vimma-core/src/agent/agent.mjs";
+
 import { RATE_PACE_MS, SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../scripted.ts";
 import { loadLists } from "../lists.ts";
 import { loadCatalog, startShop } from "../shop.ts";
 import type { RunTool } from "../../../packages/vimma-core/src/agent/agent-loop.mjs";
+
+/**
+ * The fake Vimma's one rate, for opens and the loads a click may make: a config with
+ * `[mcp] open_per_minute = 10` and `load_per_minute = 10` (vimma-mcp decision 46). Vimma's
+ * defaults leave these lists inside both rates; these runs are about waiting one out.
+ */
+const RATE = { max: 10, ms: OPEN_RATE.ms };
 
 let shop: Awaited<ReturnType<typeof startShop>>;
 beforeAll(async () => {
@@ -55,8 +63,8 @@ function fakeVimma({
   return async (name, args) => {
     if (name === "vimma_open") {
       const now = clock();
-      while (opens.length && opens[0]! <= now - OPEN_RATE.ms) opens.shift();
-      if (opens.length >= OPEN_RATE.max)
+      while (opens.length && opens[0]! <= now - RATE.ms) opens.shift();
+      if (opens.length >= RATE.max)
         return {
           isError: true,
           ...text("Vimma refused this: too many vimma_open calls in the last minute."),
@@ -73,14 +81,14 @@ function fakeVimma({
       // A click may load a page, so Vimma checks the open rate before it (agent-activate); a
       // click that loads nothing takes no open. Worded as vimma-ctl words a used-up rate.
       const now = clock();
-      while (opens.length && opens[0]! <= now - OPEN_RATE.ms) opens.shift();
-      if (clickRate && opens.length >= OPEN_RATE.max) {
-        const s = Math.max(1, Math.ceil((opens[0]! + OPEN_RATE.ms - now) / 1000));
+      while (opens.length && opens[0]! <= now - RATE.ms) opens.shift();
+      if (clickRate && opens.length >= RATE.max) {
+        const s = Math.max(1, Math.ceil((opens[0]! + RATE.ms - now) / 1000));
         return {
           isError: true,
           ...text(
             `Vimma's rate limit for this agent: too many loads from this agent in the last ` +
-              `minute (at most ${OPEN_RATE.max}). No question is waiting for the user. The next ` +
+              `minute (at most ${RATE.max}). No question is waiting for the user. The next ` +
               `call is allowed in ${s} s.`,
           ),
         };

@@ -338,7 +338,8 @@ site` and loads nothing; same site by construction still holds.)
     - **Counting.** Every follow, every `gu`/`gU` and every history step that loads a page takes
       a slot of the connection's open rate (10 a minute, `OPEN_RATE`), shared with `vimma_open`,
       because each one loads a URL; a history step to an entry that is not http or https (one
-      the user reached in that tab before) is refused.
+      the user reached in that tab before) is refused. (Since changed: these take a slot of the
+      load rate, 60 a minute by default, which new tabs do not share; vimma-mcp decision 46.)
 13. **Within one call.** Actions run in order. After an action that loads a page (a follow,
     back, forward, `gu`, `gU`), the next one waits for that load, up to 20 s (`LOAD_TIMEOUT_MS`).
     (Since changed: `LOAD_TIMEOUT_MS` is in `ctl/agent-waits.mjs`, issue #1108.) (Since changed:

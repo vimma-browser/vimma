@@ -69,7 +69,8 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
  *   grant_minutes?: number, grant_max_minutes?: number, max_read_chars?: number,
  *   notify?: boolean, download_dir?: string, download_max_mb?: number,
- *   clamav_max_age_days?: number }} [mcp]  AI agents and the agent workspace (docs/specs/vimma-mcp.md)
+ *   clamav_max_age_days?: number, open_per_minute?: number,
+ *   load_per_minute?: number }} [mcp]  AI agents and the agent workspace (docs/specs/vimma-mcp.md)
  * @property {{ default?: string, aliases?: Record<string, string> }} [search]  the default
  *   search engine and `@alias` keywords (docs/specs/search-engines.md)
  * @property {Record<string, unknown>} [agent]  the built-in agent (docs/specs/builtin-agent.md),
@@ -591,6 +592,9 @@ export const DEFAULT_CONFIG = Object.freeze({
     download_dir: "~/Downloads/vimma-agent",
     download_max_mb: 200,
     clamav_max_age_days: 7,
+    // vimma-mcp decision 46: agent-open's two rates, as core's OPEN_RATE and LOAD_RATE.
+    open_per_minute: 15,
+    load_per_minute: 60,
   },
 });
 
@@ -1098,6 +1102,12 @@ export function configTables({ brief = false } = {}) {
             "clamav_max_age_days",
             m.clamav_max_age_days,
             "days before ClamAV definitions stop counting a file clean (1–90)",
+          ),
+          set("open_per_minute", m.open_per_minute, "new tabs an agent may open a minute (1–600)"),
+          set(
+            "load_per_minute",
+            m.load_per_minute,
+            "pages an agent may load into its open tabs a minute (1–600)",
           ),
         ]),
       ],

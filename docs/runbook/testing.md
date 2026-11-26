@@ -344,8 +344,10 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   both baskets filled with each shop's cheapest match and both checkouts asked. Kauppa's add
   buttons are icon-only buttons named by `aria-label`; Market's are a repeated "Add" that
   submits a small form. Alone it runs only that scenario. `--check` also fails it when anything
-  but a checkout asked or a result said that questions were waiting for the user. Unpaced, its
-  ten searches use up the open rate, so a run takes about 70 seconds, most of it the rate wait.
+  but a checkout asked or a result said that questions were waiting for the user. At Vimma's
+  default rates (15 new tabs and 60 loads a minute) its ten searches and two checkouts stay within
+  them; with `[mcp] open_per_minute = 10` the searches use up the rate, so a run takes about 70
+  seconds, most of it the rate wait.
 - `--num-ctx` sets an Ollama model's context length by making a model of that name with
   `num_ctx` set (`qwen2.5:7b-ctx32768`), which shares the original's weights. Ollama's
   OpenAI-compatible API takes no context length, and its default of 4096 tokens holds less than
@@ -371,8 +373,8 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   product's page by URL, the earlier floor) or `parallel` (the search path with independent
   steps in one turn: every search in one turn, every basket button in the next). Like the
   built-in agent's runner, the bench waits out a rate refusal once and runs the call again, which
-  the parallel path needs on a ten-item list: ten loads in one turn use up the open rate, which
-  a click checks too.
+  the parallel path needs on a ten-item list when `[mcp] open_per_minute` is 10 or less: ten
+  searches in one turn then use up the rate before the checkout opens.
 - **Where the model ran.** For an Ollama model, `--out` records `ollama ps` at the end of the
   run (`meta.loaded`: each loaded model's `size`, `sizeVram` and `contextLength`); a row in
   `agent-bench.md` says GPU, CPU or the split. Ollama leaves out an integrated GPU unless

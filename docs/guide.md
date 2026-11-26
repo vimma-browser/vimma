@@ -3281,12 +3281,23 @@ with the rest of your computer.
 - gets page text and titles marked as untrusted web content, so the model is told that
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
-- is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
+- is held by limits: 4 waiting requests per agent and 16 in all, 15 new tabs a minute, 60 pages
+  loaded into its open tabs a minute (by `vimma_open` with a tab, a click, a follow or a fill), 30
   `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots, 30 console reads, 6 `vimma_show` calls and
   6 bookmarklets a minute, and a minute of silence after three noes in a row. A call over one of these rates is refused with the limit it hit and the seconds
   until the next call is allowed, so the agent waits for the rate, not for you; Vimma's own
   agent waits it out by itself, and its step says `waiting 40 s (rate limit)`. An open, a click
-  or a fill over the rate is refused before you are asked.
+  or a fill over the rate is refused before you are asked. The two page limits are yours to set
+  in config.toml, from 1 to 600 a minute; they cannot be turned off, because nothing else stops an
+  agent you allowed that runs in a loop:
+
+  ```toml
+  [mcp]
+  open_per_minute = 15   # new agent tabs a minute
+  load_per_minute = 60   # pages loaded into its open tabs a minute
+  ```
+
+  A saved change holds from the agent's next call, without a restart.
   `vimma-ctl mcp` holds an agent's parallel calls past 4 and sends them as earlier ones finish. Its pages get no permission prompts, pop-ups or other
   apps, and its downloads ask and are kept apart
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -3371,7 +3382,7 @@ workspace, tab, focus, find bar and hint mode.
 - **A grant covers it:** under a grant each call shows
   `claude-code pressed 2j in "Pricing · Example" (grant)`; a follow adds
   `claude-code followed a link to docs.example.com in "Pricing · Example"`. At most 30 calls a minute; a follow, `gu`, `gU`, `H` and `L`
-  count towards the 10 opens a minute. A find does not run in the tab you are in, since the browser's find would
+  count towards the 60 loads a minute. A find does not run in the tab you are in, since the browser's find would
   put your focus in a text field it matched.
 - **`:mcp log`** lists what agents did, asked or under a grant, each follow with the address it
   loaded, so you can check afterwards what a grant let through. It is kept in memory only and cleared by `:mcp off`.
@@ -3487,7 +3498,7 @@ button inside an embedded frame that updates the page around it reads as no chan
   tab for you; the agent only learns its text, as untrusted content.
 - **A grant covers clicks** (not submissions or payments): each shows
   `claude-code clicked button "Add to list" in "List · Example" (grant)`. A click that
-  loads a page counts as one of the 10 opens a minute, and no click is made while those are used
+  loads a page counts as one of the 60 loads a minute, and no click is made while those are used
   up. At most 30 clicks a minute, none while you are typing in the tab, and each is in
   `:mcp log` with the element, a submission with its destination.
 
@@ -5451,6 +5462,8 @@ notify = true                   # a desktop notification when an agent asks whil
 download_dir = "~/Downloads/vimma-agent"  # where agent downloads are saved; never opened
 download_max_mb = 200           # agent downloads larger than this are refused, in MB (1–4096)
 clamav_max_age_days = 7         # days before ClamAV definitions stop counting a file clean (1–90)
+open_per_minute = 15            # new tabs an agent may open a minute (1–600)
+load_per_minute = 60            # pages an agent may load into its open tabs a minute (1–600)
 
 # Vimma's own agent (ctrl+b i). A model you pick in its window is added here, never a key.
 # [agent]

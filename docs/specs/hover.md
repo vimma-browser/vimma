@@ -456,7 +456,8 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
      denied with `in-use` while the user is using the tab (F27), before the question, after the
      yes and before the hover; each call is a `:mcp log` row naming the element; a navigation
      the page starts during the step takes an `OPEN_RATE` slot and a form submission the page
-     tries is stopped (F11, F16), as after a click;
+     tries is stopped (F11, F16), as after a click (Since changed: a `LOAD_RATE` slot;
+     vimma-mcp decision 46);
    - the hover is the connection's: it is released by its next `vimma_hover` in the tab,
      `release: true`, every `pagehide` (the back-forward cache included, decision 5), the
      element leaving its place (decision 13), the tab leaving the agent workspace, being
