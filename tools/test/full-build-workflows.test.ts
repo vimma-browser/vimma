@@ -138,10 +138,10 @@ describe("full builds (nightly.yml, release.yml, macos.yml)", () => {
   });
 
   // Issues #1033 and #1572: hosted runners were lost in the Build step, whose memory peak is the
-  // Rust stage (it swapped about 10 GB with debug symbols). Every full build, the macOS cross builds too, runs at
-  // most 3 jobs (mach picks 4 for 16 GB; configs/macos/mozconfig asks for 4), watches memory each
-  // minute, and keeps the runner agent away from the OOM killer (docs/runbook/ci-full-builds.md,
-  // "Full builds").
+  // Rust stage (it swapped about 10 GB with debug symbols). Every full build, the macOS cross
+  // builds too, runs at most 3 jobs (mach picks 4 for 16 GB; configs/macos/mozconfig asks for 4),
+  // watches memory each minute, and keeps the runner agent away from the OOM killer
+  // (docs/runbook/ci-full-builds.md, "Full builds").
   it.each([...BUILDS.map(({ name, block }) => [name, block])])(
     "%s builds with 3 jobs under a memory watch it stops on exit",
     (_name, block) => {

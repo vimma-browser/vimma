@@ -90,7 +90,9 @@ The first row is nightly run 45525945180 (25 Nov), one of the eleven, which peak
 26.0 GB.
 So every full build, the macOS cross builds (`macos.yml`, `release.yml`'s `macos-build`) too:
 
-- Builds without debug symbols (`configs/linux/mozconfig`, `configs/macos/mozconfig`).
+- Builds without debug symbols (`configs/linux/mozconfig`, `configs/macos/mozconfig`). The
+  nightly's mochitests run against the full build's objdir, so their crash, assertion and leak
+  stacks now print without symbols: function names from the symbol table, no file and line.
 - Builds with `surfer build --jobs 3`, which Surfer passes to `./mach build -j3`. mach would
   pick 4 (one job per GiB of the runner's 15.6 GiB, capped at 4 CPUs), and the macOS mozconfig
   asks for 4 (`MOZ_MAKE_FLAGS`, kept for native builds on a Mac); `-j3` overrides both, and Cargo
