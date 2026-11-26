@@ -35,7 +35,7 @@ describe("contentFocusField", () => {
     tagName: tag.toUpperCase(),
     id: attrs.id ?? "",
     getAttribute: (n: string) => attrs[n] ?? null,
-    getBoundingClientRect: () => ({ width: 100, height: 20 }),
+    getBoundingClientRect: () => ({ left: 10, top: 40, width: 100, height: 20 }),
     focus() {
       if (!refuses) doc.activeElement = this;
     },
@@ -60,6 +60,7 @@ describe("contentFocusField", () => {
       found: true,
       desc: "input[name=q]",
       focused: true,
+      at: { x: 60, y: 50 },
     });
   });
 
@@ -69,6 +70,7 @@ describe("contentFocusField", () => {
       found: true,
       desc: "div#editor",
       focused: true,
+      at: { x: 60, y: 50 },
     });
   });
 
@@ -78,6 +80,7 @@ describe("contentFocusField", () => {
       found: true,
       desc: "input#hidden",
       focused: false,
+      at: null,
     });
   });
 });
@@ -216,7 +219,7 @@ describe("probe source sent from Node", () => {
       tagName: "INPUT",
       id: "",
       getAttribute: (n: string) => (n === "name" ? "q" : null),
-      getBoundingClientRect: () => ({ width: 100, height: 20 }),
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 20 }),
       focus() {
         focused = this;
       },
@@ -234,6 +237,7 @@ describe("probe source sent from Node", () => {
       found: true,
       desc: "input[name=q]",
       focused: true,
+      at: { x: 50, y: 10 },
     });
   });
 });

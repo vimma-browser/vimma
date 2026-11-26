@@ -5,6 +5,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { canScroll, chooseHintLink, reactionOf, scrollMovement } from "./analysis.ts";
 import { CONSENT_SELECTORS, REJECT_SOURCES, classifyPage } from "./classify.ts";
 import {
+  chromeClickAt,
   chromeCloseFindbar,
   chromeFindStatus,
   chromeHints,
@@ -258,6 +259,9 @@ export async function runSite(
   });
   const active = await tab.eval(contentActive);
   await expectMode("load", active.editable ? "insert" : "normal");
+  // After this Esc, a focus from the page's script (as the insert check's is) leaves the tab in
+  // normal mode until the user acts on the page (docs/specs/insert-focus.md, behaviour 6).
+  const escapedField = active.editable;
   if (active.editable) {
     await send("esc");
     await expectMode("esc from an autofocused field", "normal");
@@ -396,6 +400,9 @@ export async function runSite(
         status: "skip",
         reason: site.search ? `no ${site.search}` : "no search field",
       };
+    // Esc left an autofocused field at load: the probe's focus is the page's own, which Vimma
+    // holds in normal mode by design, so the field is clicked, as the user would (regex101).
+    if (escapedField && field.at) await chrome(chromeClickAt, field.at);
     const inInsert = await expectMode("focus the search field", "insert");
     if (!inInsert) {
       return {
