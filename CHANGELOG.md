@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.25](https://github.com/vimma-browser/vimma/compare/v0.1.24...v0.1.25) (2026-11-26)
+## [Unreleased]
+
+## [0.1.25](https://github.com/vimma-browser/vimma/compare/v0.1.24...v0.1.25) · Firefox 161.0 (2026-11-26)
 
 
 ### Added
@@ -21,8 +23,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * **prompts:** y and n answer passkey and security key prompts the right way round ([#1545](https://github.com/vimma-browser/vimma/issues/1545)) ([a3f38ed](https://github.com/vimma-browser/vimma/commit/a3f38ed44794b46ef869dba004f57e5bf1c8682e)), closes [#1544](https://github.com/vimma-browser/vimma/issues/1544)
 * **routing:** route only links from outside the browser, never a typed url ([#1564](https://github.com/vimma-browser/vimma/issues/1564)) ([1847f8b](https://github.com/vimma-browser/vimma/commit/1847f8b1f3cc1fe2cca85c82df00ed9e12f6cb0b)), closes [#1562](https://github.com/vimma-browser/vimma/issues/1562)
 * **updates:** on omarchy, the pacman repository's update hint is omarchy update ([#1556](https://github.com/vimma-browser/vimma/issues/1556)) ([c2f611f](https://github.com/vimma-browser/vimma/commit/c2f611f47b91b6ad307455c95fd62cb1d523f4a7)), closes [#1550](https://github.com/vimma-browser/vimma/issues/1550)
-
-## [Unreleased]
 
 ## [0.1.24](https://github.com/vimma-browser/vimma/compare/v0.1.23...v0.1.24) · Firefox 161.0 (2026-11-25)
 
