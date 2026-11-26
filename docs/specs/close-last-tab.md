@@ -185,11 +185,11 @@ Firefox paths are relative to `engine/`, checked against Firefox 160.0.1 (`surfe
    `closeWindow(true, …)`, as `cmd_closeWindow` (`ctrl+shift+w`) does. Quitting rather than
    closing the last window keeps the session whole (Research) and quits on macOS too, where
    closing the last window would leave Vimma running with no window. The tab closes first, so
-   that it is in the recently closed tabs and the next start does not bring it back. The rule that maps the
-   setting, the window's other tabs, the other windows and the private tabs to an outcome
-   (`new_tab`, `picker`, `ask`, `quit`, `ask_close_window`, `close_window`, `close_private` or
-   `keep`) is a pure function in `packages/vimma-core/src/workspaces/closelast.mjs`, so that
-   vitest covers every case.
+   that it is in the recently closed tabs and the next start does not bring it back. The rule
+   that maps the setting, the window's other tabs, the other windows and the private tabs to an
+   outcome (`new_tab`, `picker`, `ask`, `quit`, `ask_close_window`, `close_window`,
+   `close_private` or `keep`) is a pure function in
+   `packages/vimma-core/src/workspaces/closelast.mjs`, so that vitest covers every case.
 4. **The picker lists only workspaces that have tabs, and a way out.** An empty workspace is
    left out, because its row would lead only to a start page, which the new tab already is. The
    last row quits (or closes the window), so that a user who wanted to end the browser still
