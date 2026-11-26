@@ -50,15 +50,52 @@ memory, Firefox 158.0, a keyless build of `main` as the nightly builds it):
 Without the 16 GB swap file both jobs create, the first measured build was killed after 38 min
 (run 38718105585, exit 143, while the Rust stage held all of memory).
 
-**Memory and lost runners (#1033).** Even with the swap file, a successful build swaps 18 to
-20 GB in and out (mach's own summary: v0.1.20's release job, 81 min of build, 19.5 GB in, 19.4 GB
-out; nightly job 133731708351, 130 min, 17.6 GB each way), and three builds lost their hosted
-runner in the Build step 61 to 72 min in, during the libxul link: nightly run 43581331472 and
-both attempts of release run 44050265017 (v0.1.21), with no log left. So the Linux build step:
+**Memory and lost runners (#1033, #1572).** Hosted runners were lost ("The hosted runner lost
+communication with the server") in the Build step 61 to 74 min in: nightly runs 43581331472 and
+45732866886, both attempts of release run 44050265017 (v0.1.21), and the first attempt of
+`macos-build` in release run 45585814795 (v0.1.24, the cross build). None left a log. The memory
+watch's minute-by-minute lines from successful runs show where the memory goes:
 
+- **The peak is the Rust stage, not the libxul link.** In eleven Linux builds with full debug
+  info (eight nightlies and three releases, 17 to 25 Nov 2026), available memory fell to 0.65 to
+  1.0 GB and swap use peaked at 9.6 to 11.1 GB, 25 to 43 min into the build, while gkrust
+  compiled; in the measurement below the largest process then was `rustc --crate-name gkrust`, at
+  10.6 to 13.8 GB. When libxul linked (88 to 143 min
+  in), 11.5 GB or more was available and swap held under 0.6 GB. The link (lld, no LTO) is not a
+  memory problem, so linker flags such as `--no-keep-memory` or fewer linker threads do not
+  apply.
+- **Debug symbols are the weight.** Firefox builds full DWARF by default (`-gdwarf-4`, and
+  `-Cdebuginfo=2` for Rust with one codegen unit per crate in a release build). Both mozconfigs
+  set `--disable-debug-symbols`. The packages never carried symbols, because `mach package`
+  strips the binaries (`PKG_STRIP`, on by default), and with `--disable-crashreporter` nothing
+  uploads or reads them; the unstripped `dist/bin/libxul.so` in the objdir shrinks from 2.6 GB to
+  0.25 GB. Mozilla's own Linux builds keep full DWARF to upload crash symbols, on larger builders
+  than these.
+- **Fewer jobs alone do not fix it.** With debug info, 2 jobs still swapped 8.9 GB and took
+  106 min to the libxul link.
+
+Measured on 26 Nov 2026, run 45814348355 (four builds of `main` at a3f38ed4 side by side,
+cold, keyless, on the measurement branch `ci/link-memory-measure`, which dispatches `macos.yml`
+with a changed job). Peak is RAM in use plus swap, from `free -m` each minute:
+
+| Build                               | Peak use | Swap peak | gkrust rustc | Build step |
+| ----------------------------------- | -------- | --------- | ------------ | ---------- |
+| Linux, debug info, 3 jobs (nightly) | 24.9 GB  | 10.0 GB   | not logged   | 90 min     |
+| Linux, debug info, 2 jobs           | 23.9 GB  | 8.9 GB    | 13.8 GB      | 109 min    |
+| Linux, no debug info, 3 jobs        | 7.1 GB   | 0         | 3.6 GB       | 75 min     |
+| macOS cross, debug info, 4 jobs     | 28.6 GB  | 14.0 GB   | 11.8 GB      | 89 min     |
+| macOS cross, no debug info, 3 jobs  | 11.8 GB  | 0         | 7.8 GB       | 69 min     |
+
+The first row is nightly run 45525945180 (25 Nov), one of the eleven, which peaked at 23.6 to
+26.0 GB.
+So every full build, the macOS cross builds (`macos.yml`, `release.yml`'s `macos-build`) too:
+
+- Builds without debug symbols (`configs/linux/mozconfig`, `configs/macos/mozconfig`).
 - Builds with `surfer build --jobs 3`, which Surfer passes to `./mach build -j3`. mach would
-  pick 4 (one job per GiB of the runner's 15.6 GiB, capped at 4 CPUs), and Cargo takes its jobs
-  from make's jobserver, so the cap holds for the Rust stage too.
+  pick 4 (one job per GiB of the runner's 15.6 GiB, capped at 4 CPUs), and the macOS mozconfig
+  asks for 4 (`MOZ_MAKE_FLAGS`, kept for native builds on a Mac); `-j3` overrides both, and Cargo
+  takes its jobs from make's jobserver, so the cap holds for the Rust stage too.
+- Keeps the 16 GB swap file, now a margin rather than working memory.
 - Runs `tools/ci/memory-watch.sh` in the background; the step's exit trap stops it and waits for
   it. It logs `free -m` and `df -h /` each minute and adds a `Build memory` warning to the run
   when less than 1 GB is available, more than half the swap is used, or the OOM killer killed
@@ -68,8 +105,18 @@ both attempts of release run 44050265017 (v0.1.21), with no log left. So the Lin
   have passwordless sudo), so an out-of-memory build loses a compiler, with a log, rather than
   the runner. As it stops it gives them their old values back: every later step (the smoke
   check, the mochitests, the package) is a child of the worker and inherits its value, and must
-  stay killable. If the runner is lost anyway, the step log and its warnings are lost with it; a
-  successful run's warnings show how close it came.
+  stay killable.
+
+**What a lost runner leaves.** Nothing from the job's own output: no step log, not even of the
+steps that finished, and no annotation. The same measurement run had a probe job that wrote a
+warning in one step, then a warning, a notice, a step summary and six log lines a minute apart
+in the next, and then killed both runner processes; the job ended at its timeout with only the
+timeout's annotation, and its log API answers `BlobNotFound`. So no line the watch prints, live
+or as a warning, outlives a lost runner, and the nightly's failure issue says "(no log)" because
+the `nightly-log` artifact is uploaded only by a step after the build. What survives is each
+step's start time (`gh api repos/vimma-browser/vimma/actions/jobs/<job>`) and the job's end, and
+the successful runs' watch lines, which show how close a build comes: read those to judge the
+margin.
 
 `timeout-minutes` is 240 for the nightly and 230 for the release (which runs no mochitests),
 well over 1.5 times the 4-job measurements. The first 3-job build, manual nightly run

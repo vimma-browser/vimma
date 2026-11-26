@@ -25,6 +25,19 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
 [`reads no secret, deploys to no environment and only reads the repository`](../../tools/package/test/macos.test.ts),
 [`pins one rcodesign release and its SHA-256, checked before the file is used`](../../tools/package/test/macos.test.ts)
 
+Every full build (`nightly.yml` and `release.yml`'s `build`, `release.yml`'s `macos-build`,
+`macos.yml`'s `build`) runs `tools/ci/memory-watch.sh` beside `surfer build`, in a job that may
+hold the Safe Browsing key file. The watch reads only `/proc` and the kernel log (`sudo -n
+dmesg`), makes no network call, and writes only to the step log and `Build memory` warnings,
+with the kernel's line cut to characters that cannot end or escape the annotation. Its one change
+to the runner is `sudo -n choom` on the processes whose executable is `Runner.Worker` or
+`Runner.Listener`, which it gives back as it stops. The builds set `--disable-debug-symbols`
+(#1572): the packages were stripped before as after, and compilers emit the same code with or
+without debug info, so what changes is the objdir's unstripped binaries and the GNU build ID,
+which hashes the linked file.
+[`%s builds with 3 jobs under a memory watch it stops on exit`](../../tools/test/full-build-workflows.test.ts),
+[`configs/%s/mozconfig builds without debug symbols`](../../tools/test/full-build-workflows.test.ts)
+
 Every job of these workflows that sets up Node takes the exact version in `.nvmrc` of the commit it
 checked out (`node-version-file: .nvmrc`), never a bare major such as `node-version: 22`, which
 resolves to whichever 22.x the runner's tool cache or the version manifest has that day: the

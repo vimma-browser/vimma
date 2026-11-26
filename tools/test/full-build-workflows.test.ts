@@ -137,13 +137,14 @@ describe("full builds (nightly.yml, release.yml, macos.yml)", () => {
       expect(job(text, id), id).not.toContain("github.token");
   });
 
-  // Issue #1033: hosted runners were lost in the Build step, 61 to 72 min in, in the libxul link
-  // window, while the build swapped about 19 GB. The Linux builds run at most 3 jobs (mach picks
-  // 4 for 16 GB), watch memory each minute, and keep the runner agent away from the OOM killer
-  // (docs/runbook/ci-full-builds.md, "Full builds").
-  it.each(BUILDS.slice(0, 2))(
-    "$name builds with 3 jobs under a memory watch it stops on exit",
-    ({ block }) => {
+  // Issues #1033 and #1572: hosted runners were lost in the Build step, whose memory peak is the
+  // Rust stage (it swapped about 10 GB with debug symbols). Every full build, the macOS cross builds too, runs at
+  // most 3 jobs (mach picks 4 for 16 GB; configs/macos/mozconfig asks for 4), watches memory each
+  // minute, and keeps the runner agent away from the OOM killer (docs/runbook/ci-full-builds.md,
+  // "Full builds").
+  it.each([...BUILDS.map(({ name, block }) => [name, block])])(
+    "%s builds with 3 jobs under a memory watch it stops on exit",
+    (_name, block) => {
       const start = at(block, "- name: Build\n");
       const step = block.slice(start, block.indexOf("\n      - ", start + 1));
       expect(step).toMatch(/npx --no -- surfer build --jobs 3\b/);
@@ -157,6 +158,18 @@ describe("full builds (nightly.yml, release.yml, macos.yml)", () => {
       expect(step.indexOf("trap ")).toBeLessThan(step.indexOf("surfer build"));
     },
   );
+
+  // Issue #1572: rustc held 10.6 to 13.8 GB for gkrust alone with full debug info, and the build
+  // swapped 9 to 14 GB; without it the Linux build peaked at 7.1 GB and never swapped. The
+  // packages are stripped, and with no crash reporter nothing reads the symbols.
+  it.each(["linux", "macos"])("configs/%s/mozconfig builds without debug symbols", (platform) => {
+    const mozconfig = readFileSync(
+      new URL(`../../configs/${platform}/mozconfig`, import.meta.url),
+      "utf8",
+    );
+    expect(mozconfig).toMatch(/^ac_add_options --disable-debug-symbols$/m);
+    expect(mozconfig).not.toMatch(/^ac_add_options --enable-debug-symbols/m);
+  });
 
   it("the Linux builds' timeouts leave room for a 3-job build", () => {
     const minutes = (block: string) => Number(/^ {4}timeout-minutes: (\d+)$/m.exec(block)?.[1]);

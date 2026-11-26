@@ -72,6 +72,10 @@ The first green run (run 39205860770, Firefox 158.0 for Vimma 0.1.5, cold, no co
 took 133 minutes for `build`, 129 of them in `surfer build`, and 45 seconds for `smoke`. The
 build used 44 GB of the runner's disk, the 16 GB swap file included, and left 42 GB free; the
 `.dmg` is 109 MB. `timeout-minutes` is 200, about 1.5 times the job, as for the Linux builds.
+Since #1572 the cross build, like the Linux ones, builds without debug symbols, with
+`--jobs 3` and under the memory watch ([Full builds](ci-full-builds.md)): its Build step took
+69 min and peaked at 11.8 GB with no swap, against 89 min, 28.6 GB and 14 GB of swap with debug
+symbols and 4 jobs (run 45814348355).
 
 #### macOS in a release
 
