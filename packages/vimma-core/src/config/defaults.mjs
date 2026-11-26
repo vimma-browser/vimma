@@ -1184,7 +1184,7 @@ export function configTables({ brief = false } = {}) {
           'domain = "github.com"',
           'github.com and its subdomains; "*.corp.example": subdomains only',
         ),
-        example('app = "slack"', "links that program opens (Linux); with domain, both must match"),
+        example('app = "slack"', "links that program opens; with domain, both must match"),
         example('workspace = "work"', "the workspace the link opens in"),
         example("[[routes]]"),
         example(

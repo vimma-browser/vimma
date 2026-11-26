@@ -4190,8 +4190,8 @@ workspace = "notes"
 - **`domain`** matches `http` and `https` pages only, on whole labels (`github.com` is not
   `notgithub.com`), whatever the port; Unicode names work written either way
   (`bücher.example` or `xn--bcher-kva.example`), and an IP address matches only itself.
-- **`app`** is the name of a program that opened the link, as `vimma-open` sees it (below), up
-  to 64 characters.
+- **`app`** is the name of a program that opened the link, as `vimma-open` sees it, or on macOS
+  an app's bundle identifier (below), up to 64 characters.
 - **Order is the precedence.** Put the rule that matters most first: with `app = "slack"` above
   `domain = "youtube.com"`, a YouTube link from Slack goes to `work`. Among `app` rules above
   the first matching rule without `app`, the one naming the program nearest the link wins,
@@ -4239,9 +4239,18 @@ command, so when Slack, Discord, a terminal or Neovim opens a link, `vimma-open`
 programs asked (through `/proc`, skipping openers such as `xdg-open` and `gio`) and tells Vimma.
 A link carries up to eight program names, nearest first, shells included: `az login` run in a
 herdr pane in Ghostty carries `python3, zsh, herdr, zsh, ghostty`, so a rule can name whichever
-of them stands for the role, and the rule naming the nearest one wins. App rules need `vimma-open`,
-so they work only on Linux, and not in the Flatpak, whose desktop entry runs `vimma` itself
+of them stands for the role, and the rule naming the nearest one wins. On Linux, app rules need
+`vimma-open`, so they do not work in the Flatpak, whose desktop entry runs `vimma` itself
 ([limits.md](limits.md#workspaces-by-design), [Flatpak](limits.md#platforms-and-packaging)).
+
+**On macOS**, a link an app opens (a cmd-click in Ghostty, a link in Slack, Teams or your mail)
+carries that app's bundle identifier and the name of its program, lower-cased:
+`com.mitchellh.ghostty, ghostty`. A rule can name either; the bundle identifier
+(`app = "com.microsoft.teams2"`) is the one only that app's developer can use. An app in Apple's
+sandbox, as App Store apps are, carries only its bundle identifier, because such an app can give
+its program any name. `vimma-open` is not in the app bundle yet, so on macOS the links of
+command-line tools carry no names, and neither do links a tool opens with `open` or `osascript`,
+nor pages handed over from another device (Handoff).
 
 Command-line tools (the Azure CLI, `gh`, anything written in Python) open links through the
 `BROWSER` variable. Set it in your shell's startup file, and their links are routed by the
@@ -5442,7 +5451,7 @@ file](#bookmarks-in-a-file), [Sleeping tabs](#sleeping-tabs), [Updates](#updates
 # A routes.toml beside this file, when it exists, holds them (and [routing]) instead.
 # [[routes]]
 # domain = "github.com"         # github.com and its subdomains; "*.corp.example": subdomains only
-# app = "slack"                 # links that program opens (Linux); with domain, both must match
+# app = "slack"                 # links that program opens; with domain, both must match
 # workspace = "work"            # the workspace the link opens in
 # [[routes]]
 # url = "file:///home/me/notes/"  # a URL prefix in place of a domain, for file: and about: pages

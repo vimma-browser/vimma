@@ -1,7 +1,7 @@
 # Spec: app-routes
 
-Status: implemented on Linux (sub-PRs 1 and 2); sub-PRs 3 and 4 are the macOS step, specified
-here and not yet scheduled · Area: `packages/vimma-core/src/routes.mjs`,
+Status: implemented on Linux (sub-PRs 1 and 2) and for links from macOS apps (sub-PR 3), except
+sub-PR 4, `vimma-open` in the macOS app bundle, in #1549 · Area: `packages/vimma-core/src/routes.mjs`,
 `packages/vimma-core/src/config.mjs`; `src/browser/base/content/vimma/`
 (`workspaces/WorkspaceRouter.sys.mjs`, `workspaces/WindowWorkspaces.sys.mjs`,
 `host/route-ops.mjs`, `about/AboutVimma.sys.mjs`, `about/about.mjs`); `tools/package/vimma-open.sh`,
@@ -532,6 +532,9 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
       gives no names.
     - Running Vimma: insert `-vimma-from <names>` before the first `-url`, so the existing
       `k-vimma-from` handler takes it while `x-default` opens the link in the same task.
+      (Since changed: Firefox 161's `openURLs:` reads `currentAppleEvent` itself and passes
+      `-url-background` for a link whose sender expects no activation; the patch inserts the
+      flag before the first `-url` or `-url-background`.)
     - Cold start (`CollectingURLs`): `setenv("VIMMA_FROM", names, 1)` when there are names, and
       `unsetenv("VIMMA_FROM")` when there are none, so a `VIMMA_FROM` inherited from the caller's
       environment (`open` passes it on, and so does `launchctl setenv`) never names a link that

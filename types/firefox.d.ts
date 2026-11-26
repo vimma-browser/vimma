@@ -2290,6 +2290,7 @@ interface XPCOMInterfaces {
   nsICommandLine: nsIJSIID<nsICommandLine> & {
     readonly STATE_INITIAL_LAUNCH: number;
     readonly STATE_REMOTE_AUTO: number;
+    readonly STATE_REMOTE_EXPLICIT: number;
   };
   nsICommandLineHandler: nsIJSIID<nsISupports>;
   nsIComponentRegistrar: nsIJSIID<nsIComponentRegistrar>;

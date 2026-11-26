@@ -19,7 +19,14 @@ and renders a page headless; it then builds `vimma-ctl` (the weekly `.dmg` ships
 the e2e smoke scenarios `m0-happy-path` and `m0-content-actor` headless through it
 (`npm run e2e -- --headless`, "End-to-end tests" above); `tools/package/macos-app-check.sh` checks its `Assets.car` has
 Vimma's `AppIcon` and none of Firefox's, and that its bundle identifier is `surfer.json`'s
-`appId`. `tools/package/macos-dmg-check.sh` checks the mounted volume's `.DS_Store`,
+`appId`. After the e2e scenarios, `tools/e2e/macos-app-routes.ts` builds a window-less helper app
+(`tools/package/test/link-opener.swift`, bundle identifier `dev.vimma.test.link-opener`) into
+`~/Applications`, where LaunchServices launches it, and has it open links with Vimma through
+`NSWorkspace`, with Vimma running and from a cold start; each link must open in the workspace of
+the rule naming the helper (spec [app-routes](../specs/app-routes.md), decision 11). A link
+opened by `open` with `VIMMA_FROM` in its environment must open by the domain rule instead. This
+step runs Vimma with windows, since a headless start receives no Apple Events, and refuses to run
+outside GitHub Actions. `tools/package/macos-dmg-check.sh` checks the mounted volume's `.DS_Store`,
 `.background/background.png` and `.VolumeIcon.icns` are the committed `dsstore`, `background.png`
 and `disk.icns`, and that the volume's custom icon flag is set. The rendered icon and the page are
 the run's `macos-smoke` artifact.

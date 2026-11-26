@@ -489,7 +489,7 @@ load_per_minute = 60            # pages an agent may load into its open tabs a m
 # A routes.toml beside this file, when it exists, holds them (and [routing]) instead.
 # [[routes]]
 # domain = "github.com"         # github.com and its subdomains; "*.corp.example": subdomains only
-# app = "slack"                 # links that program opens (Linux); with domain, both must match
+# app = "slack"                 # links that program opens; with domain, both must match
 # workspace = "work"            # the workspace the link opens in
 # [[routes]]
 # url = "file:///home/me/notes/"  # a URL prefix in place of a domain, for file: and about: pages

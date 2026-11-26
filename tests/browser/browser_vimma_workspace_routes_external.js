@@ -158,12 +158,10 @@ function runHandlers(cmdLine) {
  * `vimma <args>` while Vimma runs: the line the D-Bus remote hands over.
  * @param {string[]} args
  */
-async function remote(args) {
+async function remote(args, state = Ci.nsICommandLine.STATE_REMOTE_AUTO) {
   const opened = nextTab();
   // An nsISupports in the IDL; the command line's class info gives it nsICommandLine.
-  const cmdLine = /** @type {nsICommandLine} */ (
-    Cu.createCommandLine(args, null, Ci.nsICommandLine.STATE_REMOTE_AUTO)
-  );
+  const cmdLine = /** @type {nsICommandLine} */ (Cu.createCommandLine(args, null, state));
   runHandlers(cmdLine);
   const tab = await opened;
   return { tab, cmdLine };
@@ -230,6 +228,40 @@ add_task(async function an_external_link_matches_by_the_nearest_name() {
   Assert.deepEqual(WorkspaceRouter.apps, [], "the names end with the command line");
   const { tab: far } = await remote(["-vimma-from", "python3,zsh,ghostty", `${ELSEWHERE}?far`]);
   Assert.equal(far.userContextId, work.userContextId, "only ghostty is named: rt-work");
+  route([{ domain: "example.com", workspace: "rt-work" }]);
+  tidy();
+});
+
+// The command line MacApplicationDelegate-mm.patch builds for a link from a running macOS app:
+// the sender's bundle identifier and executable name before the first -url or -url-background,
+// run as STATE_REMOTE_EXPLICIT (app-routes, decision 11).
+add_task(async function a_mac_apps_link_routes_by_its_bundle_identifier_or_executable() {
+  const explicit = Ci.nsICommandLine.STATE_REMOTE_EXPLICIT;
+  route([
+    { app: "com.mitchellh.ghostty", workspace: "rt-home" },
+    { domain: "example.com", workspace: "rt-work" },
+  ]);
+  ww().switchTo({ id: known("main").id });
+  const names = "com.mitchellh.ghostty,ghostty";
+  const { tab, cmdLine } = await remote(["-vimma-from", names, "-url", `${WORK}?id`], explicit);
+  Assert.equal(tab.userContextId, home.userContextId, "the bundle identifier's rule: rt-home");
+  Assert.equal(cmdLine.findFlag("vimma-from", false), -1, "the flag is consumed");
+  ww().switchTo({ id: known("main").id });
+  const { tab: behind } = await remote(
+    ["-vimma-from", names, "-url-background", `${WORK}?behind`],
+    explicit,
+  );
+  Assert.equal(behind.userContextId, home.userContextId, "-url-background routes the same");
+
+  route([
+    { app: "ghostty", workspace: "rt-home" },
+    { domain: "example.com", workspace: "rt-work" },
+  ]);
+  ww().switchTo({ id: known("main").id });
+  const { tab: exe } = await remote(["-vimma-from", names, "-url", `${WORK}?exe`], explicit);
+  Assert.equal(exe.userContextId, home.userContextId, "the executable name's rule: rt-home");
+  const { tab: none } = await remote(["-url", `${WORK}?none`], explicit);
+  Assert.equal(none.userContextId, work.userContextId, "no names, as for open(1): rt-work");
   route([{ domain: "example.com", workspace: "rt-work" }]);
   tidy();
 });

@@ -5,7 +5,7 @@ routes.toml when it exists, else config.toml. Specs:
 [workspace-routing](../specs/workspace-routing.md), [routes-file](../specs/routes-file.md).
 
 **Reach:** local apps (links they open, through `vimma-open` or `vimma <url>`, and a cold start
-from a link); pages try to (link clicks, `window.open`) and must fail. What you open inside Vimma
+from a link), and local programs on macOS (the Apple Event's sender); pages try to (link clicks, `window.open`) and must fail. What you open inside Vimma
 (URL bar, `:open`, bookmarks, `p`) is never routed.
 
 - R1. Routing **must** apply only to links from other apps: the remote command line, a cold start
@@ -41,6 +41,22 @@ from a link); pages try to (link clicks, `window.open`) and must fail. What you 
   (`github.com@evil`, a path, query or fragment, `\`, `%2e`, the ideographic full stop).
   [`a domain rule never matches a URL whose host is outside its domain`](../../packages/vimma-core/test/fuzz/routes.fuzz.test.ts),
   [`a domain rule matches its own host and subdomains, however written`](../../packages/vimma-core/test/fuzz/routes.fuzz.test.ts)
+- R7. On macOS, a link that arrives as an Apple Event (`kAEGetURL`) **must** be named only by
+  its sender, and only when that is a running app: its bundle identifier and executable name,
+  lower-cased tokens, or only the bundle identifier when the sender is sandboxed, since a
+  sandboxed app chooses its executable's name. A sender that is not an app (`open`, `osascript`)
+  or has exited names nothing, and an inherited `VIMMA_FROM` **never** names such a link: at a
+  cold start the patch sets or unsets it from the sender (`MacApplicationDelegate-mm.patch`).
+  Any launch whose URL is an argument trusts `VIMMA_FROM`, since Vimma cannot tell `vimma-open`
+  from another launcher, and a value set with `launchctl setenv` reaches every such launch until
+  logout. The pid is the sender the system reports, which may be an overridden one, and a pid
+  reused between the event and its handling could name another app: the names stay a hint (R4).
+  Spec: [app-routes](../specs/app-routes.md), decision 11. CI's macOS smoke
+  ([tools/e2e/macos-app-routes.ts](../../tools/e2e/macos-app-routes.ts), run by `macos.yml`) has a
+  helper app open links with Vimma running and from a cold start, and a link opened by `open`
+  with `VIMMA_FROM` set.
+  [`routes the opener's bundle identifier to work and its executable name to dev`](../../tools/e2e/test/macos-app-routes.test.ts),
+  [`routes a link with no names, or other names, to admin by the domain rule`](../../tools/e2e/test/macos-app-routes.test.ts)
 - R8. A rule naming the agent workspace **never** applies to a link from another program (the
   next rule does), and when its `app` equals one of the link's names, no rule with `app` applies
   to that link, so a prompt-injected agent CLI's link cannot reach the terminal's sign-in rules.
