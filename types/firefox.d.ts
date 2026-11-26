@@ -437,6 +437,9 @@ interface nsIDocShell extends nsISupports {
   /** Null once the docshell is destroyed (nsIDocShellTreeItem.idl). */
   readonly treeOwner: nsISupports | null;
   readonly isLoadingDocument: boolean;
+  /** The element its events go up to (a tab's message manager in a content process), null for
+   * a top-level window's. */
+  readonly chromeEventHandler: EventTarget | null;
   doCommand(command: string): void;
 }
 
@@ -476,6 +479,10 @@ interface nsIDOMWindowUtils {
   removeSheetUsingURIString(sheetURI: string, type: number): void;
   suppressAnimation(suppress: boolean): void;
   flushLayoutWithoutThrottledAnimations(): void;
+  /** A paint waits for the compositor: its MozAfterPaint is still to fire. */
+  readonly isMozAfterPaintPending: boolean;
+  /** The last layer transaction of the window's refresh driver (MozAfterPaint's transactionId). */
+  readonly lastTransactionId: number;
   /** True while an event the user caused (a key, a click) is being handled. */
   readonly isHandlingUserInput: boolean;
   /**
@@ -503,6 +510,8 @@ interface Element {
   /** The slot it is assigned to, in an open or a closed shadow tree. */
   readonly openOrClosedAssignedSlot: HTMLSlotElement | null;
   readonly scrollTopMax: number;
+  /** Negative where the scroll origin is at the bottom, as in a column-reverse flex box. */
+  readonly scrollTopMin: number;
   readonly scrollLeftMax: number;
   /** Negative in a right-to-left scroller, whose scrollLeft runs from it up to 0. */
   readonly scrollLeftMin: number;
@@ -566,6 +575,17 @@ interface nsIPrincipal {
 // `/** @type {Lazy<"setTimeout" | "PrivateBrowsingUtils">} */ ({})`: the getters fill it on the
 // next line, which is why the empty object may be asserted to the full shape. Firefox modules
 // list only the members Vimma calls.
+// engine/browser/actors/ClickHandlerChild.sys.mjs: the event-like data a Content:Click carries,
+// with the fields ClickHandlerParent fills in (fillInClickEvent); only those Vimma reads.
+interface ClickHandlerData {
+  button: number;
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  href: string | null;
+}
+
 interface LazyModules {
   // engine/toolkit/modules/Timer.sys.mjs: ids are numbers; clearing an unknown id (null, a
   // finished timer) does nothing. The callback gets the extra arguments (a promise's resolve
@@ -582,6 +602,21 @@ interface LazyModules {
     isWindowPrivate(win: Window): boolean;
     readonly permanentPrivateBrowsing: boolean;
     readonly enabled: boolean;
+  };
+  // engine/toolkit/modules/BrowserUtils.sys.mjs: where a click event (or ClickHandlerParent's
+  // event-like data) opens its link: "current", "tab", "tabshifted", "window", "save" …
+  BrowserUtils: {
+    whereToOpenLink(
+      event: {
+        button?: number;
+        shiftKey?: boolean;
+        ctrlKey?: boolean;
+        metaKey?: boolean;
+        altKey?: boolean;
+      },
+      ignoreButton?: boolean,
+      ignoreAlt?: boolean,
+    ): string;
   };
   // engine/toolkit/modules/AppConstants.sys.mjs
   AppConstants: {
@@ -712,6 +747,7 @@ interface LazyModules {
   ThemeHost: typeof import("../src/browser/base/content/vimma/ui/theme-host.mjs").ThemeHost;
   VimmaControl: typeof import("../src/browser/base/content/vimma/ctl/VimmaControl.sys.mjs").VimmaControl;
   VimmaHost: typeof import("../src/browser/base/content/vimma/host/VimmaHost.sys.mjs").VimmaHost;
+  VimmaActors: typeof import("../src/browser/base/content/vimma/actors/VimmaActors.sys.mjs").VimmaActors;
   WorkspaceRouter: typeof import("../src/browser/base/content/vimma/workspaces/WorkspaceRouter.sys.mjs").WorkspaceRouter;
 }
 
@@ -796,6 +832,8 @@ interface nsIHttpChannel {
   readonly URI: nsIURI;
   readonly loadInfo: nsILoadInfo;
   readonly requestMethod: string;
+  /** nsIIdentChannel's: a document load's is the one its DocumentChannel had in the child. */
+  readonly channelId: number;
   /** nsIRequest's: the request's result so far, a failure code once it failed. */
   readonly status: number;
   /** Throws while there is no response yet (a request that failed before one). */
@@ -808,6 +846,8 @@ interface nsIHttpChannel {
 // engine/netwerk/base/nsILoadInfo.idl
 interface nsILoadInfo {
   readonly isFormSubmission: boolean;
+  /** The remote type of the process that started the load, set by the parent from the sender. */
+  readonly triggeringRemoteType: string;
   readonly hasValidUserGestureActivation: boolean;
   /** The frame the load is for; null once it is gone. In the parent, canonical. */
   readonly browsingContext: CanonicalBrowsingContext | null;
@@ -826,6 +866,7 @@ interface Window {
   readonly ResizeObserver: typeof ResizeObserver;
   readonly KeyboardEvent: typeof KeyboardEvent;
   readonly MouseEvent: typeof MouseEvent;
+  readonly PointerEvent: typeof PointerEvent;
   readonly Event: typeof Event;
   readonly OffscreenCanvas: typeof OffscreenCanvas;
   readonly CSS: typeof CSS;
@@ -897,6 +938,8 @@ interface WindowGlobalParent {
     name: "Vimma",
   ): import("../src/browser/base/content/vimma/host/VimmaParent.sys.mjs").VimmaParent;
   getActor(name: string): JSWindowActorParent;
+  /** The actor if this document has one already; never creates one (WindowGlobalActors.webidl). */
+  getExistingActor(name: string): JSWindowActorParent | null;
 }
 
 // A tab's <browser>. A lazy one answers currentURI from session data (Tabbrowser.sys.mjs,
@@ -1196,6 +1239,8 @@ interface BrowsingContext {
   readonly isDiscarded: boolean;
   readonly browserId: number;
   readonly isContent: boolean;
+  /** Shown, or kept rendering: its window is active and, in a tab, the tab is drawn. */
+  isActive: boolean;
   /** engine/dom/base/nsSandboxFlags.h; the setter throws on a discarded context. */
   sandboxFlags: number;
   /**
@@ -1222,6 +1267,9 @@ interface CanonicalBrowsingContext extends BrowsingContext {
   /** The tab's back/forward list (engine/docshell/shistory/nsISHistory.idl), null for a context
    * that keeps none. */
   readonly sessionHistory: nsISHistory | null;
+  /** The entry of the document shown (BrowsingContext.webidl), null without session history in
+   * the parent. */
+  readonly activeSessionHistoryEntry: nsISHEntry | null;
   getAllBrowsingContextsInSubtree(): CanonicalBrowsingContext[];
   /** The chrome window the context is in; null once it has none. */
   readonly topChromeWindow: ChromeWindow | null;
@@ -1306,6 +1354,9 @@ interface HTMLTextAreaElement {
 // rather than give null.
 interface nsIEditor {
   readonly selectionController: nsISelectionController;
+  readonly selection: Selection;
+  readonly rootElement: Element;
+  endOfDocument(): void;
 }
 // engine/dom/base/nsISelectionController.idl
 interface nsISelectionController {
@@ -1341,10 +1392,32 @@ interface nsITypeAheadFind {
   find(searchString: string, linksOnly: boolean, mode: number, dontIterateFrames: boolean): number;
 }
 
-// engine/uriloader/base/nsIWebProgress.idl (the members Vimma reads)
+// engine/uriloader/base/nsIWebProgress.idl (the members Vimma reads). A listener is held weakly.
 interface nsIWebProgress {
   readonly isTopLevel: boolean;
   readonly isLoadingDocument: boolean;
+  /** The frame whose loads it reports; null once it is gone. */
+  readonly browsingContext: BrowsingContext | null;
+  addProgressListener(listener: nsIWebProgressListener, notifyMask: number): void;
+  removeProgressListener(listener: nsIWebProgressListener): void;
+}
+// engine/uriloader/base/nsIWebProgressListener.idl, a JS implementation's members.
+interface nsIWebProgressListener extends nsISupports {
+  onStateChange(
+    progress: nsIWebProgress | null,
+    request: nsIRequest,
+    flags: number,
+    status: number,
+  ): void;
+  onProgressChange(): void;
+  onLocationChange(): void;
+  onStatusChange(): void;
+  onSecurityChange(): void;
+  onContentBlockingEvent(): void;
+}
+// engine/netwerk/base/nsIIdentChannel.idl: a channel with its id (a DocumentChannel too).
+interface nsIIdentChannel extends nsIChannel {
+  readonly channelId: number;
 }
 
 // engine/docshell/shistory/nsISHistory.idl and nsISHEntry.idl (the members Vimma reads).
@@ -1510,6 +1583,8 @@ interface nsIURI {
 // engine/docshell/shistory/nsISHEntry.idl
 interface nsISHEntry {
   readonly URI: nsIURI;
+  /** The principal that started the load of this entry ([infallible], never null). */
+  readonly triggeringPrincipal: nsIPrincipal;
   /** Both entries show the same document (a same-document navigation between them). */
   sharesDocumentWith(entry: nsISHEntry): boolean;
 }
@@ -2323,6 +2398,15 @@ interface XPCOMInterfaces {
     readonly LOAD_FLAGS_NONE: number;
     readonly LOAD_FLAGS_ALLOW_POPUPS: number;
   };
+  nsIChannel: nsIJSIID<nsIChannel> & {
+    readonly LOAD_DOCUMENT_URI: number;
+  };
+  nsIIdentChannel: nsIJSIID<nsIIdentChannel>;
+  nsISupportsWeakReference: nsIJSIID<nsISupports>;
+  nsIWebProgress: nsIJSIID<nsIWebProgress> & {
+    readonly NOTIFY_STATE_DOCUMENT: number;
+    readonly NOTIFY_STATE_REQUEST: number;
+  };
   nsIWebProgressListener: nsIJSIID<nsISupports> & {
     readonly LOCATION_CHANGE_SAME_DOCUMENT: number;
     readonly STATE_CERT_USER_OVERRIDDEN: number;
@@ -2539,6 +2623,7 @@ interface nsIAppStartup extends nsISupports {
 // engine/widget/nsIBaseWindow.idl
 interface nsIBaseWindow extends nsISupports {
   visibility: boolean;
+  destroy(): void;
 }
 // engine/widget/nsIClipboardHelper.idl: `context` is the window context that copies, so a
 // private window's copy is marked private.
@@ -2661,3 +2746,13 @@ interface nsIGIOMimeApp {
   setAsDefaultForMimeType(mimeType: string): void;
   setAsDefaultForFileExtensions(extensions: string): void;
 }
+
+// engine/dom/chrome-webidl/InspectorUtils.webidl (chrome only): DevTools' "force element state",
+// a pseudo-class lock on one element (docs/specs/hover.md).
+interface InspectorUtilsNamespace {
+  addPseudoClassLock(element: Element, pseudoClass: string, enabled?: boolean): void;
+  removePseudoClassLock(element: Element, pseudoClass: string): void;
+  hasPseudoClassLock(element: Element, pseudoClass: string): boolean;
+  clearPseudoClassLocks(element: Element): void;
+}
+declare var InspectorUtils: InspectorUtilsNamespace;

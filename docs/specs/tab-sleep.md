@@ -1,13 +1,12 @@
 # Spec: tab-sleep
 
-Status: accepted (slices 1, the rules and the check, 3, showing it, and 5, low-memory
-unloading, implemented behind `vimma.feature.tabSleep`) · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
+Status: implemented · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
 `packages/vimma-core/src/config/config.mjs`, `packages/vimma-core/defaults.toml`,
 `packages/vimma-core/src/keys/actions.mjs`, `packages/vimma-core/src/keys/cmdline.mjs`,
 `packages/vimma-core/src/ui/tabline.mjs`, `packages/vimma-core/src/ui/sidepanel.mjs`), chrome
-(`services/TabSleep.sys.mjs` (new), `split/PaneView.mjs`, `ctl/VimmaControl.sys.mjs`,
-`config/ConfigHost.sys.mjs`), theme (`src/browser/themes/shared/vimma/tabline.css`,
-`side-panel.css`) · Upstream patches: none · ADR: none
+(`services/TabSleep.sys.mjs` (new), `host/sleep-ops.mjs` (new), `split/PaneView.mjs`,
+`ctl/VimmaControl.sys.mjs`, `config/ConfigHost.sys.mjs`), theme
+(`src/browser/themes/shared/vimma/tabline.css`, `side-panel.css`) · Upstream patches: none · ADR: none
 
 Issue: [#1404](https://github.com/vimma-browser/vimma/issues/1404)
 
@@ -95,7 +94,8 @@ it was last selected, or at the last check that found it on screen, whichever is
     `Tab 2 is on screen` and does nothing.
 12. The action `tab.sleep` (config name `sleep_tabs`) runs `:sleep` and has no default key. In
     the side panel, `panel.sleep` puts the highlighted tab, or the marked tabs, to sleep as
-    `:sleep N` does for each; its default key is `z`.
+    `:sleep N` does for each; its default key is `z`. A key bound to `sleep_tabs` takes a count
+    as `{N}gt` does: `3<key>` is `:sleep 3`.
 13. In a private window, `:sleep` says `Private tabs do not sleep` and does nothing.
 
 ### Showing it
@@ -348,6 +348,9 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     the feature lands over several pull requests and `main` must stay releasable
     (`CONTRIBUTING.md`, "Unfinished features"). The tests set it, and set
     `vimma.tabs.sleepCheckMs` (default 300000) to run checks in milliseconds; the host also exposes `TabSleep._check(now)` so a test can move the clock.
+    Slice 4 removes the pref before slice 2 lands, because the time limit, the muted rows and
+    low-memory unloading are whole without `:sleep`, which only adds a way to do the same by
+    hand; slice 2 then lands without a pref and stops at ready for its default key.
 21. **Firefox's low-memory unloader is on, and respects Vimma's rules.** Vimma sets
     `browser.tabs.unloadOnLowMemory` from `[tabs] sleep_on_low_memory` (default `true`) in
     `TabSleep`, because the time limit protects against slow growth while only the low-memory
@@ -377,6 +380,35 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 22. **The default time is 120 minutes.** Decision 11's value, kept after weighing 60 and 240,
     because 60 reloads tabs a user returns to after a long meeting, and 240 leaves most of a
     working day's tabs loaded.
+23. **`z` takes the marks only once they are the user's.** With marks that differ from the
+    split's panes (an open `V` range is marked first), `z` puts the marked tabs to sleep; else
+    the highlighted row's tab. A split's panes start marked (side-panel-unsplit) and are on
+    screen, so taking them would refuse every tab and never the one the highlight is on. The
+    marks are spent, as `Enter` spends them, and go back to the panes; the highlight stays on
+    its row, which turns muted in place, and the panel stays open, as after `x`. Each tab is
+    said by its row number, the one `4 Enter` uses. Rejected: moving the highlight down after
+    `z`, as `x` does, because the row stays where it was and moving would hide the result. A
+    row's id is its browser's panel, which the discard takes away, so a refresh that finds the
+    highlighted id gone, and in its place a row new to the list that is asleep now, was awake
+    before and has the same name, keeps the highlight there instead of going back to the active
+    tab; a tab closed as another opens fails that test and is not mistaken for it.
+24. **The messages name what happened to each tab.** `:sleep N` and a lone `z` say
+    `Tab 4 asleep`, `Tab 4 is asleep already`, `Tab 4 closed`, `Tab 2 is on screen` or
+    `Tab 4 stays awake: <reason>`; several tabs (`:sleep`, `:sleep all`, `z` on marks) are
+    reported as `N tabs asleep; M stay awake: <the most common reason>`, on a tie the one
+    Behaviour 2 lists first (with the start page beside the tab on screen, "on screen" is the
+    one the user is looking at), the tabs that were asleep already or closed left out of both
+    counts. A tab Firefox refuses after the plan (a page that would ask before leaving, or a
+    dialog over it) reads `it would ask before leaving`; a tab that closed during the flush is
+    `closed`, and one that something else (the check, Firefox's unloader) put to sleep during it
+    is asleep already, because neither stayed awake for its page. `:sleep N` past the last
+    tab says `no tab N (this workspace has M)`, as `:tab N` does. `:sleep` in any form, and `z`,
+    in a private window say `Private tabs do not sleep`, because a private window has no other
+    workspaces to reach and its own tabs never sleep.
+25. **By hand, the flushes run together.** `TabSleep.sleepTabs` flushes the session state of
+    every planned tab at once and then discards each, because `:sleep all` over a hundred tabs
+    would otherwise wait for a hundred flushes one after the other; the check, which nobody
+    waits for, keeps flushing one at a time.
 
 ## Security and privacy
 
@@ -421,6 +453,18 @@ vitest, `packages/vimma-core/test/cmdline.test.ts`:
 - `:sleep, :sleep all and :sleep N parse to tab.sleep with their scope`
 - `:sleep with any other argument is an error that names the forms`
 
+vitest, `packages/vimma-core/test/tabsleep.test.ts` ("sleep messages") and `sidepanel.test.ts`
+("panel.sleep"):
+
+- `:sleep reports the count and, when some stayed awake, how many and the most common reason`
+- `:sleep N says the tab is asleep, on screen, asleep already, or what keeps it awake`
+- `without marks, the highlighted row's tab; the highlight stays`
+- `with a split and its panes still the marks, the highlighted row's tab`
+- `Given the highlighted tab is listed under a new id in the same place, then the highlight stays
+on its row`
+- `Given the highlighted tab closed as another opened, then the highlight goes to the active tab`
+- `a tab closed while it was being put to sleep is named as closed, and left out of a report`
+
 vitest, `packages/vimma-core/test/tabline.test.ts` and `sidepanel.test.ts`:
 
 - `a sleeping tab's item is marked asleep and keeps its width`
@@ -445,8 +489,11 @@ mochitest, `tests/browser/browser_vimma_tab_sleep_command.js`:
 
 - `:sleep puts the workspace's other tabs to sleep and reports the count and a reason`
 - `:sleep all reaches every workspace of every window`
-- `:sleep N sleeps a pinned tab; :sleep on the tab on screen refuses`
-- `panel.sleep sleeps the marked tabs`
+- `:sleep N sleeps that tab; :sleep on the tab on screen refuses` (a pinned tab named by its
+  number is planSleep's "named" mode in vitest: a window with workspaces unpins its tabs)
+- `panel.sleep sleeps the highlighted or the marked tabs`
+- `sleep keeps the shown split's panes awake`
+- `a tab closed or put to sleep during the flush is not blamed on its page`
 - `:sleep in a private window says private tabs do not sleep`
 
 mochitest, `tests/browser/browser_vimma_agent_tab_sleep.js`:
@@ -498,7 +545,7 @@ The implementing pull requests add:
 Slices 1, 3 and 5 merge when green and verified, behind `vimma.feature.tabSleep`. Slice 2 stops
 at ready for the maintainer, because it adds a default key, and slice 4 does too, because it
 turns the feature on for every user; both with notes on how to try them. Slice 5 merges before
-slice 4.
+slice 4. Slice 4 may land before slice 2 (decision 20).
 
 1. **Core rules and the check.** `planSleep`, `[tabs] sleep_after` and `[sites] sleep` in the
    config validator and `defaults.toml` (commented), `services/TabSleep.sys.mjs` with the
@@ -509,7 +556,8 @@ slice 4.
 3. **Showing it.** The muted rows in the tab line and the side panel with their accessible
    description, `state.tabs[].asleep` with its contract fixture, the e2e scenario and baselines.
 4. **Turn it on.** Remove `vimma.feature.tabSleep`, uncomment `[tabs] sleep_after = 120` in
-   `defaults.toml`, the guide section, the "Since changed" notes, status `implemented`.
+   `defaults.toml`, the guide section, the "Since changed" notes, status `implemented` (landed
+   before slice 2, the status note names slice 2 instead).
 5. **Low-memory unloading.** `[tabs] sleep_on_low_memory` in the config validator and
    `defaults.toml`, `TabSleep` setting `browser.tabs.unloadOnLowMemory` from it and keeping
    `undiscardable` on the tabs decisions 5 and 8 protect (decision 21),

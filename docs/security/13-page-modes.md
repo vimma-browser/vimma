@@ -158,3 +158,37 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   [`a_config_toml_with_errors_is_never_written`](../../tests/browser/browser_vimma_site_unbind_command.js),
   [`a_private_window_does_not_save`](../../tests/browser/browser_vimma_site_unbind_command.js),
   [`a table named __proto__, constructor or toString gets its keys until restart`](../../packages/vimma-core/test/keymap-edges.test.ts)
+- K14. Before the macOS private swap shows a window at a new size, it asks the page in each tab
+  that window shows whether it has painted at that size (`Vimma:Painted`,
+  [private-swap-macos](../specs/private-swap-macos.md)). The message carries no data and the
+  parent reads nothing from the reply but its arrival, so a page **must not** be able to do more
+  than delay that swap, and by no more than 300 ms: past that the window is shown anyway. A page
+  learns nothing it could not already see (its own resize, its window turning active, and its
+  paint; a switch dropped during the wait leaves it resized while hidden), and never which window
+  is being shown or that the private workspace is involved.
+  [`a_page_that_does_not_paint_does_not_hold_the_swap`](../../tests/browser/browser_vimma_private_swap_paint.js)
+
+- K15. Which scroll area the scroll keys move ([scroll-area](../specs/scroll-area.md)) **must**
+  change only through the user: `gs` and `gS`, or a trusted `mousedown` (a real click, or the
+  user's `f`, which the actor dispatches from system code). An agent's press is untrusted and
+  **must not** move it. Each frame's `Vimma:ScrollAreas` reply **must** be parsed in the parent
+  (`parseScrollAreasReply`: finite rects, at most 32 areas and 16 subframes per frame) and a
+  malformed one drops that frame; a frame's exact copies of one box count once
+  (`SCROLL_AREA_MAX_PER_FRAME` bounds its share of the cycle), and which area is chosen is the
+  parent's own record, never a frame's claim. Each frame's answer, to `gs`'s pick too, is bounded
+  in time, so a frame that does not answer **must not** hold the tab's scroll keys.
+  `Vimma:ScrollAreaChosen` carries one boolean and **must** act only on its own tab: its status
+  bar marker, and the choice another document of the tab holds, which a click in any frame ends;
+  only that document's existing actor is told, and no other frame is messaged. A compromised
+  content process can therefore end the user's choice in its own tab, as a click there would, and
+  show the `scroll area` marker while nothing is chosen. A hostile frame can also put its own
+  areas, within its visible rect, in the `gs` cycle, and gets focus when the user's `gs` lands on
+  one. The marker is a fixed text, so no page text reaches the status bar through it.
+  [`a_click_messages_no_frame_but_the_one_holding_a_choice`](../../tests/browser/browser_vimma_scroll_area.js),
+  [`a_frame_that_never_answers_does_not_hold_the_scroll_keys`](../../tests/browser/browser_vimma_scroll_area.js),
+  [`a_frame_that_never_answers_the_pick_does_not_hold_the_scroll_keys`](../../tests/browser/browser_vimma_scroll_area.js),
+  [`a frame's exact copies of one box count once`](../../packages/vimma-core/test/scroll-areas.test.ts),
+  [`an_agents_click_in_a_panel_does_not_move_the_target`](../../tests/browser/browser_vimma_scroll_area.js),
+  [`a_click_the_page_dispatches_does_not_move_the_target`](../../tests/browser/browser_vimma_scroll_area.js),
+  [`anything malformed drops the reply`](../../packages/vimma-core/test/scroll-areas.test.ts),
+  [`at most a frame's share of areas and subframes is kept`](../../packages/vimma-core/test/scroll-areas.test.ts)

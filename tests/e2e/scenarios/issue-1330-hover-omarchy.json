@@ -1,0 +1,72 @@
+{
+  "name": "issue-1330-hover-omarchy",
+  "issue": 1330,
+  "description": "Spec hover, e2e: issue-1330-hover's hovered row in a dark Omarchy theme (tests/e2e/fixtures/omarchy-theme): the revealed Settings button and the status bar's 'hover \u00b7 # general' segment in the theme's colours (hover-omarchy); Esc releases it.",
+  "timeoutSeconds": 60,
+  "prefs": {
+    "vimma.theme.source": "omarchy",
+    "vimma.theme.omarchyPath": "checkout:tests/e2e/fixtures/omarchy-theme"
+  },
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:hover.html"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "hover",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "g h"
+    },
+    {
+      "wait-for-state": {
+        "mode": "hint"
+      }
+    },
+    {
+      "keys": "d"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "tabs": [
+          {},
+          {
+            "title": "hovered general",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "screenshot": "hover-omarchy"
+    },
+    {
+      "keys": "esc"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "left general",
+            "selected": true
+          }
+        ]
+      }
+    }
+  ]
+}

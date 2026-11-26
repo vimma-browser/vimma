@@ -92,6 +92,8 @@ function configure(extra = {}) {
     downloadMaxMb: 200,
     // config.toml's default (core/defaults.mjs), as the config resolves a missing key.
     clamavMaxAgeDays: 7,
+    openPerMinute: 15,
+    loadPerMinute: 60,
     ...extra,
   });
 }

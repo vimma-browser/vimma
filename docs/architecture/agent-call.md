@@ -144,8 +144,9 @@ priority until the reply (`raiseNamedTab`, through `raisePriority` of `ctl/agent
   from this connection's last `vimma_elements` list, and `AgentAct.clickable` checks the element
   in its frame: fields, file inputs, disabled controls and links to another site are refused
   here, before any question (M29).
-- The open rate (`opens`, an `OpenRate`) is only checked here, since a click may load a page; it
-  is taken after the click, and only when the click navigated (M3).
+- The load rate (`loads`, a `LoadRate`) is only checked here, since a click may load a page; it
+  is taken after the click, and only when the click navigated (M3). New tabs have a rate of their
+  own (`opens`, an `OpenRate`), which a click never takes (vimma-mcp decision 46).
 - `AgentAct.payment` and `AgentAct.sent` read whether the click may pay and what a submission
   would send. Core's `isConsequential`, `mayAllowHere` and `allowanceKey`
   (`packages/vimma-core/src/agent/agent-checkpoint.mjs`) decide whether a grant covers the form, and

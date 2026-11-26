@@ -1,0 +1,14 @@
+{
+  "description": "A release lists nothing",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 15,
+    "command": "agent-hover",
+    "args": {
+      "tab": "12",
+      "release": true,
+      "elements": true
+    }
+  }
+}

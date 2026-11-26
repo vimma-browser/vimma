@@ -45,12 +45,30 @@ export class VimmaParent extends JSWindowActorParent {
     const bc = this.browsingContext;
     const wg = this.manager;
     if (!bc || !wg) return undefined;
+    if (msg.name === "Vimma:AgentSubmitting") {
+      // The agent's submission this frame started (security.md M28): the tab's allowance becomes
+      // that request alone, and only for the last step sent to this document.
+      AgentActors.agentSubmitting(bc, wg, msg.data);
+      return undefined;
+    }
     const data = fieldsOf(msg.data);
     // A focused block's frame need not have focus (a block in a frame of the focused page):
     // the host hears only the frames of its block, with the documents they had (ElementFocus).
     const report = BLOCK_REPORTS.get(msg.name);
     if (report) {
       VimmaHost.onBlockReport(/** @type {"moved" | "gone"} */ (report), bc, wg, data.gen);
+      return undefined;
+    }
+    if (msg.name === "Vimma:HoverEnded") {
+      // The user's hover ended in this frame by itself (docs/specs/hover.md decisions 5 and 13).
+      // Taken only from the frame that holds it: a forged one ends that frame's own hover.
+      VimmaHost.onHoverEnded(wg);
+      return undefined;
+    }
+    if (msg.name === "Vimma:ScrollAreaChosen") {
+      // A click chose a scroll area in this frame, or its choice ended (docs/specs/scroll-area.md):
+      // it moves only this tab's status bar marker (security.md K15).
+      VimmaHost.onScrollAreaChosen(bc, wg, data.chosen === true);
       return undefined;
     }
     if (msg.name === "Vimma:PdfState") {

@@ -25,6 +25,7 @@ Tabs
   move_tab_left             ctrl+shift+pageup                                    Move the tab left
   move_tab_right            ctrl+shift+pagedown                                  Move the tab right
   restore_tab               ctrl+shift+t                                         Reopen the last closed tab
+  sleep_tabs                (unbound)                                            Put this workspace's tabs to sleep (:sleep; :sleep all, :sleep N)
   tabline_hint              gb                                                   Jump to a tab by its label in the tab line (with a count: tab N)
   toggle_tabline            (unbound)                                            Show / hide the tab line
 
@@ -87,6 +88,8 @@ Navigation
   scroll_half_up            u, ctrl+u                                            Scroll half a page up
   scroll_top                gg                                                   Scroll to top
   scroll_bottom             G                                                    Scroll to bottom
+  scroll_area_next          gs                                                   Scroll keys: next scroll area (a count: the Nth)
+  scroll_area_prev          gS                                                   Scroll keys: previous scroll area
   history_back              alt+left, H, ctrl+o, ctrl+[                          Go back
   history_forward           alt+right, L, ctrl+i, ctrl+]                         Go forward
   reload                    f5, ctrl+r, r, R [pdf]                               Reload page
@@ -163,6 +166,8 @@ Hints
   focus_element             F, F [element]                                       Focus a text block: v selects it, y copies it
   show_link_target          (unbound)                                            Show a link's target without following it
   copy_link_target          c [pdf]                                              Copy a link's target
+  hover_element             gh                                                   Hover an element: show what the page shows under the mouse
+  hover_release             (unbound)                                            End the hover
   hint_cancel               esc [hint]                                           Leave hint mode
 
 Element focus
@@ -239,6 +244,7 @@ Side panel
   panel_mark                space [panel]                                        Mark or unmark the selected tab
   panel_visual              V [panel]                                            Start a range of rows to mark, or mark it
   panel_move_tab            m [panel]                                            Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder
+  panel_sleep               z [panel]                                            Put the selected tab, or the marked tabs, to sleep
   panel_close_active_tab    (unbound)                                            Close the tab the window shows, not the highlighted row's; the panel stays open
   panel_select_1            (unbound)                                            Select row 1
   panel_select_2            (unbound)                                            Select row 2
@@ -358,6 +364,7 @@ Tabs
   move_tab_left             ctrl+shift+pageup                                    Move the tab left
   move_tab_right            ctrl+shift+pagedown                                  Move the tab right
   restore_tab               ctrl+shift+t                                         Reopen the last closed tab
+  sleep_tabs                (unbound)                                            Put this workspace's tabs to sleep (:sleep; :sleep all, :sleep N)
   tabline_hint              gb                                                   Jump to a tab by its label in the tab line (with a count: tab N)
   toggle_tabline            (unbound)                                            Show / hide the tab line
 
@@ -420,6 +427,8 @@ Navigation
   scroll_half_up            u, ctrl+u                                            Scroll half a page up
   scroll_top                gg                                                   Scroll to top
   scroll_bottom             G                                                    Scroll to bottom
+  scroll_area_next          gs                                                   Scroll keys: next scroll area (a count: the Nth)
+  scroll_area_prev          gS                                                   Scroll keys: previous scroll area
   history_back              meta+left, meta+[, H, ctrl+o, ctrl+[                 Go back
   history_forward           meta+right, meta+], L, ctrl+i, ctrl+]                Go forward
   reload                    f5, ctrl+r, r, R [pdf]                               Reload page
@@ -496,6 +505,8 @@ Hints
   focus_element             F, F [element]                                       Focus a text block: v selects it, y copies it
   show_link_target          (unbound)                                            Show a link's target without following it
   copy_link_target          c [pdf]                                              Copy a link's target
+  hover_element             gh                                                   Hover an element: show what the page shows under the mouse
+  hover_release             (unbound)                                            End the hover
   hint_cancel               esc [hint]                                           Leave hint mode
 
 Element focus
@@ -572,6 +583,7 @@ Side panel
   panel_mark                space [panel]                                        Mark or unmark the selected tab
   panel_visual              V [panel]                                            Start a range of rows to mark, or mark it
   panel_move_tab            m [panel]                                            Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder
+  panel_sleep               z [panel]                                            Put the selected tab, or the marked tabs, to sleep
   panel_close_active_tab    (unbound)                                            Close the tab the window shows, not the highlighted row's; the panel stays open
   panel_select_1            (unbound)                                            Select row 1
   panel_select_2            (unbound)                                            Select row 2

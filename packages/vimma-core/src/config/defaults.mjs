@@ -14,6 +14,7 @@ import { MAIN_SIZE_DEFAULT } from "../panes/layouts.mjs";
 import { DEFAULT_THEME_NAME } from "./theme.mjs";
 import { SCROLL_STEP_DEFAULT, SCROLL_STEP_MAX, SCROLL_STEP_MIN } from "../page/scroll.mjs";
 import { SLEEP_AFTER } from "../workspaces/tabsleep.mjs";
+import { LOAD_RATE, OPEN_RATE } from "../agent/agent.mjs";
 
 /** @typedef {"off" | "always" | "auto"} TabLineSetting */
 
@@ -69,7 +70,8 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
  *   grant_minutes?: number, grant_max_minutes?: number, max_read_chars?: number,
  *   notify?: boolean, download_dir?: string, download_max_mb?: number,
- *   clamav_max_age_days?: number }} [mcp]  AI agents and the agent workspace (docs/specs/vimma-mcp.md)
+ *   clamav_max_age_days?: number, open_per_minute?: number,
+ *   load_per_minute?: number }} [mcp]  AI agents and the agent workspace (docs/specs/vimma-mcp.md)
  * @property {{ default?: string, aliases?: Record<string, string> }} [search]  the default
  *   search engine and `@alias` keywords (docs/specs/search-engines.md)
  * @property {Record<string, unknown>} [agent]  the built-in agent (docs/specs/builtin-agent.md),
@@ -280,6 +282,8 @@ const modal = {
     "<C-y>": "scroll.up",
     gg: "scroll.top",
     G: "scroll.bottom",
+    gs: "scroll.area_next",
+    gS: "scroll.area_prev",
     H: "history.back",
     L: "history.forward",
     "<C-o>": "history.back",
@@ -296,6 +300,8 @@ const modal = {
     // (element-focus decision 2).
     F: "hint.element",
     gF: "hint.follow_new_tab",
+    // docs/specs/hover.md decision 14: beside the other g keys, easier to type than ;h.
+    gh: "hint.hover",
     "/": "find.forward",
     "?": "find.backward",
     n: "find.next",
@@ -457,6 +463,9 @@ const modal = {
     // The row's tab to a workspace chosen in the workspace picker, as `m` there moves the
     // selected tab (m3-workspaces); in the bookmarks panel the bookmark to a folder.
     m: "panel.move",
+    // The highlighted tab, or the marked ones, to sleep (docs/specs/tab-sleep.md decision 15):
+    // it reads as "zzz". Nothing in the bookmarks panel.
+    z: "panel.sleep",
     // Closes the panel, then focuses the address bar (as I does in normal mode).
     I: "urlbar.focus",
     // The bookmarks panel (docs/specs/bookmarks.md), neo-tree's keys; nothing in the tabs panel.
@@ -584,6 +593,9 @@ export const DEFAULT_CONFIG = Object.freeze({
     download_dir: "~/Downloads/vimma-agent",
     download_max_mb: 200,
     clamav_max_age_days: 7,
+    // vimma-mcp decision 46: agent-open's two rates, from the agent gate's own defaults.
+    open_per_minute: OPEN_RATE.max,
+    load_per_minute: LOAD_RATE.max,
   },
 });
 
@@ -1013,17 +1025,22 @@ export function configTables({ brief = false } = {}) {
     },
     {
       name: "tabs",
-      lines: annotate([
-        example("[tabs]"),
-        example(
-          `sleep_after = ${SLEEP_AFTER.default}`,
-          `minutes unseen before a tab sleeps (${SLEEP_AFTER.min}–${SLEEP_AFTER.max}); 0: never`,
-        ),
-        example(
-          "sleep_on_low_memory = true",
-          "false: Firefox never unloads tabs when memory runs low",
-        ),
-      ]),
+      // On for everyone since docs/specs/tab-sleep.md's Delivery slice 4.
+      lines: [
+        "[tabs]",
+        ...annotate([
+          set(
+            "sleep_after",
+            SLEEP_AFTER.default,
+            `minutes unseen before a tab sleeps (${SLEEP_AFTER.min}–${SLEEP_AFTER.max}); 0: never`,
+          ),
+          set(
+            "sleep_on_low_memory",
+            true,
+            "false: Firefox never unloads tabs when memory runs low",
+          ),
+        ]),
+      ],
     },
     {
       name: "updates",
@@ -1086,6 +1103,12 @@ export function configTables({ brief = false } = {}) {
             "clamav_max_age_days",
             m.clamav_max_age_days,
             "days before ClamAV definitions stop counting a file clean (1–90)",
+          ),
+          set("open_per_minute", m.open_per_minute, "new tabs an agent may open a minute (1–600)"),
+          set(
+            "load_per_minute",
+            m.load_per_minute,
+            "pages an agent may load into its open tabs a minute (1–600)",
           ),
         ]),
       ],

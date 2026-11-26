@@ -161,7 +161,11 @@ console errors and warnings and failed requests, read without running page code:
 M32), in force. Since [#584](https://github.com/vimma-browser/vimma/issues/584), `vimma_open`,
 `vimma_activate` and `vimma_fill` can return the page's element list in their result, made and
 limited as a `vimma_elements` call (M31, M32), and a screenshot is smaller unless the agent asks for
-it at full size (M31).
+it at full size (M31). [hover](../specs/hover.md) adds `vimma_hover` (an element of the list
+hovered as a mouse resting on it would, with untrusted events and a `:hover` lock, asked and
+limited as a click, so that a control the page shows only under the mouse can be listed and
+clicked: M67), in force, and `vimma_elements` lists what only hovering does something with when
+its `kinds` ask for `hover`.
 
 [mcp-grants](../specs/mcp-grants.md) makes a grant cover every agent tool of its connection: a grant
 given in answer to any question, a read included, lets that agent open URLs, follow links, press
@@ -170,8 +174,8 @@ dangerous or unscanned files) without asking until it ends. An open can carry in
 agent read, so a grant is a grant to fetch any http or https address from the agent workspace. What
 limits it: the agent workspace's container holds none of your other logins (vimma-mcp decision 7),
 so what an agent can read is what the agent workspace holds; every call under a grant shows a notice
-(an open names its host) and is a `:mcp log` row with its whole URL (M23); at most 10 opens a minute
-(M3); `ctrl+b shift+a` ends every grant at once; and an agent with a shell can send what it read
+(an open names its host) and is a `:mcp log` row with its whole URL (M23); at most 15 new tabs and 60
+loads into its open tabs a minute, by default (M3); `ctrl+b shift+a` ends every grant at once; and an agent with a shell can send what it read
 over its own network without Vimma anyway. A step that may pay, a form submission that sends text,
 personal details, a secret or a file ([mcp-consequence](../specs/mcp-consequence.md)), a show, a
 dangerous or unscanned download and a page's own download still ask under any grant (M11, M13, M19,
@@ -188,7 +192,7 @@ which are also the built-in agent's system text) tell an agent to search a site 
 search results by URL with `elements: true` rather than by filling the search field and sending the
 form, and to do so only for a search. Such a search is a load, not a form submission: it gives no
 new reach, since any URL could already be opened under a grant, and it is under the same rules as
-every other open (M6, the open rate of M3, the notice and the `:mcp log` row of M23). It skips only
+every other open (M6, the rates of M3, the notice and the `:mcp log` row of M23). It skips only
 the form question; the words of the search are what the agent puts in the URL, the same risk as any
 open (mcp-grants, above). A form sent through the page, a search included, is still a form
 submission under M28: asked without a grant, and under one when it is consequential (for a search:
@@ -300,19 +304,34 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_agent_sees_only_the_agent_workspace`](../../tests/browser/browser_vimma_mcp_agent.js),
   [`test_confinement_edges`](../../tests/browser/browser_vimma_mcp_agent.js)
 - M3. No answer within `[mcp] ask_timeout`, a full queue (4 per connection, 16 in all), more
-  than 4 requests of one connection waiting or running at once (grants included), more than 10
-  opens of one connection in a minute (grants included) and a muted connection (three noes in a
-  row, for 60 s; `x`, until it reconnects) **must** deny. A `vimma_open` is refused for the open
-  rate before its question as well as after it, so an open over the rate is never asked (issue
-  #693); opens asked at once for the last slot can still be refused after a yes, since only the
-  count after the question takes the slot.
+  than 4 requests of one connection waiting or running at once (grants included), more new
+  agent tabs of one connection in a minute than `[mcp] open_per_minute` (15 by default), more
+  loads into its existing agent tabs in a minute than `[mcp] load_per_minute` (60 by default;
+  a `vimma_open` with `tab`, and a page that a click, fill, hover, follow, `gu`, `gU` or history
+  step loads), grants and Vimma's own agent included, and a muted connection (three noes in a
+  row, for 60 s; `x`, until it reconnects) **must** deny. The two rates count apart (vimma-mcp
+  decision 46, issue #1561): a new tab adds a tab the agent workspace keeps awake, while a load
+  replaces a page and only sends a request. Each **must** stay on: its key is an integer from 1
+  to 600, and anything else is a config error that keeps the config in force (F2), because
+  nothing else stops a granted agent that calls in a loop. Each is read from the config in force
+  at every call, so a change holds from the next call; calls already in the window stay counted.
+  A refusal names which limit it hit and its key, with the wait (M20). A `vimma_open` is refused
+  for its rate before its question as well as after it, so an open over the rate is never asked
+  (issue #693); opens asked at once for the last slot can still be refused after a yes, since
+  only the count after the question takes the slot.
   [`test_denials_timeouts_queue_and_mute`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`test_a_used_up_open_rate_refuses_before_asking`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`two connections sending 5 each: 4 of each wait in order, the 5th of each is busy`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`three denials in a row mute a connection for 60 s, without asking`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`no sequence of events breaks the queue's limits or resolves a request twice`](../../packages/vimma-core/test/fuzz/agent.fuzz.test.ts),
   [`test_grants_cannot_flood`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
-  [`at most OPEN_RATE.max opens per connection in any OPEN_RATE.ms window`](../../packages/vimma-core/test/agent-gate.test.ts)
+  [`at most OPEN_RATE.max opens of a new tab per connection in any OPEN_RATE.ms window`](../../packages/vimma-core/test/agent-gate.test.ts),
+  [`at most LOAD_RATE.max loads into an existing tab per connection in any LOAD_RATE.ms window`](../../packages/vimma-core/test/agent-gate.test.ts),
+  [`the two rates count apart`](../../packages/vimma-core/test/agent-gate.test.ts),
+  [`each reads its most at every call, so a changed [mcp] value applies to the next call`](../../packages/vimma-core/test/agent-gate.test.ts),
+  [`test_loads_into_a_tab_have_their_own_rate`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
+  [`test_a_changed_rate_applies_to_the_next_call`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
+  [`bounded values`](../../packages/vimma-core/test/config-bounds.test.ts)
 - M4. The question **never** opens by itself while you type, are in a field, or have another
   prompt open, never takes focus, is armed only after `security.dialog_enable_delay` (1 s), a
   held key **never** counts, and no key but `y` or a count with `a` allows; any other key
@@ -398,7 +417,16 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   without it; a top-level document it loads over HTTP loses its `Cross-Origin-Opener-Policy`,
   which Firefox refuses in a sandboxed tab, since an agent tab has no opener and opens no window)
   and launch no other app through an external protocol (Firefox's chooser is wrapped for the
-  agent container). Their downloads follow M11-M13. A tab of another workspace
+  agent container). A link click in an agent tab that Firefox would open in a new tab or window,
+  or save (ctrl or cmd, shift, the middle button, alt with `browser.altClickSave`), opens
+  nothing either: Firefox opens such a click itself (`ClickHandlerChild` to
+  `ClickHandlerParent.contentAreaClick` to `openLinkIn`), outside the sandbox flags and outside
+  both rates of M3, and accepts a page's scripted click while the page holds the user's
+  activation, so `contentAreaClick` is wrapped and drops every such click whose tab (its top
+  browsing context, so a frame's click too) is in the agent container, the user's own included
+  (issue #1568). This covers what a page can start; the user's own deliberate actions in Firefox's
+  interface (`gF`, the context menu's "Open Link in New Tab", dragging a link onto the tab strip)
+  still open a tab in the agent workspace, uncounted. Their downloads follow M11-M13. A tab of another workspace
   still asks, opens pop-ups and downloads as before.
   [`test_the_agent_container_asks_for_nothing`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_another_workspace_still_asks`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
@@ -407,6 +435,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_a_page_from_a_service_worker_is_denied_too`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_a_sweep_reloads_agent_tabs_that_loaded_unsandboxed`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_agent_pages_launch_no_app`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
+  [`test_agent_tabs_open_nothing_on_modified_clicks`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_builtin_agent_opens_coop_pages`](../../tests/browser/browser_vimma_agent_coop.js),
   [`test_mcp_agent_opens_coop_pages`](../../tests/browser/browser_vimma_agent_coop.js)
 - M11. A download from the agent workspace (by its container, its tab's container, or being written
@@ -612,7 +641,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   changed its URL without a new document cannot change where a follow goes. A follow to another site (another
   registrable domain, eTLD+1) **must** be asked as a `vimma_open` of its whole URL, unless the
   connection holds a grant, and a no stops the call (`stopped: "denied"`); it is
-  not asked when the open rate has no slot left, and the question is withdrawn when the call's
+  not asked when the load rate has no slot left, and the question is withdrawn when the call's
   60 s run out. Labels
   are over Vimma's default hint characters, never the user's, and the agent's collection is
   keyed by its tab, so it never cancels the user's hint mode in the same window, nor theirs the
@@ -653,13 +682,13 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   control characters, more than 32 actions, a count over 99 and a find query over 256 characters
   are `invalid-args` before anything is asked; more than 30 calls of one connection a minute,
   counted when asked and before anything else, are `busy`; a `gu`, `gU` or history step that
-  loads a page, and each follow, takes a slot of the 10 opens a minute; a label longer than
+  loads a page, and each follow, takes a slot of the load rate (M3); a label longer than
   200 links need (3 characters) and a count before `f` are `invalid-args`; a call stops 60 s
   after the yes, and no query to the page holds it longer than 5 s. `vimma-ctl mcp` checks the
   size and characters, the find queries and the counts it can see first; the browser checks all
   of it again. More than 6 `agent-show` calls of one connection a minute (mcp-drive D7), counted
   when asked and before the question, are `busy`, so a refused show cannot be retried in a loop.
-  A `busy` denial for a used-up rate (M20's keys and shows, M3's opens and M32's lists, clicks,
+  A `busy` denial for a used-up rate (M20's keys and shows, M3's new tabs and loads and M32's lists, clicks,
   fills, screenshots and console reads) names the limit and, to a vimma-ctl at least as new as
   Vimma or a built-in conversation, carries `retryAfter`, the milliseconds from 1 to 60000 until
   the next call is allowed, so an agent waits for the rate rather than for a question that is
@@ -693,8 +722,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a used-up rate`](../../packages/vimma-core/test/agent-results.test.ts),
   [`test_a_used_up_rate_is_waited_out_not_reported_as_questions`](../../tests/browser/browser_vimma_agent_chat.js),
   [`calls_past_vimmas_four_in_flight_wait_here_and_all_run`](../../tools/vimma-ctl/tests/mcp.rs),
-  [`test_loads_count_towards_the_open_rate`](../../tests/browser/browser_vimma_mcp_keys.js),
-  [`test_follows_count_towards_the_open_rate`](../../tests/browser/browser_vimma_mcp_follow.js),
+  [`test_loads_count_towards_the_load_rate`](../../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_follows_count_towards_the_load_rate`](../../tests/browser/browser_vimma_mcp_follow.js),
   [`a label is lowercase hint characters, at most the longest label of 200 links`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`bad_keys_are_tool_errors_and_never_reach_vimma`](../../tools/vimma-ctl/src/mcp/args.rs),
   [`at most 6 agent-show per connection a minute`](../../packages/vimma-core/test/agent-gate.test.ts),
@@ -1055,14 +1084,39 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   showed. A fill allows its submission only after its last field is set, so a form the page
   submits while it is being filled is cancelled like any other.
   Before every click and every fill the tab is marked in the parent (`AgentActors.agentMark`; the
-  marks and the `http-on-modify-request` observer are in `actors/submit-marks.mjs`, one instance
-  per parent process), after the page's transient user activation is consumed in every frame,
-  and from then on, while its top document is the same,
-  the request of every navigating form submission in it (any frame, a submit button,
-  `requestSubmit()` or a later `submit()`, whatever the page cached) **must** be cancelled
-  before it is sent when it carries no transient user activation, unless it is the one
-  submission the question allowed, during that call, with the method and destination (scheme,
-  host, port and path) it named; a redirect of a submission let through follows on. The call's
+  marks and the `http-on-opening-request` observer are in `actors/submit-marks.mjs`, one instance
+  per parent process; the request is checked as the parent opens it, before anything is sent,
+  issue #1484), after the page's transient user activation is consumed in every frame, and
+  from then on, while its top document is the same, the request of every navigating form
+  submission in it (any frame, a submit button, `requestSubmit()` or a later `submit()`,
+  whatever the page cached) **must** be cancelled before it is sent when it carries no transient
+  user activation, unless it is the one submission the question allowed, during that call, with
+  the method and destination (scheme, host, port and path) it named, and the very request the
+  step started; a redirect of a submission let through follows on. The step's child names that
+  request to the parent by its channel id (`Vimma:AgentSubmitting`, from
+  `actors/agent-page.mjs`'s `#claimSubmission`), and the parent lets through only the request
+  with that id, triggered from that child's process, once. The child takes the first document
+  load its frame starts from the step until the task queued just after it: Firefox runs a
+  form's navigation in a task of its own, queued as the form is submitted, any other load of the
+  frame that starts first cancels it, and a submission the page makes in a later task is queued
+  after that end. The name reaches the parent before the request: the load group starts the
+  document's progress before the child asks the parent to open it, over the same IPC channel. So
+  a page's submission to the same method and destination is never the asked one, whenever its
+  request is opened: one started just before the step, one whose opening Firefox puts off (a POST
+  whose upload stream it copies first, a submission while a prefetch of its address is in
+  flight) and one from a frame of another process aimed at the step's frame. What
+  is left is a submission the page's own handlers start while the step runs (its `submit` or
+  `formdata` listener, or those of the press): that one is named in the step's place, to the
+  asked method and destination alone, as those handlers can change the step's own submission
+  anyway. A load the child names that is not a form submission, or goes elsewhere, matches
+  nothing, and the step's own submission is then cancelled too. A step that does not run names
+  nothing, and only a step sent after the allowance opened can name its request. The child
+  watches only its own frame: a form aimed at another frame of the tab (`target` or
+  `formtarget` naming a frame, `_parent` or `_top` from a subframe) is cancelled even when asked,
+  as no request of that frame is named; one aimed at a new tab goes to a tab with no mark. With
+  Firefox's `dom.forms.submit_async_navigation` set to false by the user (it is true by
+  default), the form's navigation starts at once inside the step, and the child stops watching
+  as soon as the step returns. The call's
   wait for a page counts from when the click or the submission ran in the page's process, not
   from the child's reply before it, so that the allowance is still open when a busy process runs
   the step late; it still ends with the call. A step that starts no load ends its call once the
@@ -1095,9 +1149,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   question named. A submission the page starts while the element is being pressed, before the
   child's check, cannot be told from the click's own: it is let through only to the asked method and
   destination, as the click's would be. A frame of another process in the tab is not ordered with
-  that message, and until the call ends it too can send only the asked submission. So can a subframe
-  that skips the step and is removed before its message is sent: the allowance stays open until the
-  call ends, still only for the method and destination asked. The result and `:mcp log` name the
+  that message, but its submissions are never the request the step's child named. A subframe
+  that skips the step and is removed before its message is sent leaves the allowance open until
+  the call ends, but no request can take it: its child names none for a step that did not run. The result and `:mcp log` name the
   host it was going to. Clicks and fills on one tab run one at a time, so no call takes another's
   allowance. Your activation after the step (a click or a key of yours in that page) and your `f`
   hints end the mark, so your own submissions in an agent tab go through, and so do those of a page
@@ -1145,6 +1199,10 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_page_script_submit_after_a_fill_is_cancelled`](../../tests/browser/browser_vimma_mcp_fill.js),
   [`the_submit_check_test_hook_is_read_only_in_automation`](../../tests/browser/browser_vimma_security_invariants.js),
   [`test_a_page_submit_during_a_fill_is_not_the_asked_one`](../../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_page_submit_that_reaches_the_network_late_is_not_the_asked_one`](../../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_page_submit_opened_before_the_asked_one_cannot_take_its_place`](../../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_submit_of_a_frame_in_another_process_cannot_take_its_place`](../../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_page_submit_opened_before_the_asked_click_cannot_take_its_place`](../../tests/browser/browser_vimma_mcp_submit.js),
   [`test_selects_ranges_and_a_submit_button_of_another_form`](../../tests/browser/browser_vimma_mcp_fill.js),
   [`a fill that submits: the destination, then the fields, y or n only`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`test_submit_question_lists_the_fields_it_sends`](../../tests/browser/browser_vimma_mcp_submit.js),
@@ -1170,7 +1228,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   asks as `vimma_open`), a link that is not http, https or `javascript:`, a text field, a select,
   an editable root, a file field (each also through its `<label>`, judged past a shadow root's
   reference target as in M28), a disabled control and a label of `f`'s link list. A click that
-  loads a page takes a slot of the open rate (M3), and no click is made while that rate is used
+  loads a page takes a slot of the load rate (M3), and no click is made while that rate is used
   up.
   [`test_activate_refuses_fields_files_disabled_and_other_sites`](../../tests/browser/browser_vimma_mcp_activate.js),
   [`test_label_forwarding_follows_reference_targets`](../../tests/browser/browser_vimma_mcp_elements.js),
@@ -1436,8 +1494,8 @@ the page's own and can carry tokens it put there; they come only from the agent'
 [`agent-console: the page, its errors and requests inside the delimiters, the time`](../../packages/vimma-core/test/control-v2.test.ts),
 [`console_lists_as_untrusted_content`](../../tools/vimma-ctl/src/mcp/render.rs)
 
-- M32. More than 30 `agent-elements` calls, 30 `agent-activate` and `agent-fill` calls
-  together, 12 `agent-screenshot` calls, or 30 `agent-console` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the
+- M32. More than 30 `agent-elements` calls, 30 `agent-activate`, `agent-fill` and `agent-hover`
+  calls together (M67), 12 `agent-screenshot` calls, or 30 `agent-console` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the
   question, **must** be denied as `busy`, so a grant cannot flood a page and a refused call
   cannot loop; an `agent-open`, `agent-activate` or `agent-fill` asked with `elements` counts
   as an `agent-elements` call as well (issue #584), and with those used up it is denied as
@@ -1601,3 +1659,59 @@ off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; wit
   [`agent workspace tabs stay awake only while an agent is connected`](../../packages/vimma-core/test/tabsleep.test.ts),
   [`low_memory_unloads_other_tabs_but_never_a_shown_pane_or_an_agents_tab`](../../tests/browser/browser_vimma_low_memory.js),
   [`the_mark_follows_the_split_the_agent_and_the_config`](../../tests/browser/browser_vimma_low_memory.js)
+- M67. An agent's hover (`agent-hover`, `vimma_hover`, [hover](../specs/hover.md) decisions 3 and 9) **must** be the `hover` op of `Vimma:AgentElement`, sent only from `agent-hover` after the
+  gate and handled by `AgentPage` (`actors/agent-page.mjs`), whose events the child dispatches
+  through `dispatchAsPage`, so the page sees every one untrusted, as an agent's click's mouse
+  events (M26); **never** the user's `Vimma:Hover`, whose events are trusted, **never** input
+  through `window.synthesizeMouseEvent`, `nsIDOMWindowUtils` or the widget, and **never**
+  wrapped in `setHandlingUserInput` or `asUserGesture`. Which path runs follows from which
+  message arrived, never from a flag in its data, and its release is the `hover-release` op of
+  the same message, which ends only an agent's hover in that document, never the user's. It locks
+  `:hover` (`InspectorUtils`, chrome-only) only on an element of the connection's current list on
+  an http or https page, its flattened-tree ancestors, the controls of `<label>`s among them and
+  the `<iframe>` chain around a subframe (locks only, no events: the parent names the subframe
+  by the browsing context it asked to hover, checked by the embedding child, and sends the lock
+  only once that frame holds the hover), only in an agent tab of the connection, and Vimma
+  removes only the locks it added. A hover gives the page no user activation and is not
+  "handling user input", so it can open no window, use no clipboard and start nothing that
+  needs a gesture; it never sets your link preview (an untrusted `mouseover` does not reach
+  `nsDocShell::OnOverLink`, which also keeps it from opening a speculative connection). What it
+  adds to a click's untrusted `mouseover` (M26) is the other pointer and mouse events, which the
+  page's own script can dispatch on itself, and the lock, which changes only style; every
+  control a hover reveals is still reached only through `vimma_elements`, `vimma_activate` and
+  `vimma_fill`, with all their checks. A list asked with `kinds` `hover` adds elements that
+  only hovering does something with (a hover listener, a `title`, a text block), never one
+  inside a rich text editor (M31); `vimma_activate` on one of them is checked as any click (its
+  closest button or link decides what it submits or follows, M28, M29). A hover **must** be
+  asked, granted, logged with its element and denied `in-use` as a click is (before the
+  question, after the yes, and again just before its step is sent, since it may have waited
+  behind another step on the tab), also while you hold your own hover (`gh`) in the tab, which
+  it would replace; and counted with clicks and fills in their 30 a minute (M32); the page's handlers may
+  load a page, which counts as an open (M3), and a form submission they try is stopped as after
+  a click (M28). An existing grant covers it (mcp-grants G1), accepted because it does a subset
+  of what a click's events already do. It **must** end on every `pagehide` of its document (the
+  back-forward cache included, since a cached document keeps its locks), on the element leaving
+  its place, on the connection's next hover in the tab, its `release: true`, its end, the tab
+  leaving the agent workspace (a change of the workspaces, and each call's own check of the
+  tab), closing or moving to another window, your key in the tab and a real mouse move over its
+  page. A release or the connection's end that overtakes a hover still on its way ends it too:
+  the hover is not sent, or, if it ran, its frame lets it go, so no lock stays that chrome does
+  not know of. A release is neither asked, counted nor logged: it only ends a hover the same
+  connection began, which was asked and logged, never yours or another connection's, and it
+  runs page code (the untrusted leave events) only when that hover is still held. Residual: a page can tell that an
+  element matches `:hover` with no pointer over it, and that hover events are untrusted, which
+  together say an agent is acting, as it could already tell from an agent's click (M26).
+  [`test_agent_hover_reveals_and_lists`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_asks_once_as_a_click`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_events_are_untrusted_and_change_nothing_else`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_is_a_separate_message`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_in_use`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_only_agent_tabs_and_listed_elements`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_release`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_rate`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_released_while_pending`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_leaves_the_users_hover`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_lists_nothing_inside_an_editor`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`agent-hover: a tab with a label or release: true, never both, never neither`](../../packages/vimma-core/test/control-v2.test.ts),
+  [`vimma_hover: the element in the question, what it hovered in the notice`](../../packages/vimma-core/test/agent-prompt.test.ts),
+  [`each asking agent command is one MCP tool; hello and ping are not`](../../packages/vimma-core/test/agent-gate.test.ts)

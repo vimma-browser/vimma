@@ -437,9 +437,10 @@ export function sensitiveValueShown(win) {
  * Each element as `vimma_elements` lists it, in the same order, and the forms they belong to,
  * each once, by index (F5). A sensitive field's value and selected option are never read.
  * @param {Element[]} els
+ * @param {Set<Element>} [hoverOnly]  those listed as kind hover (docs/specs/hover.md decision 10)
  * @returns {{ elements: AgentElementInfo[], forms: AgentForm[] }}
  */
-export function describeAgentElements(els) {
+export function describeAgentElements(els, hoverOnly = new Set()) {
   const fields = els.filter((el) => ["input", "select", "textarea"].includes(el.localName));
   const cards = fields.length ? cardFields(fields) : new Set();
   /** @type {Map<Element, number>} */
@@ -447,7 +448,8 @@ export function describeAgentElements(els) {
   /** @type {AgentForm[]} */
   const forms = [];
   const elements = els.map((el) => {
-    const kind = kindOf(el);
+    // docs/specs/hover.md decision 10: what only hovering does something with.
+    const kind = hoverOnly.has(el) ? "hover" : kindOf(el);
     /** @type {AgentElementInfo} */
     const info = { kind, text: cap(textOf(el, kind), TEXT) };
     const field = fieldElementOf(el);

@@ -109,6 +109,26 @@ describe("bounded values", () => {
       cfg("[mcp]", "ask_timeout = 301"),
       [[3, "mcp.ask_timeout", "must be an integer between 10 and 300 (seconds)"]],
     ],
+    [cfg("[mcp]", "open_per_minute = 1"), "ok"],
+    [cfg("[mcp]", "open_per_minute = 600"), "ok"],
+    [
+      cfg("[mcp]", "open_per_minute = 0"),
+      [[3, "mcp.open_per_minute", "must be an integer between 1 and 600 (per minute)"]],
+    ],
+    [
+      cfg("[mcp]", "open_per_minute = 601"),
+      [[3, "mcp.open_per_minute", "must be an integer between 1 and 600 (per minute)"]],
+    ],
+    [cfg("[mcp]", "load_per_minute = 1"), "ok"],
+    [cfg("[mcp]", "load_per_minute = 600"), "ok"],
+    [
+      cfg("[mcp]", "load_per_minute = 0"),
+      [[3, "mcp.load_per_minute", "must be an integer between 1 and 600 (per minute)"]],
+    ],
+    [
+      cfg("[mcp]", "load_per_minute = 601"),
+      [[3, "mcp.load_per_minute", "must be an integer between 1 and 600 (per minute)"]],
+    ],
     [cfg("[mcp]", `workspace = "${a(32)}"`), "ok"],
     [cfg("[mcp]", `workspace = "${a(33)}"`), [[3, "mcp.workspace", "must be 1 to 32 characters"]]],
   ])("%j", (text, expected) => {

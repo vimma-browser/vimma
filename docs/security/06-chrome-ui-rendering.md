@@ -28,7 +28,12 @@ text that pages, add-ons and bookmarks choose.
   chat window; its `--version` is the only other call, with that fixed argument, while setup
   lists what a search of `PATH` found, and, for a CLI that has no flag to leave out its other
   MCP servers (Codex), one fixed listing of them (`codex mcp list --json`) right before the
-  run, from the same checked path, with no shell and no standard input. Opening a download or
+  run, from the same checked path, with no shell and no standard input. On macOS, where an app
+  the Dock starts gets launchd's `PATH`, the one shell this exception allows is the login shell
+  `$SHELL` names, checked as the CLI's program is, run at most once per session when setup
+  searches or a task starts and Vimma's `PATH` is launchd's own, with `-l -i -c` and one fixed command that prints `PATH` between
+  two random marks, no standard input and a 10 s limit; nothing of a page, a task or a config
+  value reaches its command line. Opening a download or
   showing it in its folder hands a file to the OS too: chrome code **must** ask Firefox for it
   only through `DownloadsCommon.openDownload` and `Download.showContainingDirectory`, only from
   `host/download-ops.mjs`, and only on a key the user pressed in the downloads picker (§21), so
@@ -138,6 +143,15 @@ text that pages, add-ons and bookmarks choose.
   add-on's button between the toolbar and the extensions menu, and private-window access is
   asked in the install prompt, not here. No other notice of that panel takes the keys (the
   update notices' main button restarts the browser).
+  Firefox's passkey and security key (WebAuthn) prompts take the keys under the same rules, but
+  their main button is Cancel: `n` presses the button `Esc` runs (Cancel, also in the notices
+  whose `Esc` only hides them) and `y` the answer that goes ahead (the passkey, Continue or
+  Allow), or nothing where the prompt has none. While the list of other passkeys is open, `y`
+  and `n` are the list's, so neither answers from behind the highlighted row; the list's own keys
+  (the arrow keys, `Enter`, `Esc` and Firefox's digit access keys for its rows) stay Firefox's.
+  [`doorhangerButtons`](../../packages/vimma-core/test/prompt-keys.test.ts),
+  [`choosing_a_passkey_from_the_keyboard`](../../tests/browser/browser_vimma_webauthn_prompts.js),
+  [`the_passkey_notices_cancel_with_n`](../../tests/browser/browser_vimma_webauthn_prompts.js),
   [`doorhangerKey`](../../packages/vimma-core/test/prompt-keys.test.ts),
   [`permission_prompts_answer_y_and_n`](../../tests/browser/browser_vimma_toolbar.js),
   [`prompt_keys_arm_on_firefoxs_own_delay`](../../tests/browser/browser_vimma_toolbar.js),

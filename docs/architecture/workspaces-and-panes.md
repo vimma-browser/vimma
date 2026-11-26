@@ -211,13 +211,15 @@ profile.
 
 `workspaces/WorkspaceRouter.sys.mjs` applies `config.toml`'s `[[routes]]` rules (core
 `routes.mjs`, `matchRoute`), which `ConfigHost` hands it with `setRoutes`; it keeps a copy in a
-pref, so a cold start routes before `config.toml` is read. It only chooses the container of a tab
-or window being created, and never moves one, so routing cannot loop. Three patches call it:
-`URILoadingHelper-sys-mjs.patch` (`routeLinkIn`: the address bar, `:open`, bookmarks, and links a
-page opens in a new tab or window), `BrowserDOMWindow-sys-mjs.patch` (`externalUserContextId`,
-`externalWhere`: links from other apps), and `Tabbrowser-sys-mjs.patch` through
-`WorkspaceStore.firstTabUserContextId` (a new window's first tab). Links from other apps and new
-windows never take the agent workspace's container. `vimma-open` names the programs that opened
+pref, so a cold start routes before `config.toml` is read. It routes only links from outside the
+browser (workspace-routing, decision 9): what you open inside Vimma stays in the active
+workspace. It only chooses the container of a tab or window being created, and never moves one,
+so routing cannot loop. Two patches route through it: `BrowserDOMWindow-sys-mjs.patch`
+(`externalUserContextId`, `externalWhere`: links from other apps), and `Tabbrowser-sys-mjs.patch`
+through `WorkspaceStore.firstTabUserContextId` (the first tab of a cold start from a link, or of
+a window opened for another program's link). `URILoadingHelper-sys-mjs.patch` still calls
+`routeLinkIn`, which routes nothing. Links from other apps and new windows never take the agent
+workspace's container. `vimma-open` names the programs that opened
 a link with `-vimma-from`, for rules with `app`
 ([app-routes](../specs/app-routes.md)). Tests:
 [browser_vimma_workspace_routes.js](../../tests/browser/browser_vimma_workspace_routes.js),

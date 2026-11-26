@@ -20,6 +20,8 @@ import {
   LOG_SIZE,
   SCREENSHOT_RATE,
   SHOW_RATE,
+  LOAD_RATE,
+  LoadRate,
   OPEN_RATE,
   OpenRate,
   MUTE_MS,
@@ -75,6 +77,7 @@ describe("the tools", () => {
       "agent-screenshot": "vimma_screenshot",
       "agent-console": "vimma_console",
       "agent-bookmarklet": "vimma_bookmarklet",
+      "agent-hover": "vimma_hover",
     });
   });
 });
@@ -444,17 +447,63 @@ describe("untrusted content (spec: Marking content untrusted)", () => {
 });
 
 describe("open rate (security.md M3)", () => {
-  test("at most OPEN_RATE.max opens per connection in any OPEN_RATE.ms window", () => {
-    expect(OPEN_RATE).toEqual({ max: 10, ms: 60_000 });
+  test("at most OPEN_RATE.max opens of a new tab per connection in any OPEN_RATE.ms window", () => {
+    expect(OPEN_RATE).toEqual({ max: 15, ms: 60_000, key: "open_per_minute" });
     const r = new OpenRate();
     const ok = [];
-    for (let i = 0; i < 12; i++) ok.push(r.take(1, i * 1000));
-    expect(ok.filter(Boolean)).toHaveLength(10);
-    expect(ok.slice(10)).toEqual([false, false]);
-    expect(r.take(2, 11_000)).toBe(true); // per connection
+    for (let i = 0; i < 17; i++) ok.push(r.take(1, i * 1000));
+    expect(ok.filter(Boolean)).toHaveLength(15);
+    expect(ok.slice(15)).toEqual([false, false]);
+    expect(r.take(2, 16_000)).toBe(true); // per connection
     expect(r.take(1, 60_000)).toBe(true); // the first one left the window
     r.forget(1);
     expect(r.take(1, 60_001)).toBe(true);
+  });
+});
+
+// Issue #1561 (vimma-mcp decision 46): a load into an existing agent tab adds no tab, so it has
+// a rate of its own, four times the new tabs'.
+describe("load rate (security.md M3)", () => {
+  test("at most LOAD_RATE.max loads into an existing tab per connection in any LOAD_RATE.ms window", () => {
+    expect(LOAD_RATE).toEqual({ max: 60, ms: 60_000, key: "load_per_minute" });
+    const r = new LoadRate();
+    expect(r).toBeInstanceOf(CallRate);
+    const ok = [];
+    for (let i = 0; i < 62; i++) ok.push(r.take(1, i * 100));
+    expect(ok.filter(Boolean)).toHaveLength(60);
+    expect(ok.slice(60)).toEqual([false, false]);
+    expect(r.take(2, 6_200)).toBe(true); // per connection
+    expect(r.take(1, 60_000)).toBe(true); // the first one left the window
+  });
+
+  test("the two rates count apart", () => {
+    const opens = new OpenRate();
+    const loads = new LoadRate();
+    for (let i = 0; i < 15; i++) expect(opens.take(1, i)).toBe(true);
+    expect(opens.can(1, 20)).toBe(false);
+    expect(loads.can(1, 20)).toBe(true);
+  });
+
+  test("each reads its most at every call, so a changed [mcp] value applies to the next call", () => {
+    let most = 2;
+    const r = new OpenRate(() => most);
+    expect(r.take(1, 0)).toBe(true);
+    expect(r.take(1, 1_000)).toBe(true);
+    expect(r.take(1, 2_000)).toBe(false);
+    most = 3;
+    expect(r.can(1, 2_000)).toBe(true);
+    expect(r.take(1, 3_000)).toBe(true);
+    // Lowered below the calls in the window: the wait is until enough of them leave it.
+    most = 1;
+    expect(r.can(1, 4_000)).toBe(false);
+    expect(r.retryAfter(1, 4_000)).toBe(3_000 + 60_000 - 4_000);
+    expect(r.refusal(1, 4_000, "new tabs").message).toBe(
+      "too many new tabs from this agent in the last minute (at most 1, [mcp] open_per_minute)",
+    );
+    const loads = new LoadRate(() => 7);
+    expect(loads.refusal(1, 0, "loads").message).toBe(
+      "too many loads from this agent in the last minute (at most 7, [mcp] load_per_minute)",
+    );
   });
 });
 

@@ -11,6 +11,8 @@ import {
   setConfigKeysText,
 } from "../src/config/config.mjs";
 import { editSiteUnbindText } from "../src/config/site-edit.mjs";
+import { withSiteUnbinds } from "../src/keys/keymap.mjs";
+import { resolveActionName } from "../src/keys/actions.mjs";
 
 const toml = (...lines: string[]) => lines.join("\n") + "\n";
 
@@ -86,6 +88,112 @@ describe("what stays an error", () => {
       );
       expect(r.errors, line).toHaveLength(1);
     }
+  });
+});
+
+// The same rule for a binding: an action this build does not know, with no close match, is most
+// likely one a newer Vimma added, so only that binding is left out (#1474 follow-up).
+describe("an unknown action with no close match", () => {
+  test("in [keys] is a warning; the other bindings and the rest of the file apply", () => {
+    const r = parseConfig(
+      toml(
+        "[keys]",
+        'summon_hologram = ["prefix+h"]',
+        'new_tab = ["prefix+t"]',
+        "[scroll]",
+        "step = 7",
+      ),
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([
+      {
+        line: 2,
+        path: "keys.summon_hologram",
+        message: 'unknown action "summon_hologram"; skipped',
+      },
+    ]);
+    expect(r.keymap?.keysFor("new_tab")).toContain("ctrl+b t");
+    expect(r.keymap?.keysFor("new_tab")).not.toContain("ctrl+b c");
+    expect(r.config?.scroll.step).toBe(7);
+    expect(r.config?.keys).not.toHaveProperty("summon_hologram");
+  });
+
+  test("in a [modal.<mode>] table is a warning; that table's other bindings apply", () => {
+    const r = parseConfig(toml("[modal.normal]", '"zq" = "summon_hologram"', '"zt" = "new_tab"'));
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([
+      {
+        line: 2,
+        path: "modal.normal.zq",
+        message: 'unknown action "summon_hologram"; skipped',
+      },
+    ]);
+    expect(r.keymap?.keysFor("new_tab")).toContain("zt");
+  });
+
+  test("whose name is not a bare key is skipped, not a throw (#134)", () => {
+    const r = parseConfig(toml(`'keys'.'mod['."github.com" = "github.com"`));
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([
+      { line: 1, path: 'keys."mod["', message: 'unknown action "mod["; skipped' },
+    ]);
+  });
+
+  test("leaves a keymap that a site unbind can compile again", () => {
+    const r = parseConfig(toml("[keys]", 'summon_hologram = "prefix+h"'));
+    const km = withSiteUnbinds(r.keymap!, new Map([["example.com", ["j"]]]));
+    expect(km.keysFor("new_tab")).toEqual(r.keymap?.keysFor("new_tab"));
+  });
+});
+
+describe("a skipped binding, further", () => {
+  test("named like an Object.prototype member is skipped; the prototype stays clean", () => {
+    const r = parseConfig(
+      toml(
+        "[keys]",
+        '__proto__ = "prefix+h"',
+        'constructor = "prefix+j"',
+        "[modal.normal]",
+        '"__proto__" = "toString"',
+      ),
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.warnings.map((w) => w.message)).toEqual([
+      'unknown action "__proto__"; skipped',
+      'unknown action "constructor"; skipped',
+      'unknown action "toString"; skipped',
+    ]);
+    expect(Object.prototype).not.toHaveProperty("prefix");
+  });
+
+  test("on a default [modal] sequence leaves the default action there (F2's accepted risk)", () => {
+    // `d` is scroll.half_down in normal mode by default (defaults.mjs).
+    const name = resolveActionName("scroll.half_down")!.name;
+    const r = parseConfig(toml("[modal.normal]", '"d" = "summon_hologram"'));
+    expect(r.warnings).toHaveLength(1);
+    expect(r.keymap?.keysFor(name)).toEqual(parseConfig("").keymap?.keysFor(name));
+    expect(r.keymap?.keysFor(name)).toContain("d");
+  });
+});
+
+describe("a binding that stays an error", () => {
+  test.each([
+    // A near miss of a real action is a typo.
+    [["[keys]", 'new_tabb = "prefix+t"'], 'unknown action "new_tabb"'],
+    [["[modal.normal]", '"zt" = "new_tabb"'], 'unknown action "new_tabb"'],
+    // Malformed key notation is a bad value, as #1477 kept bad values errors.
+    [["[keys]", 'new_tab = "ctrl+bogus+t"'], 'unknown modifier "bogus"'],
+    // A boolean check fails closed (m6a-updater decision 31).
+    [["[keys]", "check = false"], 'unknown key "check"'],
+    [["[keys.newer]", "updates = { check = false }"], 'unknown key "newer"'],
+    [["[keys.newer.deep]", "check = false"], 'unknown key "newer"'],
+    // A top-level table's dotted line under [keys] is misplaced (#1270).
+    [["[keys]", 'ui.toolbar = "shown"'], "belongs under [ui]"],
+  ])("%j", (lines, message) => {
+    const r = parseConfig(toml(...lines));
+    expect(r.warnings).toEqual([]);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]?.message).toContain(message);
   });
 });
 

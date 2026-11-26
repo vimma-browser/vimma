@@ -41,7 +41,9 @@ target, a link under a fixed header, links below the fold, an open shadow root),
 - A label follows the link (the location changes); one in the cross-origin frame navigates the
   frame only; one in a shadow root follows too.
 - A label on a button or on a span with a click listener clicks it; mode stays normal.
-- A label on an input focuses it and the tab enters insert (`j` then types).
+- A label on an input focuses it and the tab enters insert (`j` then types). (Since changed: in
+  a field the user has not been in, the caret goes to the end of its text;
+  [insert-focus](insert-focus.md), "Follow-up: the caret on `i`".)
 - `F` labels the 6 links only; a label opens a background tab with that URL, in the same
   container, and the tab itself stays.
 - Typing the first key of the two-key labels leaves only those; `Backspace` brings all back;
@@ -227,6 +229,20 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (
   point that way is where the page is (none further on for `j` or `d`, or already at the first
   or last one for `gg` or `G`), the scroll does not move and the wait ends at its 1 s limit.
   Issue #1400.)
+  (Since changed: after a wheel while labels show, the page first waits for that wheel to
+  reach it, and a wheel that can scroll is waited for from its first scroll event, rather than
+  the quiet time counting from when the parent asks. Firefox sends a wheel on to the page only
+  after the browser window's own listeners have run, so the question can arrive first, and the
+  page hands the wheel's smooth scroll to APZ, which starts it at the next paint. On a busy
+  machine the quiet time ran out before the first scroll event, and the labels came back where
+  the page had been. A wheel the page cancelled (its script may scroll a frame later), one that
+  nothing under the pointer can scroll its way, or one whose point the page reads otherwise
+  (under a pinch zoom, after 0.5 s) waits for the quiet time from when the page got it, as
+  before. A wheel with ctrl, alt or meta, or one over a subframe, is waited for as before.
+  Where a scroller can move but the wheel does not move it (`overscroll-behavior` on an inner
+  scroller at its end, a mandatory snap point that holds), the labels stay hidden until the
+  1 s limit. Issues #1375 and #1430; described in `actors/page-scroll.mjs`, `wheelSeen` and
+  `wheelCanScroll`, and in `actors/VimmaChild.sys.mjs`, `#hintsMoved`.)
 - Delegated click handlers on elements with no role, tabindex or listener of their own (some
   React apps) get no hint; no `cursor: pointer` heuristic.
 - Canvas and WebGL apps (Google Docs, Figma, maps, games) draw their own controls: there are no

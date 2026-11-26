@@ -402,8 +402,21 @@ add_task(async function a_viewer_whose_pdfViewer_getter_throws_still_reports_eac
     await recordingState(async (seen) => {
       // Each report carries how many operations the actor was sent (`state.pdf`); a viewer that
       // throws from its own getter fails the operation, not the report that follows it.
+      const states = /** @type {{ ops: number, page?: unknown }[]} */ (seen);
+      // Read before the getter throws: a report with no page number (pdf.js's own page getter
+      // goes through pdfViewer) leaves the parent no state, and no operation is sent until the
+      // zoom, so the count stays the same.
+      let sent = PdfOps.state(browser)?.ops ?? NaN;
+      Assert.ok(Number.isSafeInteger(sent), "the last report's operation count");
+      const start = states.length;
       await SpecialPowers.spawn(browser, [], () => {
         const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+        // A report scheduled before the getter throws and sent after it, as pdf.js's events for
+        // a page still drawing schedule one (#1541).
+        /** @type {PdfJsEventBus} */ (app.eventBus).dispatch(
+          "pagesloaded",
+          Cu.cloneInto({ pagesCount: 6 }, content),
+        );
         Object.defineProperty(app, "pdfViewer", {
           configurable: true,
           get: Cu.exportFunction(() => {
@@ -411,11 +424,10 @@ add_task(async function a_viewer_whose_pdfViewer_getter_throws_still_reports_eac
           }, content),
         });
       });
-      const states = /** @type {{ ops: number }[]} */ (seen);
-      // Read from the messages themselves: with no page number (pdf.js's own page getter goes
-      // through pdfViewer) the parent keeps no state.
-      let sent = PdfOps.state(browser)?.ops ?? NaN;
-      Assert.ok(Number.isSafeInteger(sent), "the last report's operation count");
+      await TestUtils.waitForCondition(
+        () => states.slice(start).some((s) => !Number.isSafeInteger(s.page)),
+        "a report with no page",
+      );
       // A zoom, which the adapter runs on pdfViewer, and a jump, which goes through pdf.js's
       // link service.
       for (const op of ["zoom", "first"]) {

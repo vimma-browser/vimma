@@ -23,6 +23,12 @@ describe("docs/guide.md's config.toml reference", () => {
     expect(md).not.toMatch(/^\|/m);
   });
 
+  test("shows [tabs] with tab sleep's defaults, linked to Sleeping tabs", () => {
+    const md = configReferenceMarkdown();
+    expect(md).toMatch(/^\[tabs\]\nsleep_after = 120 +# .*\nsleep_on_low_memory = true +# /m);
+    expect(md).toContain("[Sleeping tabs](#sleeping-tabs)");
+  });
+
   test("replaces only what lies between the reference's first heading and Search engines", () => {
     const text =
       "# A\n\nkept\n\n### Keys and modes\n\nOLD-TEXT\n\n### Search engines\n\nkept too\n";

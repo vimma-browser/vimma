@@ -15,6 +15,7 @@
 
 /* global PopupNotifications -- the browser window's (browser.js) */
 
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule(
   "resource:///modules/BrowserWindowTracker.sys.mjs",
 );
@@ -389,4 +390,110 @@ add_task(async function test_agent_pages_launch_no_app() {
   );
   Assert.equal(typeof chooser.handleURI, "function", "Firefox's chooser is reached");
   BrowserTestUtils.removeTab(agentTab);
+});
+
+// security.md M10, issue #1568: a modified click (ctrl or cmd, shift, middle) on a link in an
+// agent tab opens no tab or window. Firefox's ClickHandlerChild sends it to ClickHandlerParent,
+// which opens it with openLinkIn, outside the pop-up sandbox, so without the guard a page
+// holding the user's activation could open one uncounted tab per gesture. The same click in a
+// main tab still opens a tab.
+add_task(async function test_agent_tabs_open_nothing_on_modified_clicks() {
+  const { ClickHandlerParent } = ChromeUtils.importESModule(
+    "resource:///actors/ClickHandlerParent.sys.mjs",
+  );
+  /** @type {MozBrowser[]} */
+  const seen = [];
+  const listener = { onContentClick: (/** @type {MozBrowser} */ b) => seen.push(b) };
+  ClickHandlerParent.addContentClickListener(listener);
+  registerCleanupFunction(() => ClickHandlerParent.removeContentClickListener(listener));
+  // ClickHandlerParent tells its listeners right after contentAreaClick, which opens the tab
+  // synchronously: once a listener heard the click, any tab it opens is in gBrowser.tabs.
+  /** @param {MozBrowser} browser */
+  const handled = async (browser) => {
+    const count = seen.filter((b) => b === browser).length;
+    await TestUtils.waitForCondition(
+      () => seen.filter((b) => b === browser).length > count,
+      "ClickHandlerParent handled the click",
+    );
+  };
+  const accel = AppConstants.platform === "macosx" ? { metaKey: true } : { ctrlKey: true };
+  /** A link the page's (or a frame's) script clicks, with the user's activation. */
+  const scripted = (
+    /** @type {MozBrowser | BrowsingContext} */ target,
+    /** @type {MouseEventInit} */ init,
+  ) =>
+    SpecialPowers.spawn(target, [init], (opts) => {
+      const a = content.document.createElement("a");
+      a.href = "https://example.org/browser/?scripted";
+      a.textContent = "link";
+      content.document.body.append(a);
+      content.document.notifyUserGestureActivation();
+      const type = opts.button === 1 ? "auxclick" : "click";
+      a.dispatchEvent(new content.MouseEvent(type, { bubbles: true, cancelable: true, ...opts }));
+    });
+
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
+  const tab = await tabIn(agent.userContextId);
+  const previous = gBrowser.selectedTab;
+  gBrowser.selectedTab = tab;
+  const before = gBrowser.tabs.length;
+  // openWindow notifies domwindowopened synchronously, inside contentAreaClick; the window
+  // tracker would count the window only once it has loaded.
+  let windowsOpened = 0;
+  const onWindow = (/** @type {unknown} */ _subject, /** @type {string} */ topic) => {
+    if (topic === "domwindowopened") windowsOpened++;
+  };
+  Services.ww.registerNotification(onWindow);
+  registerCleanupFunction(() => Services.ww.unregisterNotification(onWindow));
+  for (const init of [accel, { button: 1 }, { shiftKey: true }]) {
+    const done = handled(tab.linkedBrowser);
+    await scripted(tab.linkedBrowser, init);
+    await done;
+    Assert.equal(gBrowser.tabs.length, before, `a scripted ${JSON.stringify(init)} opens no tab`);
+    Assert.equal(windowsOpened, 0, "and no window");
+  }
+  // A cross-origin frame's script: the guard goes by the tab's top browsing context.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
+    const frame = content.document.createElement("iframe");
+    frame.src = "https://example.org/browser/";
+    const loaded = new Promise((r) => frame.addEventListener("load", r, { once: true }));
+    content.document.body.append(frame);
+    await loaded;
+  });
+  const frameBC = /** @type {BrowsingContext} */ (contextOf(tab.linkedBrowser).children[0]);
+  const frameDone = handled(tab.linkedBrowser);
+  await scripted(frameBC, accel);
+  await frameDone;
+  Assert.equal(gBrowser.tabs.length, before, "a cross-origin frame's scripted click opens no tab");
+  // The user's own (trusted) ctrl-click and middle click on a link the page shows.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const a = content.document.createElement("a");
+    a.id = "real";
+    a.href = "https://example.org/browser/?trusted";
+    a.textContent = "a link the user clicks";
+    content.document.body.prepend(a);
+  });
+  for (const init of [{ accelKey: true }, { button: 1 }]) {
+    const done = handled(tab.linkedBrowser);
+    await BrowserTestUtils.synthesizeMouseAtCenter("#real", init, tab.linkedBrowser);
+    await done;
+    Assert.equal(gBrowser.tabs.length, before, `a real ${JSON.stringify(init)} opens no tab`);
+  }
+  Assert.equal(
+    tab.linkedBrowser.currentURI.spec,
+    PAGE,
+    "and the agent tab stays on its page (a modified click is dropped, not followed)",
+  );
+  gBrowser.selectedTab = previous;
+  BrowserTestUtils.removeTab(tab);
+
+  // A main tab (the container of the tab the test started in): the same scripted ctrl-click
+  // opens a tab in the background.
+  const mine = await tabIn(previous.userContextId);
+  gBrowser.selectedTab = mine;
+  Assert.notEqual(mine.userContextId, agent.userContextId, "sanity: a main tab");
+  const opened = BrowserTestUtils.waitForNewTab(gBrowser, "https://example.org/browser/?scripted");
+  await scripted(mine.linkedBrowser, accel);
+  BrowserTestUtils.removeTab(await opened);
+  BrowserTestUtils.removeTab(mine);
 });

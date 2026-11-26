@@ -365,3 +365,36 @@ add_task(async function firefox_split_view_ui_is_hidden() {
   Assert.equal(getComputedStyle(button).display, "none", "the URL bar button never shows");
   button.hidden = true;
 });
+
+// Firefox puts a footer with the page's address and a menu button in the corner of each
+// unfocused split panel: `split-view-footer` up to Firefox 161, `address-footer` from 162
+// (address-footer.mjs). Vimma's status bar shows the focused pane's address, so no footer
+// shows, whatever Firefox names it: any `-footer` element in a panel's browser stack counts.
+add_task(async function firefox_split_view_footers_are_hidden() {
+  await setWindowSize();
+  const { tabs } = await lShape();
+  await TestUtils.waitForCondition(
+    () => tabs.some((tab) => footersOf(tab).length),
+    "Firefox has put a footer in an unfocused pane",
+  );
+  for (const tab of tabs) {
+    for (const footer of footersOf(tab)) {
+      Assert.equal(
+        getComputedStyle(footer).display,
+        "none",
+        `${tab.label}'s ${footer.localName} is hidden`,
+      );
+    }
+  }
+  await reset();
+});
+
+/**
+ * The footers Firefox has put in the tab's panel.
+ * @param {SplitTab} tab
+ */
+function footersOf(tab) {
+  return [...panelOf(tab).querySelectorAll(".browserStack > *")].filter((el) =>
+    el.localName.endsWith("-footer"),
+  );
+}

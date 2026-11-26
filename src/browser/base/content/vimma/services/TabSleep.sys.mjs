@@ -6,12 +6,11 @@
 // discard (docs/specs/tab-sleep.md). One check every few minutes walks every tab; core's
 // planSleep decides, this module gathers the facts and calls Firefox. It also runs Firefox's
 // own low-memory unloader from `[tabs] sleep_on_low_memory` and keeps it off the tabs the check
-// protects that it does not know about (decision 21). Behind vimma.feature.tabSleep until the
-// feature is finished (decision 20).
+// protects that it does not know about (decision 21).
 
 import { SLEEP_CHECK_MS, planSleep } from "../core/tabsleep.mjs";
 
-/** @import { SleepTab } from "../core/tabsleep.mjs" */
+/** @import { SleepMode, SleepOutcome, SleepTab } from "../core/tabsleep.mjs" */
 
 /** @typedef {"PrivateBrowsingUtils" | "webrtcUI" | "setInterval" | "clearInterval"} LazyName */
 const lazy = /** @type {Lazy<LazyName>} */ ({});
@@ -22,7 +21,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   clearInterval: "resource://gre/modules/Timer.sys.mjs",
 });
 
-export const FEATURE_PREF = "vimma.feature.tabSleep";
 /** How often the check runs, in ms; tests shorten it (decision 20). */
 export const CHECK_PREF = "vimma.tabs.sleepCheckMs";
 /** Firefox's low-memory unloader, read at each low-memory signal (TabUnloader.sys.mjs). */
@@ -70,10 +68,6 @@ let checks = 0;
  */
 const seenOnScreen = new WeakMap();
 
-const enabled = () => Services.prefs.getBoolPref(FEATURE_PREF, false);
-
-/** Firefox's default for UNLOAD_PREF, read before this module changes it (off on Linux). */
-let firefoxUnloads = false;
 /**
  * The browsers' permanent keys of the tabs this module marked `undiscardable`, so that it never
  * clears a mark an add-on set (`autoDiscardable: false`, ext-tabs.js). The key, not the tab:
@@ -85,7 +79,7 @@ const marked = new WeakSet();
 
 /** Whether `[tabs] sleep_on_low_memory` asks for Firefox's low-memory unloader (decision 21). */
 function configUnloads() {
-  return !!deps && enabled() && (deps.configHost.config?.tabs.sleepOnLowMemory ?? true);
+  return !!deps && (deps.configHost.config?.tabs.sleepOnLowMemory ?? true);
 }
 
 /**
@@ -93,16 +87,15 @@ function configUnloads() {
  * config's default-branch one, and the marks must follow the unloader that runs.
  */
 function lowMemoryOn() {
-  return !!deps && enabled() && Services.prefs.getBoolPref(UNLOAD_PREF, false);
+  return !!deps && Services.prefs.getBoolPref(UNLOAD_PREF, false);
 }
 
 /**
  * Sets Firefox's unloader pref from `[tabs] sleep_on_low_memory`, on the default branch: nothing
- * is written to prefs.js, a value set in about:config still wins, and Firefox's own default
- * comes back with the feature pref off.
+ * is written to prefs.js, and a value set in about:config still wins.
  */
 function applyUnloadPref() {
-  const value = enabled() ? configUnloads() : firefoxUnloads;
+  const value = configUnloads();
   const defaults = Services.prefs.getDefaultBranch("");
   if (defaults.getBoolPref(UNLOAD_PREF, false) !== value) defaults.setBoolPref(UNLOAD_PREF, value);
 }
@@ -147,7 +140,7 @@ function markAll() {
   for (const win of Services.wm.getEnumerator("navigator:browser")) markWindow(win);
 }
 
-/** The feature pref or the config changed: the check's interval, the pref and the marks. */
+/** The config changed: the check's interval, the pref and the marks. */
 function refresh() {
   update();
   applyUnloadPref();
@@ -162,21 +155,14 @@ function refresh() {
  */
 export const tabAsleep = (tab) => !tab.linkedPanel || tab.hasAttribute("pending");
 
-/**
- * Whether the tab line, the side panel and `state` show the tab asleep (behaviours 14 and 15):
- * only behind the feature pref until the feature is finished (decision 20).
- * @param {Tab} tab
- */
-export const shownAsleep = (tab) => enabled() && tabAsleep(tab);
-
 /** The limit in force, in ms; 0 when the check is off or nothing is known yet. */
 function sleepAfterMs() {
-  if (!deps || !enabled()) return 0;
+  if (!deps) return 0;
   const minutes = deps.configHost.config?.tabs.sleepAfter ?? 0;
   return minutes * 60_000;
 }
 
-/** Starts or stops the interval to match the feature pref and `sleep_after` (decision 13). */
+/** Starts or stops the interval to match `sleep_after` (decision 13). */
 function update() {
   const want = sleepAfterMs() > 0;
   if (!want && timer !== null) {
@@ -216,16 +202,47 @@ function sharing(tab) {
  * the latest scroll and form data, then unforced, so a page that would ask before leaving, or
  * has a dialog open, stays (decisions 1 and 10). Checked again after the flush, which yields:
  * the user may have selected the tab or shown its split meanwhile, or an agent connected and
- * been given the tab's id (decision 8).
+ * been given the tab's id (decision 8), or it closed, or something else (the check, Firefox's
+ * unloader) put it to sleep. Resolves to null once asleep, else what became of it.
  * @param {BrowserWindow} win
  * @param {Tab} tab
  * @param {TabSleepDeps} d
+ * @returns {Promise<SleepOutcome>}
  */
 async function discard(win, tab, d) {
   await win.gBrowser.prepareDiscardBrowser(tab);
-  if (win.closed || tab.closing || tab.selected || shownTabs(d, win).includes(tab)) return false;
-  if (d.mcp.agentConnected && isAgentTab(d, tab)) return false;
-  return win.gBrowser.discardBrowser(tab, false);
+  if (win.closed || tab.closing || !tab.parentNode) return "closed";
+  if (tabAsleep(tab)) return "asleep";
+  if (tab.selected || shownTabs(d, win).includes(tab)) return "onScreen";
+  if (d.mcp.agentConnected && isAgentTab(d, tab)) return "agent";
+  return win.gBrowser.discardBrowser(tab, false) ? null : "unload";
+}
+
+/**
+ * The facts `planSleep` reads of `tab`, read without touching its page.
+ * @param {TabSleepDeps} d
+ * @param {Tab} tab
+ * @param {{ id: string, now: number, isPrivate: boolean, shown: ReadonlySet<Tab> }} where
+ * @returns {SleepTab}
+ */
+function factsOf(d, tab, { id, now, isPrivate, shown }) {
+  const onScreen = tab.selected || shown.has(tab);
+  if (onScreen) seenOnScreen.set(tab, now);
+  const asleep = tabAsleep(tab);
+  return {
+    id,
+    lastSeen: Math.max(tab.lastAccessed, seenOnScreen.get(tab) ?? 0),
+    onScreen,
+    pinned: tab.pinned,
+    sound: tab.soundPlaying,
+    pip: !!tab.pictureinpicture,
+    sharing: !asleep && sharing(tab),
+    private: isPrivate,
+    agent: isAgentTab(d, tab),
+    url: tab.linkedBrowser?.currentURI?.spec ?? "",
+    loading: tab.hasAttribute("busy"),
+    asleep,
+  };
 }
 
 export const TabSleep = {
@@ -236,8 +253,6 @@ export const TabSleep = {
   init(d) {
     if (deps) return;
     deps = d;
-    firefoxUnloads = Services.prefs.getDefaultBranch("").getBoolPref(UNLOAD_PREF, false);
-    Services.prefs.addObserver(FEATURE_PREF, refresh);
     Services.prefs.addObserver(CHECK_PREF, restart);
     Services.prefs.addObserver(UNLOAD_PREF, markAll);
     Services.obs.addObserver(refresh, d.configTopic);
@@ -305,25 +320,9 @@ export const TabSleep = {
       const shown = new Set(shownTabs(d, win));
       for (const tab of /** @type {Tab[]} */ (win.gBrowser.tabs)) {
         if (tab.closing) continue;
-        const onScreen = tab.selected || shown.has(tab);
-        if (onScreen) seenOnScreen.set(tab, now);
         const id = String(byId.size);
         byId.set(id, { win, tab });
-        const asleep = tabAsleep(tab);
-        facts.push({
-          id,
-          lastSeen: Math.max(tab.lastAccessed, seenOnScreen.get(tab) ?? 0),
-          onScreen,
-          pinned: tab.pinned,
-          sound: tab.soundPlaying,
-          pip: !!tab.pictureinpicture,
-          sharing: !asleep && sharing(tab),
-          private: isPrivate,
-          agent: isAgentTab(d, tab),
-          url: tab.linkedBrowser?.currentURI?.spec ?? "",
-          loading: tab.hasAttribute("busy"),
-          asleep,
-        });
+        facts.push(factsOf(d, tab, { id, now, isPrivate, shown }));
       }
     }
     const plan = planSleep({
@@ -337,8 +336,58 @@ export const TabSleep = {
     const slept = [];
     for (const id of plan.sleep) {
       const { win, tab } = /** @type {{ win: BrowserWindow, tab: Tab }} */ (byId.get(id));
-      if (await discard(win, tab, d)) slept.push(tab);
+      if ((await discard(win, tab, d)) === null) slept.push(tab);
     }
     return slept;
+  },
+
+  /**
+   * `:sleep` and its forms, and the side panel's `z` (docs/specs/tab-sleep.md Behaviour 9-12):
+   * `tabs` put to sleep at once under the check's rules without its time limit, "named" also
+   * without the pin and site rules (decision 14). Resolves to each tab's outcome, in order:
+   * null once put to sleep, "asleep" when it had no loaded page already, "closed" when it closed
+   * meanwhile, else why it stayed.
+   * The flushes run together, so that `:sleep all` over many tabs takes about one flush.
+   * @param {readonly { win: BrowserWindow, tab: Tab }[]} tabs  each with the window it is in
+   * @param {Exclude<SleepMode, "time">} mode
+   * @returns {Promise<SleepOutcome[]>}
+   */
+  async sleepTabs(tabs, mode) {
+    const d = deps;
+    // vimma.js starts TabSleep before any window's keys run; without it nothing knows the panes
+    // on screen or the agent, so nothing is put to sleep.
+    if (!d) throw new Error("TabSleep has not started");
+    const now = Date.now();
+    /** @type {Map<BrowserWindow, { isPrivate: boolean, shown: Set<Tab> }>} */
+    const windows = new Map();
+    const facts = tabs.map(({ win, tab }, i) => {
+      let w = windows.get(win);
+      if (!w) {
+        w = {
+          isPrivate: lazy.PrivateBrowsingUtils.isWindowPrivate(win),
+          shown: new Set(shownTabs(d, win)),
+        };
+        windows.set(win, w);
+      }
+      return factsOf(d, tab, { id: String(i), now, ...w });
+    });
+    const plan = planSleep({
+      now,
+      sleepAfterMs: 0,
+      tabs: facts,
+      sites: d.configHost.config?.sites ?? [],
+      agentConnected: d.mcp.agentConnected,
+      mode,
+    });
+    /** @type {SleepOutcome[]} */
+    const out = facts.map((f) => (f.asleep ? "asleep" : null));
+    for (const k of plan.keep) out[Number(k.id)] = k.reason;
+    await Promise.all(
+      plan.sleep.map(async (id) => {
+        const { win, tab } = /** @type {{ win: BrowserWindow, tab: Tab }} */ (tabs[Number(id)]);
+        out[Number(id)] = await discard(win, tab, d);
+      }),
+    );
+    return out;
   },
 };

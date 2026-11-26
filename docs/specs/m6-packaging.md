@@ -278,6 +278,9 @@ Engine paths were checked against Firefox 158.0 (`config/milestone.txt`).
    user's previous `PKGBUILD` in place and stop before `makepkg` runs. Rejected: a pacman
    repository, because it needs hosting and a repository signing key of its own; telling Arch
    users to unpack the tarball, because pacman would then not own, upgrade or remove the files.
+   (Since changed: [package-repositories](package-repositories.md) publishes a signed pacman
+   repository with a prebuilt `vimma-bin` from release 0.1.24, which the guide now leads with;
+   the release `PKGBUILD` stays for installs without the repository.)
 2. **The PKGBUILD needs no other file.** Its only `source` is the release tarball, by URL with
    its SHA-256 pinned; the desktop file and `vimma-open` are written in `package()` as quoted
    here-documents (`cat > … <<'VIMMA_OPEN_EOF'`, nothing expanded), so that a PKGBUILD

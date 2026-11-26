@@ -140,8 +140,9 @@ for the same release), and runs `npm run mochitest -- --artifact tests/browser/`
 `VIMMA_REQUIRE_CTL=1`, so the vimma-ctl task fails rather than skips. Files that test
 compiled-in parts are marked `skip-if = ["artifact"]` in `browser.toml` (at present the crash
 reporter, the `--version` line and the updater); `nightly.yml` runs the whole suite on a full
-build. The separate job `mochitest (artifact build, macOS)` (`mochitest-macos`) only reports: on
-a hosted Mac it runs `npm test` and the same suite, without `vimma-ctl` (so
+build. The separate job `mochitest-macos` only reports: on two hosted Macs at once, as
+`mochitest (artifact build, macOS, shard 1/2)` and `shard 2/2`, it runs `npm test` and half of
+the same suite each (`--shard=N/2`, split by file on measured times), without `vimma-ctl` (so
 `browser_vimma_control.js` skips), and it has no draft skip.
 
 **Locally.** In a worktree, `npm run lane:setup` once (a copy of the primary checkout's engine,

@@ -13,10 +13,12 @@ import {
   hintCollectReason,
   parseBlockReply,
   parseHintReply,
+  parseHoverReply,
 } from "../core/hints.mjs";
 import { INSERT_ENTER } from "../core/editable.mjs";
 import { parseScrollPosition } from "../core/find.mjs";
 import { SCROLL_STEP_DEFAULT, scrollStep } from "../core/scroll.mjs";
+import { parseScrollAreasReply } from "../core/scroll-areas.mjs";
 import { suggestionStep } from "../core/suggestions.mjs";
 import { NAME, actorFor } from "./actor-for.mjs";
 import { pressKeyLater } from "./enter-key.mjs";
@@ -46,7 +48,7 @@ const START_PAGE_MATCH = "chrome://browser/content/vimma/start/start.html";
  * A hint target in the parent: where to draw it and how to reach its element again.
  * @typedef {object} HintTarget
  * @property {Rect} rect  in the top frame's CSS pixels
- * @property {"link" | "input" | "click" | "block"} kind
+ * @property {"link" | "input" | "click" | "block" | "hover"} kind
  * @property {string} [href]  links only
  * @property {string} [text]  an agent's links only: what the link says (mcp-drive D12)
  * @property {import("../core/blocks.mjs").BlockKind} [blockKind]  text blocks only
@@ -212,6 +214,11 @@ export const VimmaActors = {
           // child can still tell the parent (issue #1028). The system group: the page cannot
           // stop it.
           pagehide: { mozSystemGroup: true, createActor: false },
+          // Whether a wheel has reached the page, and whether the page cancelled it, for the
+          // labels after a wheel (m1-hints, issue #1375). The system group runs after the
+          // page's listeners; passive, as a listener that may cancel a wheel makes APZ wait
+          // for the page before it scrolls.
+          wheel: { mozSystemGroup: true, passive: true, createActor: false },
           // macOS only: a suggestion key's keypress, before the focused field runs Cocoa's key
           // binding on it (VimmaChild, "keypress"). The field's handler is in the system
           // group: an <input>'s or <textarea>'s on the field in the bubble phase
@@ -275,6 +282,154 @@ export const VimmaActors = {
         return true;
     }
     return false;
+  },
+
+  /**
+   * The browsing context ids of the frames the scroll keys try, in order (framesFor): the
+   * focused subframe, then the top frame.
+   * @param {MozBrowser} browser
+   * @returns {number[]}
+   */
+  scrollFrameOrder(browser) {
+    return framesFor(browser).map((bc) => bc.id);
+  },
+
+  /**
+   * The scroll areas of the page in `browser` and its frames (docs/specs/scroll-area.md), in
+   * the top frame's CSS pixels: each frame's child finds its own, and the parent offsets and
+   * clips them by the frame rects their embedders report, as collectHints does. Replies are
+   * from content processes: a malformed one, or one that comes too late, drops that frame.
+   * `index` is the area's place in its frame's own list, for pickScrollArea.
+   * @param {MozBrowser} browser
+   * @returns {Promise<{ viewport: Rect | null, areas: { bc: CanonicalBrowsingContext,
+   *   wg: WindowGlobalParent, frame: number, index: number, rect: Rect, current: boolean,
+   *   chosen: boolean }[] }>}
+   */
+  async scrollAreas(browser) {
+    /** @type {Rect | null} */
+    let viewport = null;
+    /** @type {{ bc: CanonicalBrowsingContext, wg: WindowGlobalParent, frame: number,
+     *   index: number, rect: Rect, current: boolean, chosen: boolean }[]} */
+    const out = [];
+    const frameTimeout = Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT);
+    /** Each frame at most once, whatever its embedder reports. */
+    const visited = new Set();
+    /**
+     * @param {CanonicalBrowsingContext} bc
+     * @param {Rect} clip  the frame's viewport in top-frame pixels, clipped by its ancestors
+     * @param {{ x: number, y: number }} origin  its viewport origin in top-frame pixels
+     * @param {number} depth
+     */
+    const visit = async (bc, clip, origin, depth) => {
+      if (visited.has(bc.id)) return;
+      visited.add(bc.id);
+      const wg = bc.currentWindowGlobal;
+      const actor = actorFor(bc);
+      if (!wg || !actor) return;
+      /** @type {unknown} */
+      let raw;
+      /** @type {number | undefined} */
+      let timer;
+      try {
+        /** @type {Promise<null>} */
+        const late = new Promise((resolve) => {
+          timer = setTimeout(resolve, depth === 0 ? HINT_TOP_TIMEOUT_MS : frameTimeout, null);
+        });
+        raw = await Promise.race([actor.sendQuery("Vimma:ScrollAreas"), late]);
+      } catch {
+        return; // the frame navigated or its process went away
+      } finally {
+        clearTimeout(timer);
+      }
+      // From a content process, which may be compromised: a fresh, checked copy or nothing.
+      const reply = parseScrollAreasReply(raw);
+      if (!reply || bc.currentWindowGlobal !== wg) return;
+      if (depth === 0) viewport = reply.viewport;
+      reply.areas.forEach((a, index) => {
+        const rect = intersect(offset(a.rect, origin), clip);
+        if (rect)
+          out.push({ bc, wg, frame: bc.id, index, rect, current: a.current, chosen: a.chosen });
+      });
+      if (depth >= MAX_FRAME_DEPTH) return;
+      await Promise.all(
+        reply.frames.map((f) => {
+          // Only a frame this document embeds: a content process names no other.
+          const child = bc.children.find((c) => c.id === f.id);
+          if (!child) return null;
+          const rect = offset(f.rect, origin);
+          const clipped = intersect(rect, clip);
+          return clipped && visit(child, clipped, { x: rect.x, y: rect.y }, depth + 1);
+        }),
+      );
+    };
+    const top = browser.browsingContext;
+    if (top) {
+      await visit(top, { x: 0, y: 0, width: Infinity, height: Infinity }, { x: 0, y: 0 }, 0);
+    }
+    return { viewport, areas: out };
+  },
+
+  /**
+   * Makes area `index` of the frame's document the one the scroll keys move, while the frame
+   * still shows that document (docs/specs/scroll-area.md).
+   * @param {CanonicalBrowsingContext} bc
+   * @param {WindowGlobalParent} wg
+   * @param {number} index
+   * @returns {Promise<boolean | null>} whether an area is chosen there (false: the default
+   *   rule's own area), null when it did not happen
+   */
+  async pickScrollArea(bc, wg, index) {
+    if (bc.currentWindowGlobal !== wg) return null;
+    // Bounded like the areas' query: the scroll keys after `gs` wait for this answer, so a
+    // frame that never gives one must not hold them (scroll-area-ops.mjs).
+    const ms = bc.parent
+      ? Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT)
+      : HINT_TOP_TIMEOUT_MS;
+    /** @type {number | undefined} */
+    let timer;
+    try {
+      /** @type {Promise<null>} */
+      const late = new Promise((resolve) => {
+        timer = setTimeout(resolve, ms, null);
+      });
+      const query = actorFor(bc)?.sendQuery("Vimma:ScrollAreaPick", { index });
+      const reply = await Promise.race([query, late]);
+      return typeof reply === "boolean" ? reply : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /**
+   * Ends the scroll area choice held in the document `wg`, if it is still shown. Only that
+   * document's existing actor hears of it: no other frame is messaged, and none gets an actor
+   * for it.
+   * @param {WindowGlobalParent} wg
+   */
+  clearScrollArea(wg) {
+    if (wg.browsingContext?.currentWindowGlobal !== wg) return;
+    try {
+      wg.getExistingActor(NAME)?.sendAsyncMessage("Vimma:ScrollAreaClear");
+    } catch {
+      // The document went away: nothing of its choice is left.
+    }
+  },
+
+  /**
+   * Resolves once the page in `browser` has painted since its last resize reached it, or at
+   * once when it has no actor (docs/specs/private-swap-macos.md, #773). Nothing comes back but
+   * the reply itself, and the caller bounds the wait.
+   * @param {MozBrowser} browser
+   * @returns {Promise<void>}
+   */
+  async painted(browser) {
+    try {
+      await actorFor(browser.browsingContext)?.sendQuery("Vimma:Painted");
+    } catch {
+      // The page went away or navigated: nothing of it is left to wait for.
+    }
   },
 
   /**
@@ -415,14 +570,16 @@ export const VimmaActors = {
    * @param {string} action "hint.follow", "hint.follow_new_tab" or "hint.follow_new_tab_fg"
    *   (links only) or "hint.element"
    *   (text blocks, docs/specs/element-focus.md)
-   * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an
+   * @param {{ agent?: boolean, elements?: boolean, hoverToo?: boolean }} [options]  `agent`: an
    *   agent's `f` in its tab (docs/specs/mcp-drive.md D12): links only, each with its text, live
-   *   per tab, not per window; with `elements`, an agent's `vimma_elements`
+   *   per tab, not per window; `hint.hover` collects what can be hovered (docs/specs/hover.md);
+   *   with `elements`, an agent's `vimma_elements`
    *   (docs/specs/mcp-forms.md F2): every kind but blocks, disabled controls too, each
-   *   described, kept apart from the user's
+   *   described, kept apart from the user's; with `hoverToo` also what only hovering does
+   *   something with (docs/specs/hover.md decision 10)
    * @returns {Promise<HintTarget[]>}
    */
-  async collectHints(browser, action, { agent = false, elements = false } = {}) {
+  async collectHints(browser, action, { agent = false, elements = false, hoverToo = false } = {}) {
     const gen = ++hintGen;
     // A <browser>'s document has no view only once its window has closed, where liveGen.set
     // throws: the collection fails, as before the type said so.
@@ -445,6 +602,7 @@ export const VimmaActors = {
       action === "hint.show_target" ||
       action === "hint.copy_target";
     const blocks = !agent && action === "hint.element";
+    const hover = !agent && action === "hint.hover";
     const texts = agent && !elements;
     /** @type {HintTarget[]} */
     const out = [];
@@ -477,6 +635,8 @@ export const VimmaActors = {
           blocks,
           texts,
           elements: agent && elements,
+          hover,
+          ...(agent && elements && hoverToo ? { hoverToo: true } : {}),
         });
         raw = await Promise.race([query, late]);
       } catch {
@@ -486,7 +646,7 @@ export const VimmaActors = {
         clearTimeout(timer);
       }
       // From a content process, which may be compromised: a fresh, checked copy or nothing.
-      const reply = parseHintReply(raw, { blocks, texts, elements: agent && elements });
+      const reply = parseHintReply(raw, { blocks, texts, elements: agent && elements, hover });
       if (depth === 0) {
         lastReasons.set(browser, hintCollectReason({ queried, raw, reply, live: live() }));
       }
@@ -542,10 +702,12 @@ export const VimmaActors = {
    * went away or threw counts as moved, so the labels are collected again as before.
    * @param {MozBrowser} browser
    * @param {number} gen  the collection whose labels show
-   * @param {{ x: number, y: number }} point  the wheel's, in the page's CSS pixels
+   * @param {{ x: number, y: number, dx: number, dy: number, shift: boolean, other: boolean }}
+   *   wheel  its point in the page's CSS pixels, its deltas, whether shift was down, and
+   *   whether ctrl, alt or meta was (the child tells from these whether it can scroll)
    * @returns {Promise<boolean>}
    */
-  async hintsMoved(browser, gen, point) {
+  async hintsMoved(browser, gen, wheel) {
     const actor = actorFor(browser.browsingContext);
     if (!actor) return true;
     /** @type {number | undefined} */
@@ -555,7 +717,8 @@ export const VimmaActors = {
       const late = new Promise((resolve) => {
         timer = setTimeout(resolve, HINT_TOP_TIMEOUT_MS, true);
       });
-      const query = actor.sendQuery("Vimma:HintsMoved", { gen, x: point.x, y: point.y });
+      const { x, y, dx, dy, shift, other } = wheel;
+      const query = actor.sendQuery("Vimma:HintsMoved", { gen, x, y, dx, dy, shift, other });
       return (await Promise.race([query, late])) !== false;
     } catch {
       return true;
@@ -576,6 +739,62 @@ export const VimmaActors = {
     actorFor(target.bc)
       ?.sendQuery("Vimma:ActivateHint", { gen: target.gen, id: target.id })
       .catch(() => {});
+  },
+
+  /**
+   * Hovers a target of the user's `gh` collection (docs/specs/hover.md): its frame locks `:hover`
+   * on it and sends the pointer's events, trusted, as the user's. HoverOps then has the frames
+   * around it lock their `<iframe>` chains (hoverEmbedders, decision 12). Resolves the
+   * element's text for the status bar, or null when the frame did not hover it.
+   * @param {HintTarget} target
+   * @returns {Promise<{ text: string } | null>}
+   */
+  async hover(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return null;
+    const actor = actorFor(target.bc);
+    if (!actor) return null;
+    /** @type {unknown} */
+    let raw;
+    try {
+      raw = await actor.sendQuery("Vimma:Hover", { op: "hover", gen: target.gen, id: target.id });
+    } catch {
+      return null; // the frame navigated or its process went away
+    }
+    // From a content process, which may be compromised: a checked copy, its text cleaned.
+    const reply = parseHoverReply(raw);
+    if (!reply?.hovered || target.bc.currentWindowGlobal !== target.wg) return null;
+    return { text: reply.text };
+  },
+
+  /**
+   * Ends the hover the user's `gh` began in frame `bc` while it shows document `wg`, and the
+   * locks of the frames around it. A frame showing another document by now has no hover of ours.
+   * @param {CanonicalBrowsingContext} bc
+   * @param {WindowGlobalParent} wg
+   */
+  releaseHover(bc, wg) {
+    if (bc.currentWindowGlobal === wg) {
+      actorFor(bc)
+        ?.sendQuery("Vimma:Hover", { op: "release" })
+        .catch(() => {});
+    }
+    this.hoverEmbedders(bc, "release");
+  },
+
+  /**
+   * Has each frame around `bc` lock (or release) its `<iframe>` element's chain for the hover in
+   * `bc` (docs/specs/hover.md decision 12).
+   * @param {CanonicalBrowsingContext} bc
+   * @param {"lock" | "release"} op
+   */
+  hoverEmbedders(bc, op) {
+    for (let child = bc, parent = bc.parent; parent; child = parent, parent = parent.parent) {
+      try {
+        actorFor(parent)?.sendAsyncMessage("Vimma:HoverEmbedder", { op, frame: child.id });
+      } catch {
+        // That frame's document went away, and its locks with it.
+      }
+    }
   },
 
   /**

@@ -90,6 +90,8 @@ describe("defaults.toml as the config.toml reference (#1443)", () => {
         "mcp.download_dir",
         "mcp.download_max_mb",
         "mcp.clamav_max_age_days",
+        "mcp.open_per_minute",
+        "mcp.load_per_minute",
         "agent.default",
         "agent.local_only",
         "agent.max_running",
@@ -154,6 +156,9 @@ describe("defaults.toml as the config.toml reference (#1443)", () => {
     expect(line("clamav_max_age_days")).toContain(
       `(${clamavMaxAgeDays.min}–${clamavMaxAgeDays.max})`,
     );
+    const { openPerMinute, loadPerMinute } = MCP_BOUNDS;
+    expect(line("open_per_minute")).toContain(`(${openPerMinute.min}–${openPerMinute.max})`);
+    expect(line("load_per_minute")).toContain(`(${loadPerMinute.min}–${loadPerMinute.max})`);
   });
 
   test("[agent]'s example lines are its defaults", () => {

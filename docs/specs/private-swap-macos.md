@@ -274,6 +274,31 @@ its old-size contents for those frames
 window as macOS does and checks that the shown window is active and laid out at its new size when
 it is shown.)
 
+(Since changed: when X will be shown at another size than it has, steps 2 to 4 run while X is
+still hidden, and step 5 waits until the page in each tab X shows has painted at the new size, or
+at most 300 ms. Reason: a remote page learns its new size only in X's next refresh, after X's own
+paint (`nsRefreshDriver::Tick` calls `UpdateRemoteFrameEffects`;
+`nsSubDocumentFrame::ReflowFinished` leaves a remote frame that was sized before alone), so with
+the active window and the flushed layout above, X still showed its page at the old size until the
+content process painted: one frame most of the time, about 200 ms once under load
+([#773](https://github.com/vimma-browser/vimma/issues/773)). Vimma waits for X's next refresh,
+which sends the size, and then asks each remote page X shows through its content actor
+(`Vimma:Painted`), over the channel that carried the size, after it. The page answers once a paint
+after the question has reached the compositor (its transaction's `MozAfterPaint`). A page in the
+parent process (the start page) is resized and drawn with X itself and is not asked. Sending the
+size at once with `document.synchronouslyUpdateRemoteBrowserDimensions()` was rejected: recorded
+on macOS, it still showed a stale page in 3 swaps out of 12. A second switch to X during the wait
+waits for the same paint. The wait applies
+to entering and leaving and to `ctrl+b shift+d`. A swap that must not wait stays synchronous: a
+closing window (its replacement must be on screen before it goes), an activation from the Window
+menu, the Dock or `` cmd+` `` (it answers AppKit's own activation), and a link from another app
+(before Firefox's own `focus()`). A swap at the same size needs no new paint and stays synchronous
+too. A switch begun during the wait drops the earlier one, and the window it resized stays hidden
+and is no longer kept active. The timeout bounds what a busy or hung content process costs: the
+window is then shown as before. Not covered, so shown as before: a slot that is zoomed (the zoom is
+applied after the swap reads X's size), a move to a screen of another scale at the same size in
+CSS pixels, and a page without the content actor (`moz-extension:`, `data:`, `blob:`).)
+
 ### Decisions
 
 1. **Swap in place on macOS by native window visibility.** Vimma hides the normal window with
@@ -414,6 +439,10 @@ shared as before, and `vimma-ctl state` reports both windows as today (`"private
 memory, SessionStore never sees a hidden flag, and private windows stay out of macOS window
 restoration (Research). `docs/security/` needs no change, since no security-sensitive
 component (the control socket, MCP, the agent gate, content actors) is touched.
+(Since changed: the swap now asks each page of the window it shows whether it has painted at
+the new size, through the content actor (`Vimma:Painted`, #773). A page can only delay that swap,
+by at most 300 ms, and learns nothing but its own resize; `docs/security/` rule K14 records
+this.)
 
 ## Tests
 
@@ -460,6 +489,12 @@ component (the control socket, MCP, the agent gate, content actors) is touched.
   - Activations and new tabs during a swap do not start another one.
   - No swap while Vimma quits, and none before `config.toml` is read.
   - Every public member of the Hyprland backend is routed by the backend switch.
+- (Since changed: **Mochitest** `browser_vimma_private_swap_paint.js` covers the wait for the
+  page (#773), with each hidden window deactivated as macOS does: a window shown at a new size
+  is shown only after its page painted there (the page's paint made slow); a page whose process
+  cannot answer holds the swap no longer than the timeout; a second switch during the wait waits
+  for the same paint; a swap at the same size stays synchronous; a switch begun during the wait
+  leaves the window hidden and no longer kept active.)
 - **e2e:** none. The e2e harness runs under Xvfb on Linux, where this backend is never selected.
 - **By hand on a Mac** (recorded in a Results section, as private-swap does), on the current
   macOS release with a non-headless build (`npm start`, or `npm run mochitest -- --headed` for
@@ -526,7 +561,12 @@ screen recordings at 60 frames per second were read frame by frame.
   including `maximize()` on a zoomed slot and the restore of a zoomed window into a non-zoomed
   slot. A window shown at another size than the one it was hidden at draws its old-size
   contents for two to four frames before it repaints
-  ([#773](https://github.com/vimma-browser/vimma/issues/773)).
+  ([#773](https://github.com/vimma-browser/vimma/issues/773)). (Since changed: with the swap
+  waiting for the page's paint, recorded at 60 frames per second under AeroSpace with the shown
+  window resized between swaps, no swap out of 24 showed a page at its old size, against 19 out
+  of 24 before (21 stale frames, at most 2 in one swap), half of each set with six busy
+  processes added on eight cores. AeroSpace then tiles the shown window as a new one, which
+  resizes it twice within about 100 ms; those resizes lag a frame as any window resize does.)
 - **No flash of the desktop when the slot window closes**: passes for the red close button,
   `ctrl+shift+w` and File → Close Window. The normal window replaces the private one from one
   recorded frame to the next. `cmd+w` on the last tab does not close the window, because

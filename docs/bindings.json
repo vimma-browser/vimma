@@ -315,6 +315,11 @@
           ]
         },
         {
+          "name": "sleep_tabs",
+          "description": "Put this workspace's tabs to sleep (:sleep; :sleep all, :sleep N)",
+          "keys": []
+        },
+        {
           "name": "tabline_hint",
           "description": "Jump to a tab by its label in the tab line (with a count: tab N)",
           "keys": [
@@ -976,6 +981,26 @@
             {
               "keys": "G",
               "chords": ["G"]
+            }
+          ]
+        },
+        {
+          "name": "scroll_area_next",
+          "description": "Scroll keys: next scroll area (a count: the Nth)",
+          "keys": [
+            {
+              "keys": "gs",
+              "chords": ["gs"]
+            }
+          ]
+        },
+        {
+          "name": "scroll_area_prev",
+          "description": "Scroll keys: previous scroll area",
+          "keys": [
+            {
+              "keys": "gS",
+              "chords": ["gS"]
             }
           ]
         },
@@ -1732,6 +1757,21 @@
               "mode": "pdf"
             }
           ]
+        },
+        {
+          "name": "hover_element",
+          "description": "Hover an element: show what the page shows under the mouse",
+          "keys": [
+            {
+              "keys": "gh",
+              "chords": ["gh"]
+            }
+          ]
+        },
+        {
+          "name": "hover_release",
+          "description": "End the hover",
+          "keys": []
         },
         {
           "name": "hint_cancel",
@@ -2498,6 +2538,17 @@
             {
               "keys": "m",
               "chords": ["m"],
+              "mode": "panel"
+            }
+          ]
+        },
+        {
+          "name": "panel_sleep",
+          "description": "Put the selected tab, or the marked tabs, to sleep",
+          "keys": [
+            {
+              "keys": "z",
+              "chords": ["z"],
               "mode": "panel"
             }
           ]

@@ -166,6 +166,7 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-screenshot": "vimma_screenshot",
   "agent-console": "vimma_console",
   "agent-bookmarklet": "vimma_bookmarklet",
+  "agent-hover": "vimma_hover",
 });
 /**
  * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a
@@ -179,10 +180,24 @@ export const ALWAYS_ASK = Object.freeze(["vimma_show", "vimma_bookmarklet"]);
 /** Questions that may wait: per connection and in all (decision 17). */
 export const QUEUE_LIMITS = Object.freeze({ perConnection: 4, total: 16 });
 /**
- * `agent-open`s per connection in any window of `ms` (security.md M3): a grant runs
- * opens unasked, and must not open thousands of tabs.
+ * @typedef {{ max: number, ms: number, key?: string }} RateLimit  at most `max` calls in any
+ *   window of `ms`; `key`: the `[mcp]` key that sets `max`, which a refusal names
  */
-export const OPEN_RATE = Object.freeze({ max: 10, ms: 60_000 });
+
+/**
+ * `agent-open`s of a new tab per connection in any window of `ms` (security.md M3), by default:
+ * a grant runs opens unasked, and must not open thousands of tabs. `[mcp] open_per_minute`
+ * sets `max` (vimma-mcp decision 46).
+ */
+export const OPEN_RATE = Object.freeze({ max: 15, ms: 60_000, key: "open_per_minute" });
+
+/**
+ * Loads into an existing agent tab per connection in any window of `ms` (security.md M3), by
+ * default: an `agent-open` with a tab, and a click, follow, fill or hover that loads a page. A
+ * load adds no tab, so it is held less tightly than an open, but a grant runs it unasked and it
+ * still sends a request. `[mcp] load_per_minute` sets `max` (vimma-mcp decision 46).
+ */
+export const LOAD_RATE = Object.freeze({ max: 60, ms: 60_000, key: "load_per_minute" });
 
 /**
  * `agent-keys` requests per connection in any window of `ms` (mcp-drive D15, security.md M20),
@@ -212,7 +227,8 @@ export const ELEMENTS_RATE = Object.freeze({ max: 30, ms: 60_000 });
 
 /**
  * `agent-activate` requests per connection in any window of `ms` (mcp-forms F26, security.md
- * M32), counted when asked, and shared with `agent-fill`: a grant runs clicks unasked and must
+ * M32), counted when asked, and shared with `agent-fill` and `agent-hover` (docs/specs/hover.md
+ * decision 9, M67): a grant runs clicks unasked and must
  * not flood a page, and a refused call must not loop.
  */
 export const ACT_RATE = Object.freeze({ max: 30, ms: 60_000 });
@@ -231,9 +247,14 @@ export const CONSOLE_RATE = Object.freeze({ max: 30, ms: 60_000 });
 
 /** A sliding window of each connection's calls of one kind, at most `max` in any `ms`. */
 export class CallRate {
-  /** @param {{ max: number, ms: number }} limit */
-  constructor(limit) {
+  /**
+   * @param {RateLimit} limit
+   * @param {() => number} [max]  the most calls in the window, read at every call, so that a
+   *   changed config value holds from the next call on; `limit.max` without it
+   */
+  constructor(limit, max = () => limit.max) {
     this.limit = limit;
+    this.max = max;
     /** @type {Map<string | number, number[]>} */
     this.times = new Map();
   }
@@ -243,7 +264,8 @@ export class CallRate {
    * @param {string | number} conn @param {number} now
    */
   take(conn, now) {
-    const { max, ms } = this.limit;
+    const { ms } = this.limit;
+    const max = this.max();
     const recent = this.#recent(conn, now, ms);
     if (recent.length >= max) {
       // Stryker disable next-line CallExpression: every read filters the old times out again
@@ -261,7 +283,8 @@ export class CallRate {
    * @param {string | number} conn @param {number} now
    */
   can(conn, now) {
-    const { max, ms } = this.limit;
+    const { ms } = this.limit;
+    const max = this.max();
     return this.#recent(conn, now, ms).length < max;
   }
 
@@ -271,11 +294,15 @@ export class CallRate {
    * @param {string | number} conn @param {number} now
    */
   retryAfter(conn, now) {
-    const { max, ms } = this.limit;
+    const { ms } = this.limit;
+    const max = this.max();
     const recent = this.#recent(conn, now, ms);
     if (recent.length < max) return 0;
-    // At most the window: a clock set back leaves calls stamped in the future.
-    return Math.min(ms, Math.min(...recent) + ms - now);
+    // The call whose leaving brings the count below `max`: the oldest, unless `max` was lowered
+    // below the calls already in the window. At most the window: a clock set back leaves calls
+    // stamped in the future.
+    const leaving = [...recent].sort((a, b) => a - b)[recent.length - max] ?? now;
+    return Math.min(ms, leaving + ms - now);
   }
 
   /**
@@ -286,7 +313,9 @@ export class CallRate {
    */
   refusal(conn, now, calls) {
     return {
-      message: `too many ${calls} from this agent in the last minute (at most ${this.limit.max})`,
+      message:
+        `too many ${calls} from this agent in the last minute (at most ${this.max()}` +
+        `${this.limit.key ? `, [mcp] ${this.limit.key}` : ""})`,
       retryAfter: Math.max(1, this.retryAfter(conn, now)),
     };
   }
@@ -305,10 +334,19 @@ export class CallRate {
   }
 }
 
-/** Each connection's opens (security.md M3). */
+/** Each connection's opens of a new tab (security.md M3, vimma-mcp decision 46). */
 export class OpenRate extends CallRate {
-  constructor() {
-    super(OPEN_RATE);
+  /** @param {() => number} [max]  `[mcp] open_per_minute` in force, read at every call */
+  constructor(max) {
+    super(OPEN_RATE, max);
+  }
+}
+
+/** Each connection's loads into an existing agent tab (security.md M3, vimma-mcp decision 46). */
+export class LoadRate extends CallRate {
+  /** @param {() => number} [max]  `[mcp] load_per_minute` in force, read at every call */
+  constructor(max) {
+    super(LOAD_RATE, max);
   }
 }
 

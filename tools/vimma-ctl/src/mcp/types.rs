@@ -98,6 +98,14 @@ pub enum ToolCall {
         tab: String,
         since: Option<u64>,
     },
+    /// docs/specs/hover.md decision 9: one element of the tab hovered by its label from
+    /// `Elements`, held until released; or, with no label, the connection's hover there released.
+    Hover {
+        tab: String,
+        label: Option<String>,
+        elements: bool,
+        filters: ListFilters,
+    },
     /// bookmarklets B12: one of the user's bookmarklets, by its exact title, run in the tab.
     /// A title only, never a URL or script.
     Bookmarklet {

@@ -24,6 +24,21 @@ the [user guide](guide.md); planned work is on the
 - A focused block's outline follows scrolls and resizes, in the page and in the frames around
   it. When the page moves the block some other way (content loading above it, an animation), the
   outline stays where it was until the next `+`, `-`, `j` or `k`.
+- A hover (`gh`) is shown by the page as under the mouse, but Firefox's own tooltip (an
+  element's `title`) and the mouse pointer's shape do not change; a page that follows the mouse's
+  position over time (a canvas app, a drag to reveal) sees one move to the element's centre. One
+  element is hovered at a time: nested menus are one `gh` per level, and a sub-menu stays open
+  while its item is inside the hovered parent.
+- While the real mouse rests over the page, both the element under it and the hovered one show
+  their hover until the mouse moves, which ends Vimma's hover. A hovered element the page
+  replaces, moves or recycles (a long list that reuses its rows as you scroll) ends the hover.
+- A hovered element inside a frame hovers the frame's `<iframe>` element too, without the mouse
+  events a real pointer would send it.
+- DevTools' "force element state" for `:hover`, set on an element after `gh` hovered it, is
+  cleared when the hover ends; one set before is kept.
+- An agent's hover (`vimma_hover`) sends the page untrusted events, so a page that acts only on a
+  real pointer's events (`isTrusted`) ignores them; what the page's style shows on hover still
+  appears. A page that reads the pointer's path over time sees one move at the element's centre.
 - The command line has no `:set`, ranges or counts, and does not complete URLs. Its history lasts
   until Vimma quits.
 - Firefox's shortcuts on keys Vimma uses (`ctrl+w`, `ctrl+u`, `ctrl+h`, `ctrl+d`, `ctrl+o`,
@@ -271,7 +286,8 @@ the [user guide](guide.md); planned work is on the
   (audio keeps playing), and scripts still see it: `vimma-ctl state` lists both windows. A
   window in full screen is never hidden, so from full screen the private workspace is a
   fullscreen Space of its own and switching moves between Spaces.
-- The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
+- The AUR package `vimma-bin` is not published yet; use Vimma's pacman repository (the guide's
+  "Package repositories") or the release's `PKGBUILD`.
 - On Omarchy, `xdg-settings set default-web-browser` fails unless `BROWSER` and
   `XDG_CURRENT_DESKTOP` are cleared for it, `omarchy default browser` does not list Vimma, and a
   link from another app may not raise Vimma's window, since Omarchy's launcher looks for a window
@@ -287,9 +303,11 @@ the [user guide](guide.md); planned work is on the
     other install's `~/.config/vimma`.
   - It shows the update notice with `flatpak update dev.vimma.browser` even when a software
     centre updates it on its own, and Flathub builds a release some hours after it is out.
-- The `.rpm` has no OpenPGP signature and there is no dnf or zypper repository for it: zypper
-  installs it only with `--allow-unsigned-rpm`, `SHA256SUMS` and its cosign signature are what
-  vouch for it, and `dnf upgrade` or `zypper update` never update it.
+- Vimma's package repositories (apt, dnf, zypper and pacman) carry x86_64 packages only, and
+  published releases only: a pre-release is never in them. A `.deb` or `.rpm` installed from the
+  release file instead is not updated by `apt upgrade`, `dnf upgrade` or `zypper up` until the
+  repository is set up. The `.rpm` of a release before 0.1.24 has no signature, and zypper
+  installs it only with `--allow-unsigned-rpm`.
 - The `.deb`, the `.rpm`, the AppImage and the Arch package mark themselves as package-manager installs, so,
   like Firefox's own packages, they do not warn when the kernel blocks the unprivileged user
   namespaces the content sandbox uses (as Ubuntu 24.04's AppArmor policy does for the AppImage

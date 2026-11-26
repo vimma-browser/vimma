@@ -54,7 +54,6 @@ add_task(async function state_leaves_a_stale_resize_mode_as_it_found_it() {
 // docs/specs/tab-sleep.md, behaviour 15 and decision 18: a sleeping tab is listed asleep, read
 // without loading it.
 add_task(async function state_lists_asleep_true_for_a_sleeping_tab_and_does_not_load_it() {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.tabSleep", true]] });
   Services.prefs.setBoolPref(ENABLED_PREF, true);
   await VimmaControl.settled();
   const url = "https://example.com/?asleep";
@@ -80,14 +79,8 @@ add_task(async function state_lists_asleep_true_for_a_sleeping_tab_and_does_not_
       "no other tab is",
     );
     Assert.ok(!tab.linkedPanel, "reading state left the tab asleep");
-
-    await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.tabSleep", false]] });
-    const off = (await tabs()).find((t) => t.url === url);
-    Assert.ok(!("asleep" in /** @type {object} */ (off)), "with the feature off, no field");
-    await SpecialPowers.popPrefEnv();
   } finally {
     c.close();
     gBrowser.removeTab(tab);
-    await SpecialPowers.popPrefEnv();
   }
 });

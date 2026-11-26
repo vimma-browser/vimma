@@ -11,7 +11,8 @@ Firefox shows notification bars over a page for many reasons: a private window's
 broken? Reload the page to temporarily lower your tracking protection", a crashed plugin, a
 redirect it stopped. Apart from the pop-up blocked bar, these bars needed the mouse in Vimma.
 Now `Tab` moves focus onto the bar's buttons, where Firefox's own `Tab`, `Enter` and `Space`
-work, and `Esc` closes the bar, with the guards the pop-up blocked bar already has.
+work, and `Esc` closes the bar, with the guards the pop-up blocked bar already has. (Since
+changed: `Enter` on a bar button is Vimma's, Behaviour item 1.)
 
 ## Problem
 
@@ -27,7 +28,10 @@ on ordinary sites and stays until it is clicked.
 1. While the selected page (in a split, the focused pane's) shows a notification bar other than
    the pop-up blocked bar, and no permission prompt is open, `Tab` must move focus onto the bar's
    first button, or onto its close button when it has no other. From there Firefox's own `Tab`
-   moves between the bar's buttons and `Enter` or `Space` presses one.
+   moves between the bar's buttons and `Enter` or `Space` presses one. (Since changed: `Enter`
+   on one of the bar's buttons is Vimma's, which clicks it, because macOS Firefox leaves `Enter`
+   on a focused XUL button to the window's default button (`XULButtonElement::PostHandleEvent`)
+   and a bar has none, so `Enter` did nothing there; issue #1508.)
 2. `Esc` must close the bar as its close button does: Firefox runs the bar's "dismissed"
    callback and none of its buttons. With focus on one of the bar's buttons, `Esc` closes the bar
    at once. A bar without a close button leaves `Esc` alone.
@@ -42,7 +46,7 @@ on ordinary sites and stays until it is clicked.
    reaches the page.
 5. While typing in a page field, the address bar, a Vimma picker, the command line or a search,
    and in hint, copy and element modes, the keys are theirs. With focus on the bar, every key but
-   `Esc` is Firefox's.
+   `Esc` is Firefox's. (Since changed: `Enter` on one of the bar's buttons too, item 1.)
 6. The bar names its keys in the permission prompt's keys line beside its buttons:
    `Tab buttons · Esc close`, `Tab buttons` for a bar without a close button, and
    `Esc, then Tab buttons` from a field or a mode that keeps the keys, and
@@ -105,7 +109,11 @@ and `PromptKeys` hands a key for any other bar to `barKey` (`core/prompt-keys.mj
 
 No new surface: the keys focus or close a bar in the user's own window, and every button is
 still pressed by the user with Firefox's own keys. The agent workspace is left out, as for the
-pop-up blocked bar, so no key from that workspace's pages acts on a bar.
+pop-up blocked bar, so no key from that workspace's pages acts on a bar. (Since changed: `Enter`
+clicks the bar button that has focus, which only the user's own keys or clicks put there; a
+held `Enter` does not count, a button Firefox's clickjacking delay disabled again stays
+unpressed, and Firefox's own check of that delay in `NotificationMessage.handleEvent` still
+applies to the click.)
 
 ## Tests
 

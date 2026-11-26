@@ -10,7 +10,16 @@ import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
 import { parsePayInfo, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { ACTIVATE_CHANGES } from "../core/control.mjs";
 import { actorFor } from "./actor-for.mjs";
-import { markOf, nextStep, noteSkipped, saidSkipped, setMark, whereOf } from "./submit-marks.mjs";
+import {
+  markOf,
+  newAllowed,
+  nextStep,
+  noteSkipped,
+  noteSubmitting,
+  saidSkipped,
+  setMark,
+  whereOf,
+} from "./submit-marks.mjs";
 
 /** @import { HintTarget } from "./VimmaActors.sys.mjs" */
 
@@ -92,6 +101,49 @@ export const AgentActors = {
   },
 
   /**
+   * Hovers the element of a target from an agent's `vimma_elements` (docs/specs/hover.md
+   * decision 9; security.md M67): the `hover` op of `Vimma:AgentElement`, never the user's
+   * `Vimma:Hover`, so the child dispatches its events as the page's own. The child answers
+   * before it hovers, as for a click; whether it hovered is the step's outcome
+   * (agentClickOutcome).
+   * @param {HintTarget} target
+   * @param {{ until: number }} asked  ms since the epoch; the child hovers nothing later
+   * @returns {Promise<"ok" | "gone">}
+   */
+  async agentHover(target, { until }) {
+    if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    try {
+      const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
+        op: "hover",
+        gen: target.gen,
+        id: target.id,
+        step: nextStep(target),
+        until,
+      });
+      return reply === "ok" ? "ok" : "gone";
+    } catch {
+      return "gone";
+    }
+  },
+
+  /**
+   * Ends an agent's hover in frame `bc` while it shows document `wg` (docs/specs/hover.md
+   * decision 9): the child ends only an agent's hover, never the user's. A frame showing
+   * another document by now holds no hover of the agent's.
+   * @param {CanonicalBrowsingContext} bc @param {WindowGlobalParent} wg
+   * @returns {Promise<boolean>} whether the frame held one
+   */
+  async agentHoverRelease(bc, wg) {
+    if (bc.currentWindowGlobal !== wg) return false;
+    try {
+      const reply = await actorFor(bc)?.sendQuery("Vimma:AgentElement", { op: "hover-release" });
+      return reply === true;
+    } catch {
+      return false; // the frame navigated or its process went away, and the hover with it
+    }
+  },
+
+  /**
    * An agent is about to act in the browser's page (docs/specs/mcp-forms.md F16; security.md
    * M28): from now until the user's own activation or another page, a form submission there is
    * cancelled, but for `allowed`, the one the question named, once, during this call. The
@@ -137,7 +189,7 @@ export const AgentActors = {
     const top = browser.browsingContext;
     if (!top || !mark || top.currentWindowGlobal?.innerWindowId !== mark.doc) return false;
     try {
-      mark.allowed = { method: allowed.method, where: whereOf(Services.io.newURI(allowed.action)) };
+      mark.allowed = newAllowed(allowed.method, whereOf(Services.io.newURI(allowed.action)));
     } catch {
       return false;
     }
@@ -157,6 +209,18 @@ export const AgentActors = {
    */
   agentSkipped(bc, wg, data) {
     noteSkipped(bc, wg, data);
+  },
+
+  /**
+   * The child names the request of the agent's submission it just started (VimmaParent,
+   * `Vimma:AgentSubmitting`): the tab's allowed submission is that request alone (security.md
+   * M28). A forged one from another frame of the tab is ignored, as it names no step sent there.
+   * @param {CanonicalBrowsingContext | null | undefined} bc  the frame that started it
+   * @param {WindowGlobalParent | null} wg  its window global, the sender's own
+   * @param {unknown} data  `{ step, channel }`: the step's number and the request's channel id
+   */
+  agentSubmitting(bc, wg, data) {
+    noteSubmitting(bc, wg, data);
   },
 
   /**

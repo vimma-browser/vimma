@@ -174,15 +174,22 @@ describe("parseConfig: errors carry line numbers", () => {
 
   // Regression (found by the fuzzer, seed 1027517388, issue #134): an action name with a `[`
   // made parseConfig throw "RangeError: Invalid array length" instead of reporting it.
-  test("an unknown action whose name is not a bare key is an error, not a throw", () => {
-    const e = oneError(toml("schema = 1", "[keys]", '"c[mmand" = "/"'));
-    expect(e).toMatchObject({ line: 3, path: 'keys."c[mmand"' });
+  // Since #1474's follow-up, an unknown action with no close match is a skipped binding.
+  test("an unknown action whose name is not a bare key is a warning, not a throw", () => {
+    const r = parseConfig(toml("schema = 1", "[keys]", '"c[mmand" = "/"'));
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([
+      { line: 3, path: 'keys."c[mmand"', message: 'unknown action "c[mmand"; skipped' },
+    ]);
   });
 
   // The same crash from the issue's own seed (2487349044): the name reached through dotted keys.
-  test("an unknown action named through dotted keys with a `[` is an error, not a throw", () => {
+  test("an unknown action named through dotted keys with a `[` is a warning, not a throw", () => {
     const r = parseConfig(toml("schema = 1", `'keys'.'mod['."github.com" = "github.com"`));
-    expect(r.errors).toEqual([{ line: 2, path: 'keys."mod["', message: 'unknown action "mod["' }]);
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([
+      { line: 2, path: 'keys."mod["', message: 'unknown action "mod["; skipped' },
+    ]);
   });
 
   test("a TOML syntax error has line and column, and no config", () => {
@@ -408,6 +415,8 @@ describe("mergeWithDefaults", () => {
         downloadDir: "~/Downloads/vimma-agent",
         downloadMaxMb: 200,
         clamavMaxAgeDays: 7,
+        openPerMinute: 15,
+        loadPerMinute: 60,
       },
       ui: {
         toolbar: "hidden",
@@ -552,8 +561,10 @@ describe("[tabs] and [sites] sleep", () => {
   });
 
   test("defaults.toml sets [tabs] sleep_after = 120", () => {
-    // Commented while vimma.feature.tabSleep is off (spec, Delivery slice 1).
-    expect(formatDefaultsToml()).toMatch(/^# \[tabs\]\n(#.*\n)*# sleep_after = 120 .*$/m);
+    // On for everyone (spec, Delivery slice 4): the table is set, not a commented example.
+    expect(formatDefaultsToml()).toMatch(
+      /^\[tabs\]\nsleep_after = 120 .*\nsleep_on_low_memory = true .*$/m,
+    );
     expect(formatDefaultsToml()).toMatch(/^# sleep = false +# .*$/m);
   });
 });

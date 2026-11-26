@@ -1,10 +1,11 @@
 # Spec: hover
 
-Status: accepted · Area: `packages/vimma-core/src/page/hints.mjs`, `keys/actions.mjs`,
+Status: implemented · Area: `packages/vimma-core/src/page/hints.mjs`, `keys/actions.mjs`,
 `keys/escape.mjs`, `config/defaults.mjs`, `ui/statusbar.mjs`, `control/control.mjs`,
 `agent/agent.mjs`; `actors/hint-collect.mjs`, `actors/hover.mjs` (new), `actors/page-events.mjs`,
 `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, `actors/agent-page.mjs`;
-`host/VimmaHost.sys.mjs`, `host/runners.mjs`; `ctl/agent-commands.mjs`;
+`host/VimmaHost.sys.mjs`, `host/runners.mjs`, `host/hover-ops.mjs` (new), `ui/statusbar.mjs`;
+`actors/AgentActors.sys.mjs`, `actors/agent-fields.mjs`; `ctl/agent-commands.mjs`, `ctl/AgentAct.sys.mjs`;
 `tools/vimma-ctl/src/mcp/` · Upstream patches: none · ADR: none. Builds on
 [m1-hints](m1-hints.md), [element-focus](element-focus.md) (text blocks as hint targets) and
 [mcp-forms](mcp-forms.md) (`vimma_elements`, `vimma_activate`).
@@ -337,8 +338,11 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
    - every target `f` labels (links, buttons, fields, declared and inferred clickables),
      because a hovered link or button is the commonest hover target (menus, link previews);
    - elements with a hover listener, read as `click` listeners are today: `mouseover`,
-     `mouseenter`, `pointerover` and `pointerenter` (`Services.els.hasListenersFor`), plus
-     `[title]` and `[aria-haspopup]`, because these declare that hovering does something;
+     `mouseenter`, `pointerover`, `pointerenter`, `pointermove` and `mousemove`
+     (`Services.els.hasListenersFor`), plus `[title]` and `[aria-haspopup]`, because these
+     declare that hovering does something (menu libraries open sub-menus on `pointermove`); and
+     each `<label>`, which `f` drops beside its visible control, because a pointer over a label
+     hovers its control (decision 2);
    - text blocks, as `F` collects them (element-focus decision 3), so that a row whose controls
      appear through a CSS `:hover` rule, which no listener or attribute announces, can be
      hovered through its text: the ancestor locks of decision 2 reach the row. Such rows (a chat
@@ -362,7 +366,9 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
      off a link or button, the first `Esc` ends the hover and the second stops a loading page.
      A page that consumes the key (a script menu that closes itself and calls
      `preventDefault`) gets no after-page action from Vimma, as today, so the hover holds and a
-     second `Esc` releases it.
+     second `Esc` that the page leaves alone releases it; a page that consumes every `Esc` keeps
+     the hover until another release below (`:hover_release`, a mouse move, a tab switch), which
+     only changes what it shows.
    - **The next `hint.hover`** in the same tab, which moves the hover (the release and the new
      hover share their common ancestors, as a real move does: decision 2).
    - **Every `pagehide`** of the hovered document or of a document of its embedder chain,
@@ -450,12 +456,27 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
      denied with `in-use` while the user is using the tab (F27), before the question, after the
      yes and before the hover; each call is a `:mcp log` row naming the element; a navigation
      the page starts during the step takes an `OPEN_RATE` slot and a form submission the page
-     tries is stopped (F11, F16), as after a click;
+     tries is stopped (F11, F16), as after a click (Since changed: a `LOAD_RATE` slot;
+     vimma-mcp decision 46);
    - the hover is the connection's: it is released by its next `vimma_hover` in the tab,
      `release: true`, every `pagehide` (the back-forward cache included, decision 5), the
      element leaving its place (decision 13), the tab leaving the agent workspace, being
      discarded or closed, its content process ending, the user starting to use the tab, and the
      end of the connection. A later `vimma_activate` does not release it (decision 5);
+   - `release: true` is neither asked, counted in `ACT_RATE` nor a `:mcp log` row, because it
+     only ends the hover the same connection began, which was asked and logged: asking would
+     make an agent answer a question to undo its own step, and a rate refusal would leave a
+     hover held. It runs page code (the untrusted leave events) only while that hover is held;
+   - it is denied with `in-use` also while the user holds their own hover (`gh`) in the tab,
+     because the agent's would replace it; a release or the connection's end that overtakes a
+     hover still on its way ends it too, so no lock is left that chrome does not know of;
+   - the user starts to use the tab with a key of theirs while it is selected, or a real mouse
+     move over its page (decision 5), because that is when their input reaches the page;
+     bringing the tab to the front alone keeps the hover, so that `vimma_show` shows what it
+     revealed, with the `agent hover · <text>` segment;
+   - the result says whether the hover still holds when the call returns (`hovered`), since a
+     page's handlers may navigate or replace the element during the step; a release says
+     whether there was a hover to end (`released`);
    - existing grants cover it: since one grant covers every grantable tool of its connection
      (mcp-grants G1), a grant given before `vimma_hover` existed lets that connection hover
      without a new question once Vimma has the tool. This is accepted because a hover does a
@@ -468,7 +489,10 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
     default list does not grow by every paragraph on screen for every task: every list costs the
     agent's context, and the agent asks for hover targets when its task needs a hover.
     Rejected: always listing them (text pages would flood the list) and listing none (a CSS-only
-    row could not be hovered by an agent).
+    row could not be hovered by an agent). A list asked with `hover` labels more elements than
+    one without, so their labels differ; as with every list, the newest is the connection's. An
+    element inside a rich text editor is never listed as a hover target, because its text is
+    what the user wrote (security.md M31).
     `vimma_hover` accepts a label of either kind.
 
 11. **No new Firefox patch.** `InspectorUtils` and `flattenedTreeParentNode` are available to
@@ -476,18 +500,17 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
     needs no change to Firefox.
 
 12. **Frames: the embedder chain gets locks only, through a relay keyed by browsing context.** When
-    the hovered element is in a subframe, the subframe's child reports the hover to its parent
-    actor, and the parent sends `Vimma:HoverEmbedder` (`lock` or `release`) to the actor of the
-    subframe's parent window global, naming only the subframe's browsing context id, which the
-    parent takes from the actor that reported (`this.browsingContext` of the `JSWindowActorParent`),
-    never from data the subframe sent. The parent relays a `lock` only for a frame it asked to hover
-    itself (it sent that frame the `Vimma:Hover` or the agent's `hover` op) and only while that
-    hover is held, and refuses any other report, so that a compromised subframe cannot have its
+    the hovered element is in a subframe, the parent, once that frame has answered that it holds
+    the hover, sends `Vimma:HoverEmbedder` (`lock`, and `release` when the hover ends) to the actor
+    of each frame around it, up to the top, naming only the browsing context id of the frame below
+    it on the way, which the parent takes from the frame it asked to hover itself (it sent that
+    frame the `Vimma:Hover` or the agent's `hover` op) and its ancestors, never from data a frame
+    sent. No frame reports a hover to be relayed, so a compromised subframe cannot have its
     `<iframe>` chain hovered at will. The embedding child resolves the id with
     `BrowsingContext.get`, checks that its `parent` is its own browsing context and that its
     `embedderElement` is in its own document, and locks that `<iframe>` element and its
-    flattened-tree ancestors as decision 2 does, remembering them as part of the same hover; then it
-    relays further up the same way. Reasons and details:
+    flattened-tree ancestors as decision 2 does, remembering them apart from its own hover.
+    Reasons and details:
     - A real pointer over a subframe hovers the `<iframe>` element too: in process through the
       parent document's state manager (`NotifyMouseOver` uses `GetInProcessParentDocument`,
       `EventStateManager.cpp:5697-5711`), and out of process because the parent process's hit
@@ -499,7 +522,8 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
       influence; the subframe's page still gets the full event sequence of its path.
     - The embedder locks are released with the hover, on the subframe's `pagehide` (the parent
       sees the subframe's actor go and relays a release), when the `<iframe>` element leaves
-      its document (decision 13), and on the embedder's own `pagehide` (decision 5).
+      its document (its subframe's document goes with it, so the parent sees that actor go
+      too; the chain is not watched otherwise), and on the embedder's own `pagehide` (decision 5).
 
 13. **The hovered element leaving its place ends the hover.** The child watches the hovered element
     with `MutationObserver`s (`childList`, `subtree`) on its document and on every shadow root on
@@ -601,7 +625,7 @@ What a hover can do, and why nothing new becomes reachable:
   `Vimma:AgentElement`, sent only from `agent-hover` after the gate and handled by `AgentPage`
   (`agent-page.mjs`) with `dispatchAsPage`; no message data chooses the trust, so an agent can
   never reach the trusted path. `Vimma:HoverEmbedder` carries no events and names the subframe
-  by the browsing context the parent took from the reporting actor, which the embedding child
+  by the browsing context the parent asked to hover (or one of its ancestors), which the embedding child
   checks is its own child frame (decision 12), so a subframe cannot make its embedder lock an
   element of its choosing. A page can send none of these messages. Each child acts only for the
   current hint `gen` or the connection's current list, only in the frame asked, and refuses
@@ -625,7 +649,7 @@ What a hover can do, and why nothing new becomes reachable:
   question, after the yes and before the hover (F27); the user's hover works in any tab.
 - **Read surface.** The element's text in the status bar and in the `:mcp log` row is page text
   already readable with `vimma_read_page`; it is shown as untrusted text.
-- **docs/security/12-agents-mcp.md** gains a rule (the next number, M64) with sub-PR 2:
+- **docs/security/12-agents-mcp.md** gains a rule (the next number, M67) with sub-PR 2:
   - an agent's hover **must** be the `hover` op of `Vimma:AgentElement`, handled by `AgentPage`
     with untrusted events through `dispatchAsPage`, never `Vimma:Hover`, never input through
     `window.synthesizeMouseEvent`, `nsIDOMWindowUtils` or the widget, and never wrapped in
@@ -633,9 +657,9 @@ What a hover can do, and why nothing new becomes reachable:
   - it locks `:hover` only on an element of the connection's current list, its flattened-tree
     ancestors, the controls of `<label>`s among them and its embedder chain, only in agent
     tabs, and Vimma removes only the locks it added;
-  - the embedder relay names the subframe by the browsing context of the reporting actor,
-    checked by the embedding child, never by data from the subframe, and the parent relays a
-    lock only for a frame it asked to hover, while that hover is held;
+  - the embedder relay names the subframe by the browsing context the parent asked to hover,
+    checked by the embedding child, never by data from the subframe, and the parent sends a
+    lock only for a frame it asked to hover, once that frame holds the hover;
   - it is released on every `pagehide`, the back-forward cache included, on the element leaving
     its place, on the tab leaving the agent workspace, on the user starting to use the tab, and
     on the connection's end;
@@ -712,8 +736,7 @@ Written first; red pasted, then green.
       `pagehide` release the embedder locks.
   13. `test_hover_malformed_messages`: `Vimma:Hover` with a stale `gen`, an unknown `op`, a
       frame not asked, `null` is refused; `Vimma:HoverEmbedder` naming a browsing context that
-      is not the receiver's child frame is refused; a subframe that reports a hover the parent did
-      not ask for, or after it was released, gets no embedder lock.
+      is not the receiver's child frame is refused.
 
   Mutation checks to run and paste with sub-PR 1: ancestor locks off (test 1 fails), the
   `hasPseudoClassLock` check off (test 9 fails), the trusted dispatch swapped for
@@ -747,7 +770,7 @@ Written first; red pasted, then green.
   hovered, `f` after a hover, what releases it, the status segment, the limits.
 - `docs/bindings.md`, `docs/bindings.json`, `defaults.toml`: `npm run gen-docs` (sub-PR 1).
 - `docs/limits.md`: the Limits above.
-- `docs/security/12-agents-mcp.md`: rule M64 and the tool's line in the tool summary (sub-PR 2).
+- `docs/security/12-agents-mcp.md`: rule M67 and the tool's line in the tool summary (sub-PR 2).
 - MCP server instructions (`tools/vimma-ctl/src/mcp/instructions.rs`), one sentence: a button
   that shows only under the mouse is revealed with `vimma_hover`, then listed and clicked; then
   `npm run gen-agent-tools`.
@@ -763,7 +786,7 @@ Written first; red pasted, then green.
 | #   | PR                                                      | Contents                                                                                                                                                                                                                                                                                             | Size     |
 | --- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | 1   | `feat(hints): gh hovers an element with a hint`         | `hint.hover` bound to `gh` and `hover.release` (unbound); `collectTargets` `hover` option; `actors/hover.mjs` (locks, events, frames, release); `Vimma:Hover`; `Esc`, status segment, release triggers; gen-docs, help snapshot, `defaults.toml`; e2e scenario and baseline; guide. Mochitests 1-13. | M (~950) |
-| 2   | `feat(mcp): vimma_hover hovers an element for an agent` | `agent-hover`, `vimma_hover`, `vimma_elements` kind `hover`, gate, rate, `in-use`, log; M64; instructions; agent mochitests 1-8. Fresh security review.                                                                                                                                              | M (~700) |
+| 2   | `feat(mcp): vimma_hover hovers an element for an agent` | `agent-hover`, `vimma_hover`, `vimma_elements` kind `hover`, gate, rate, `in-use`, log; M67; instructions; agent mochitests 1-8. Fresh security review.                                                                                                                                              | M (~700) |
 
 Sub-PR 1 needs no feature flag, because the user's hover is complete when it lands. It carries
 the default key (decision 14), so it is a keymap pull request: it lands alone, when no other

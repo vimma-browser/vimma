@@ -150,7 +150,12 @@ _Pages_ and _extensions_ cannot reach it.
   [`not an AppImage install: nothing to replace`](../../packages/vimma-core/test/appimage-update.test.ts),
   [`a_flatpak_is_told_to_run_flatpak_update`](../../tests/browser/browser_vimma_update_notices.js)
   The package from Vimma's pacman repository ([package-repositories](../specs/package-repositories.md)
-  decision 18; marker `vimma-package=pacman`) gets only `sudo pacman -Syu`. A `.deb` or `.rpm`
+  decision 18; marker `vimma-package=pacman`) gets only `sudo pacman -Syu`, or on Omarchy only
+  `omarchy update`, since Omarchy's pacman hook aborts a direct `pacman -Syu`: the update check
+  asks **only** whether `/usr/bin/omarchy-update` (`OMARCHY_UPDATE_FILE` in vimma-core) exists,
+  for the pacman install type alone, **never** reads it, and sends nothing; a file planted there
+  (which only root can write) switches between two fixed commands, and neither names the
+  guard's bypass variable. A `.deb` or `.rpm`
   is the same file from a release and from that spec's apt or rpm repository, so the update
   check tells them apart by the repository's setup file, at three fixed paths
   (`/etc/apt/sources.list.d/vimma.sources`, `/etc/yum.repos.d/vimma.repo`,
@@ -161,18 +166,18 @@ _Pages_ and _extensions_ cannot reach it.
   the manifest, the files or the marker, so a file planted in `/etc` (which only root can
   write) changes which fixed command shows, never what it runs; the package manager then checks
   the repository's OpenPGP signatures, not Vimma. Without the file the download command of UP8
-  stays, and while `vimma.feature.packageRepos` is on (off by default until the repositories
-  are published, package-repositories decision 25) one line of text points at the guide's
-  repository section. The test-only pref `vimma.update.testRepoRoot`, which moves the three paths
+  stays, with one fixed line of text pointing at the guide's repository section
+  (package-repositories decision 22). The test-only pref `vimma.update.testRepoRoot`, which moves these four paths
   under a test directory, is read **only** in automation (the module's `inAutomation()`,
   `Cu.isInAutomation`), as `vimma.update.installType` is.
   [`the_update_checks_test_prefs_are_read_only_in_automation`](../../tests/browser/browser_vimma_security_invariants.js),
   [`install type pacman from vimma-package=pacman`](../../packages/vimma-core/test/updates.test.ts),
+  [`pacman on Omarchy: omarchy update, never pacman -Syu or the guard's bypass`](../../packages/vimma-core/test/updates.test.ts),
+  [`Omarchy is told by the fixed path of its update command`](../../packages/vimma-core/test/updates.test.ts),
   [`the repository files are the fixed paths each setup writes`](../../packages/vimma-core/test/updates.test.ts),
   [`a .deb with the repository set up gets apt's upgrade command`](../../packages/vimma-core/test/updates.test.ts),
   [`a .rpm with the repository set up gets dnf's and zypper's`](../../packages/vimma-core/test/updates.test.ts),
-  [`a .deb without it keeps the download command`](../../packages/vimma-core/test/updates.test.ts),
-  [`without the repository, the download command and, when asked, one line to the guide`](../../packages/vimma-core/test/updates.test.ts),
+  [`without the repository, the download command and one line to the guide`](../../packages/vimma-core/test/updates.test.ts),
   [`package_repositories_get_the_upgrade_command`](../../tests/browser/browser_vimma_update_check.js)
 
 - UP7. A manifest is **only** signed by `update-publish.yml` run from `main`, and **only** for a
@@ -314,8 +319,14 @@ _Pages_ and _extensions_ cannot reach it.
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
   checked: every download uses `curl -f` (an HTTP error stops it) and `--proto =https`, and when
   the signed manifest gives the file's SHA-512, `sha512sum -c` checks it before `apt`, `dnf`,
-  `zypper`, `tar` or `mv` runs. The `.rpm`'s zypper command passes `--allow-unsigned-rpm`, so
-  for it that check is the only one, as it is for the `.deb`. A tarball is downloaded to a file and checked before it is unpacked, never piped
+  `zypper`, `tar` or `mv` runs. The `.rpm` carries Vimma's package signature (from 0.1.24), which
+  zypper refuses without the key even with `--allow-unsigned-rpm`, so its zypper command first
+  downloads the key from a fixed URL with the same `curl` options, checks it with `sha256sum -c`
+  against `PACKAGE_KEY_SHA256`, which the build pins (a test compares it with
+  `configs/package-signing/vimma-packages.asc`), and only then runs `sudo rpm --import`. rpm
+  trusts an imported key for every repository, so the update host alone **never** chooses that
+  key; replacing it (package-repositories decision 23) needs a browser release, as the manifest
+  keys do. After the SHA-512 check, zypper then checks the package's signature too. A tarball is downloaded to a file and checked before it is unpacked, never piped
   into `tar`. Asset hashes are read only from the signed manifest, only as 128 lower-case hex
   digits, and a saved result keeps only well-formed ones. **⚠ limit:** the release `PKGBUILD`'s
   command still fetches `latest/download/PKGBUILD` without a hash of its own; `makepkg` checks
@@ -324,6 +335,7 @@ _Pages_ and _extensions_ cannot reach it.
   the repository's OpenPGP signatures and the checksums its signed metadata pins.
   [`every download fails on an HTTP error and refuses anything but https (V-07)`](../../packages/vimma-core/test/updates.test.ts),
   [`rpm: download and check it, then install it with dnf or zypper`](../../packages/vimma-core/test/updates.test.ts),
+  [`the pinned package key is the committed configs/package-signing/vimma-packages.asc`](../../packages/vimma-core/test/updates.test.ts),
   [`the checked commands run: a matching file installs, a different one stops before`](../../packages/vimma-core/test/updates.test.ts),
   [`reads each package's size and SHA-512 (the release pipeline's asset elements)`](../../packages/vimma-core/test/updates.test.ts),
   [`offerAssets keeps only well-formed entries (a saved result read back)`](../../packages/vimma-core/test/updates.test.ts),
@@ -445,6 +457,11 @@ _Pages_ and _extensions_ cannot reach it.
   `updater` carries Vimma's certificates and none of Mozilla's): `release.yml`'s `package` job
   on the release tarball, and `nightly.yml` on its tarball once it is set to the
   `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
+  `update-rehearsal.yml` checks the published chain once a day: the previous release's
+  tarball, from its GitHub Release, must stage the MAR the served manifest offers (its shipped
+  `updater` checks the signature) and run it after a restart; it holds no secret, runs only while
+  `UPDATES_ENABLED` is true, fails when no manifest is served, and runs the downloaded release
+  in a step without the job token.
   **⚠ limit:** Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
   Mozilla's keys, and keep `aus5.mozilla.org`; they are never shipped.
   [`is not built without VIMMA_UPDATES (source and dev builds)`](../../tools/test/mozconfig-updater.test.ts),
@@ -465,7 +482,12 @@ _Pages_ and _extensions_ cannot reach it.
   [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../../tools/update/test/update-cert.test.ts),
   [`package checks the release tarball's updater, whether or not updates are on`](../../tools/update/test/pipeline-workflows.test.ts),
   [`packages for the nightly channel and checks the updater before the upload`](../../tools/update/test/pipeline-workflows.test.ts),
-  [`rewrites both channel files, and nothing else in them`](../../tools/update/test/channel.test.ts)
+  [`rewrites both channel files, and nothing else in them`](../../tools/update/test/channel.test.ts),
+  [`fails on a manifest no pinned key signed, as the browser would refuse it`](../../tools/update/test/rehearsal.test.ts),
+  [`names each part that did not stage`](../../tools/update/test/rehearsal.test.ts),
+  [`runs only in this repository and only while UPDATES_ENABLED is true`](../../tools/update/test/rehearsal-workflow.test.ts),
+  [`fails when the host serves no manifest although releases are published`](../../tools/update/test/rehearsal.test.ts),
+  [`runs the downloaded browser in a step without the job token`](../../tools/update/test/rehearsal-workflow.test.ts)
 
 - UP13. Firefox's update check **never** hands Firefox's update parser (`#parseUpdates`) or its
   choice of an update a manifest that Vimma's rules (UP1, UP2) have not accepted:

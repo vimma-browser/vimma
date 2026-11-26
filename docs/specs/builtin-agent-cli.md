@@ -13,7 +13,8 @@ header is drawn by `ui/agent-chat-view.mjs`, and setup is `ui/agent-chat-models.
 [ADR-023](../adr/023-in-browser-model-client.md) (C1). No new dependency.
 
 Issue: [#609](https://github.com/vimma-browser/vimma/issues/609); Gemini CLI:
-[#726](https://github.com/vimma-browser/vimma/issues/726)
+[#726](https://github.com/vimma-browser/vimma/issues/726); the login shell's `PATH` on macOS:
+[#1518](https://github.com/vimma-browser/vimma/issues/1518)
 
 Builds on [builtin-agent](builtin-agent.md) (the chat window, conversations, budgets and the
 conversation grant), [vimma-mcp](vimma-mcp.md) (the agent workspace, the gate, the control
@@ -77,6 +78,8 @@ own configuration allows; Vimma does not confine them, and the window states whi
    `codex gave no version in 5 s · /usr/bin/codex` rather than with an unknown version, because a
    first start after an install or on a busy machine can take that long, and it can still be
    picked; described in docs/guide.md, "Using an agent CLI in the chat window".)
+   (Since changed: on macOS the search covers the login shell's `PATH` and the usual install
+   folders as well, C4; described in docs/guide.md, "Using an agent CLI in the chat window".)
 2. **The path is confirmed, not configured.** Picking a CLI stores its absolute path, as setup
    listed it, in the pref `vimma.agent.cli.<name>.path` (C4). `config.toml` may list a CLI provider by name and model
    only:
@@ -615,6 +618,38 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
    security.md), because user installs (`~/.local/bin`, version managers) are where these CLIs
    live.
 
+   (Since changed: on macOS, setup's search and the CLI's `PATH` are the login shell's `PATH`,
+   then Vimma's own, then `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`, because an
+   app started from the Dock, Finder, Spotlight or `open` gets launchd's `PATH`
+   (`/usr/bin:/bin:/usr/sbin:/sbin`), which holds none of the folders the CLIs install to, so
+   setup found no CLI where a terminal found one. Vimma asks the shell `$SHELL` names, once per
+   session, only when setup searches or a task starts and only when its own `PATH` holds nothing
+   but launchd's folders, with `-l -i -c` and a command that
+   prints `PATH` between two random marks, as VS Code and Zed do, because `-l` and `-i` read the
+   files where installers and version managers add their folders (`.zprofile`, `.zshrc`). The
+   shell runs with the CLI's environment (C5), in the home folder, with no input, and the shell
+   (not what its startup files started) is killed after 10 s; only the one line between the last two marks is taken, only when it holds no
+   control character and is at most 32 KiB, and only its absolute entries are kept, so a startup
+   file's banner or a broken shell gives no answer rather than a wrong one. `$SHELL` runs only
+   when its file passes the checks above, because it is a program Vimma starts. Its startup files
+   are the user's own and run in every terminal the user opens, so running them adds no code
+   another user controls, and every program found on the result is checked as above before it is
+   listed and before each run. The CLI runs with the same `PATH`, because a CLI found on it may
+   be a script whose `#!` interpreter (`node`, for Codex or Gemini CLI installed with npm) is on
+   that `PATH` and not on launchd's. When the shell gives no answer, the search covers Vimma's
+   `PATH` and the three folders, which hold Claude Code's native install and Homebrew's, and the
+   answer, or its lack, holds until Vimma restarts, so that a slow shell delays one search, not
+   every task. A Vimma whose `PATH` holds any other folder searches that `PATH` and the three
+   folders and asks no shell, because such a `PATH` came from a terminal already, and an
+   interactive shell started from a Vimma that a terminal started would try to take that
+   terminal over. Only sh, bash, zsh and fish take these arguments; tcsh, csh and nushell give no
+   answer and the search covers the rest. Linux keeps Vimma's own `PATH`, because desktop
+   sessions pass the login `PATH` to the apps they start. Rejected: `/etc/paths`, `/etc/paths.d` and fixed folders alone, because
+   they miss what a `.zshrc` adds (nvm, mise, asdf, volta), and a script found there would run
+   without its interpreter; a `PATH` in `config.toml`, because it decides which program runs
+   (F3); `launchctl setenv PATH` as a setup step, because it changes every app's
+   environment and is lost at the next login. Issue #1518.)
+
 5. **The CLI keeps no session; Vimma's stored conversation is the memory** (C5, Behaviour 12).
    Each task is a new process given the stored conversation, and Vimma asks the CLI not to save
    its session (`--no-session-persistence`, `--ephemeral`), because a CLI's session files hold
@@ -628,6 +663,10 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
    the CLI's session between tasks (`exec resume`, `--resume`), because it needs the session
    files above; an `env` key in `config.toml`, because a CLI's login is the CLI's matter and
    variables such as `LD_PRELOAD` would run code (F3).
+
+   (Since changed: on macOS the CLI's `PATH` is the one setup searched, the login shell's
+   first, C4, because launchd's holds no folder the CLIs or their interpreters install to.
+   Issue #1518.)
 
    (Since changed: Gemini CLI, which cannot be asked, is supported with what it records removed
    by Vimma, because the window then keeps no conversation on disk once a task ends, as with the

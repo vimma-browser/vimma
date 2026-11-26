@@ -76,20 +76,31 @@ async function pageKeysThenUnbound(browser) {
 }
 
 /**
- * Focuses an element in the page by a selector run in its content process.
+ * Focuses an element in the page by a selector run in its content process, without scrolling:
+ * the fixture's fields are on screen at the top. A scrolling focus of a text field also scrolls
+ * its caret into view at the page's next refresh tick (nsFocusManager::ScrollIntoView,
+ * TextControlElement::ScrollSelectionIntoViewAsync, a refresh-driver early runner), and a tick
+ * that comes only after a test's `j` moves the page back to the field (issue #1512).
  * @param {XULBrowserElement | BrowsingContext} target
  * @param {string} how "id" for getElementById, "open"/"closed" for the shadow inputs
  */
 function focusIn(target, how) {
   return SpecialPowers.spawn(target, [how], (h) => {
     const doc = content.document;
+    const opts = { preventScroll: true };
     if (h === "open") {
       const host = /** @type {HTMLElement} */ (doc.getElementById("open-host"));
       /** @type {HTMLElement} */ (
         /** @type {ShadowRoot} */ (host.shadowRoot).getElementById("shadow")
-      ).focus();
-    } else if (h === "closed") content.wrappedJSObject.closedRoot.getElementById("closed").focus();
-    else /** @type {HTMLElement} */ (doc.getElementById(h)).focus();
+      ).focus(opts);
+    } else if (h === "closed") {
+      // Through the Xray, not the page's closedRoot: a waived call gets `opts` behind an opaque
+      // wrapper that reads preventScroll as undefined (AccessCheck.cpp, OpaqueWithSilentFailing).
+      const host = /** @type {HTMLElement} */ (doc.getElementById("closed-host"));
+      /** @type {HTMLElement} */ (
+        /** @type {ShadowRoot} */ (host.openOrClosedShadowRoot).getElementById("closed")
+      ).focus(opts);
+    } else /** @type {HTMLElement} */ (doc.getElementById(h)).focus(opts);
   });
 }
 

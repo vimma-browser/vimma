@@ -127,6 +127,8 @@ export default [
         Components: "readonly",
         // Live grep's matching worker (actors/grep-worker.mjs), started by the child.
         ChromeWorker: "readonly",
+        // DevTools' pseudo-class locks, for a hover (actors/hover.mjs, docs/specs/hover.md).
+        InspectorUtils: "readonly",
       },
     },
   },

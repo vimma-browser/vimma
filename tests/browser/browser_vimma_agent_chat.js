@@ -806,18 +806,19 @@ addTidyTask(async function test_opened_from_another_workspace_reads_none_of_its_
 // so while it waits, and stopping the task ends the wait.
 addTidyTask(async function test_a_used_up_rate_is_waited_out_not_reported_as_questions() {
   await openChat();
-  const opens = Array.from({ length: 11 }, () => openStep(PAGE));
+  // Vimma's own agent has the MCP agents' rates (vimma-mcp decision 46): 15 new tabs a minute.
+  const opens = Array.from({ length: 16 }, () => openStep(PAGE));
   send(script([...opens, { reply: "all opened" }]));
   const entries = () => AgentChat.transcript(openId()).entries;
   await until(
     () => entries().some((e) => /^waiting \d+ s \(rate limit\)$/.test(e.outcome ?? "")),
-    "the eleventh open waits out the open rate",
+    "the sixteenth open waits out the open rate",
   );
   Assert.ok(AgentChat.get(openId()).running, "the task goes on while it waits");
   Assert.equal(
     entries().filter((e) => e.outcome === "ran under grant").length,
-    10,
-    "ten opens ran",
+    15,
+    "fifteen opens ran",
   );
   AgentChat.stop(openId());
   const result = await finished();

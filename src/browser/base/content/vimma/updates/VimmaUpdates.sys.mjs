@@ -29,6 +29,7 @@ import {
   judgeManifest,
   OFF_NOTICE_MS,
   offNotice,
+  OMARCHY_UPDATE_FILE,
   parseManifest,
   REPOSITORY_FILES,
   savedKey,
@@ -83,14 +84,11 @@ const INTERVAL_PREF = "app.update.interval";
 /** Test-only, honoured only in automation: extra pinned keys, and the install type. */
 const TEST_KEYS_PREF = "vimma.update.testKeys";
 const TEST_TYPE_PREF = "vimma.update.installType";
-/** Test-only, honoured only in automation: a directory standing in for `/` (REPOSITORY_FILES). */
-const TEST_REPO_ROOT_PREF = "vimma.update.testRepoRoot";
 /**
- * The `.deb` and `.rpm` hint's line pointing at the guide's repository section (spec
- * package-repositories, decisions 22 and 25), off until the repositories and that section are
- * published: until then the line would point at nothing.
+ * Test-only, honoured only in automation: a directory standing in for `/` (REPOSITORY_FILES,
+ * OMARCHY_UPDATE_FILE).
  */
-const REPO_HINT_PREF = "vimma.feature.packageRepos";
+const TEST_REPO_ROOT_PREF = "vimma.update.testRepoRoot";
 /**
  * After the first window's delayed startup (`browser-delayed-startup-finished`): late enough not
  * to compete with session restore, early enough that a due check is not hours away.
@@ -226,6 +224,11 @@ function inAutomation() {
   return Cu.isInAutomation === true;
 }
 
+/** The directory standing in for `/` in a test, read only in automation; "" otherwise. */
+function testRepoRoot() {
+  return inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";
+}
+
 function notify() {
   for (const fn of listeners) {
     try {
@@ -301,7 +304,7 @@ async function detectInstall() {
  */
 async function repositories(type) {
   if (type !== "deb" && type !== "rpm") return {};
-  const root = inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";
+  const root = testRepoRoot();
   /** @param {string} path */
   const exists = (path) => IOUtils.exists(`${root}${path}`).catch(() => false);
   const [apt, dnf, zypper] = await Promise.all([
@@ -310,6 +313,18 @@ async function repositories(type) {
     exists(REPOSITORY_FILES.zypper),
   ]);
   return { apt, dnf, zypper };
+}
+
+/**
+ * Whether the pacman package runs on Omarchy (#1550): whether OMARCHY_UPDATE_FILE exists, never
+ * what it holds. Read at each look, like the repository files, and under the same test root.
+ * @param {InstallType} type
+ * @returns {Promise<boolean>}
+ */
+async function onOmarchy(type) {
+  if (type !== "pacman") return false;
+  const root = testRepoRoot();
+  return IOUtils.exists(`${root}${OMARCHY_UPDATE_FILE}`).catch(() => false);
 }
 
 /** @returns {PinnedKey[]} */
@@ -1198,6 +1213,7 @@ export const VimmaUpdates = {
     const where = await installInfo();
     const { offer } = state;
     const repos = offer ? await repositories(where.type) : {};
+    const omarchy = offer ? await onOmarchy(where.type) : false;
     return {
       enabled: enabled(),
       from: offFrom(),
@@ -1219,7 +1235,7 @@ export const VimmaUpdates = {
                     ...where,
                     writable: firefoxMode() ? firefox().canApply : undefined,
                     repos,
-                    repoHint: Services.prefs.getBoolPref(REPO_HINT_PREF, false),
+                    omarchy,
                   }),
           }
         : null,

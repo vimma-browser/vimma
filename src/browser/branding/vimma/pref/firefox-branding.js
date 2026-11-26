@@ -286,14 +286,3 @@ pref("pdfjs.featuresNotificationImpressionLimit", 0);
 // pdf.js opens its sidebar on no view by itself (a PDF's /PageMode, the view last used): Vimma's
 // outline panel is the outline, and firefox-pdf.css hides pdf.js's sidebar (pdf-mode decision 18).
 pref("pdfjs.sidebarViewOnLoad", 0);
-
-// docs/specs/package-repositories.md, decisions 22 and 25: a .deb or .rpm installed without
-// Vimma's package repository gets one line in its update steps pointing at the guide's
-// repository section. Off until the repositories and that section are published
-// (CONTRIBUTING.md, "Unfinished features"); set to true in about:config to try it.
-pref("vimma.feature.packageRepos", false);
-
-// docs/specs/tab-sleep.md, decision 20: tabs unseen for `[tabs] sleep_after` minutes go to
-// sleep. Off until the feature is finished (CONTRIBUTING.md, "Unfinished features"); set to true
-// in about:config to try it.
-pref("vimma.feature.tabSleep", false);

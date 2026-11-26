@@ -7,7 +7,7 @@
  * See docs/specs/m5-core-config-and-theme.md (v1) and docs/specs/m3-m4-core-prep.md (v2).
  * Core does no I/O: the host passes file contents.
  */
-import { closest, resolveActionName } from "../keys/actions.mjs";
+import { closest, removedAction, resolveActionName, suggestAction } from "../keys/actions.mjs";
 import { BOOKMARKS_TOOLBAR_SETTINGS } from "../ui/bookmarks-toolbar.mjs";
 import {
   DEFAULT_CONFIG,
@@ -81,6 +81,7 @@ import { hasControl } from "../text/strings.mjs";
  * @property {string} [suggestion]
  * @property {string} [file]         the file it is in, when not the config file the list is about
  *   (bookmarks.toml's errors, docs/specs/bookmarks-file.md)
+ * @property {boolean} [warning]     left out of a file that applies, not a reason it was refused
  */
 
 /**
@@ -159,7 +160,8 @@ import { hasControl } from "../text/strings.mjs";
  * over `:mcp on|off` (the pref), as `[theme] appearance` wins over `:theme`.
  * @typedef {{ enabled?: boolean, workspace: string, askTimeout: number, grantMinutes: number,
  *   grantMaxMinutes: number, maxReadChars: number, notify: boolean, downloadDir: string,
- *   downloadMaxMb: number, clamavMaxAgeDays: number }} McpConfig  `downloadDir` as written (`~` not expanded yet)
+ *   downloadMaxMb: number, clamavMaxAgeDays: number, openPerMinute: number,
+ *   loadPerMinute: number }} McpConfig  `downloadDir` as written (`~` not expanded yet)
  */
 
 /** @typedef {"swap" | "window"} PrivatePlacement */
@@ -298,6 +300,8 @@ const MCP_KEYS = [
   "download_dir",
   "download_max_mb",
   "clamav_max_age_days",
+  "open_per_minute",
+  "load_per_minute",
 ];
 export const MCP_BOUNDS = Object.freeze({
   askTimeout: Object.freeze({ min: 10, max: 300 }),
@@ -305,6 +309,10 @@ export const MCP_BOUNDS = Object.freeze({
   maxReadChars: Object.freeze({ min: 1000, max: 500000 }),
   downloadMaxMb: Object.freeze({ min: 1, max: 4096 }),
   clamavMaxAgeDays: Object.freeze({ min: 1, max: 90 }),
+  // vimma-mcp decision 46: at least 1, since a limit stays on; at most 600 (ten a second), past
+  // which an agent's own round trips are slower than the limit and it would bound nothing.
+  openPerMinute: Object.freeze({ min: 1, max: 600 }),
+  loadPerMinute: Object.freeze({ min: 1, max: 600 }),
 });
 
 /**
@@ -532,6 +540,38 @@ function validate(raw, warnings = []) {
         table(path, v);
       } else {
         unknownKey(path, key, [...MODES, "pdf", ...MODAL_KEYS]);
+      }
+    }
+  }
+
+  // An action this build does not know, with no close match, is most likely one a newer Vimma
+  // added: only that binding is left out, as for an unknown key (#1474). A near miss of a real
+  // action and a removed action stay errors (compileKeymap gives the suggestion or the reason),
+  // and so does malformed key notation, a bad value like any other.
+  /** @param {string} name */
+  const newerAction = (name) =>
+    !resolveActionName(name) && !removedAction(name) && !suggestAction(name);
+  if (isTable(raw.keys)) {
+    for (const [name, v] of Object.entries(raw.keys)) {
+      if (name === "prefix" || resolveActionName(name)) continue;
+      const path = ["keys", name];
+      if ((TOP_KEYS.includes(name) && isTable(v)) || strayCheck({ [name]: v })) {
+        // A misplaced table's line (#1270) or an update opt-out: unknownKey's errors.
+        unknownKey(path, name, []);
+        continue;
+      }
+      if (!newerAction(name)) continue;
+      warnings.push({ path, message: `unknown action "${name}"; skipped` });
+      delete raw.keys[name];
+    }
+  }
+  if (isTable(raw.modal)) {
+    for (const [mode, t] of Object.entries(raw.modal)) {
+      if (!isKeymapTable(mode) || !isTable(t)) continue;
+      for (const [text, v] of Object.entries(t)) {
+        if (typeof v !== "string" || v.startsWith(":") || !newerAction(v)) continue;
+        warnings.push({ path: ["modal", mode, text], message: `unknown action "${v}"; skipped` });
+        delete t[text];
       }
     }
   }
@@ -946,6 +986,10 @@ function validateMcp(mcp, { fail, typeError, unknownKey }) {
     } else if (key === "clamav_max_age_days") {
       const { min, max: top } = MCP_BOUNDS.clamavMaxAgeDays;
       integer(path, v, min, top, " (days)");
+    } else if (key === "open_per_minute" || key === "load_per_minute") {
+      const { min, max: top } =
+        MCP_BOUNDS[key === "open_per_minute" ? "openPerMinute" : "loadPerMinute"];
+      integer(path, v, min, top, " (per minute)");
     } else if (key === "download_dir") {
       const problem = downloadDirProblem(v);
       if (problem === "type") typeError(path, v, "a string");
@@ -1236,6 +1280,8 @@ function resolveMcp(mcp) {
     downloadDir: mcp?.download_dir ?? d.download_dir,
     downloadMaxMb: mcp?.download_max_mb ?? d.download_max_mb,
     clamavMaxAgeDays: mcp?.clamav_max_age_days ?? d.clamav_max_age_days,
+    openPerMinute: mcp?.open_per_minute ?? d.open_per_minute,
+    loadPerMinute: mcp?.load_per_minute ?? d.load_per_minute,
   };
 }
 

@@ -482,7 +482,9 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     Every navigation an activation causes takes a slot of the open rate (`OPEN_RATE`), shared
     with `vimma_open` and follows, so that a granted click loop cannot load pages faster than
     opens can; while that rate is used up no click is made, because a click that loads cannot be
-    told from one that does not until it has run.
+    told from one that does not until it has run. (Since changed: a navigation an activation
+    causes takes a slot of the load rate, shared with loads into a tab and follows but not with
+    new tabs; vimma-mcp decision 46.)
 
 ### D. Filling: `vimma_fill`
 
@@ -580,6 +582,20 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     fires before the page's `submit` listener can change the destination; setting
     `SANDBOXED_FORMS` on agent tabs, because it would stop the user's own logins and searches in
     the agent workspace too.
+    (Since changed: the observer is `http-on-opening-request`, which the parent notifies as it
+    opens the request, for an ordinary submission in the order the page's process started it,
+    because
+    `http-on-modify-request` comes only after the proxy lookup off the main thread: a page's
+    submission started before a fill's last field could reach it after the allowance for the
+    asked one opened, take that allowance and be sent in its place; issue #1484.)
+    (Since changed: the allowance is the step's own request alone. The child names the request
+    its submission or click started by its channel id, and the parent lets through only that
+    request, triggered from that child's process, because a page's submission to the same method
+    and destination, opened after the question allowed it and before the step ran, or opened late
+    by Firefox (a copied upload stream, a prefetch in flight, a form of a frame in another
+    process aimed at this one), could otherwise take the allowance. A form aimed at another
+    frame of the tab is then cancelled even when asked, because the child names only its own
+    frame's loads, and following another frame's would widen what a page could have named.)
 17. **What cannot be caught.** A page that sends data with `fetch` from a button's click
     listener, without a form submission, cannot be told apart from any other button. Such a click
     is an ordinary `vimma_activate`, whose question names the element's text; the guide says
@@ -712,6 +728,7 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     minute, `vimma_elements` and `vimma_console` 30 each, `vimma_screenshot` 12 (F21), all
     counted when asked, with `busy` beyond, as mcp-drive D15's rate is, so that a refused call
     cannot loop and a grant cannot flood a page; navigations count in the open rate (F11).
+    (Since changed: they count in the load rate; see vimma-mcp decision 46.)
     (Since changed: a step asked with `elements` (F2) also takes a slot of `vimma_elements`'
     rate when asked, and is `busy` before anything of it runs when those are used up, so that
     returning the list with a step is no way past the rate; issue
@@ -771,12 +788,12 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 | **A page steals the user's activation** from an agent's click: clipboard, passkeys, permissions.   | A click is `click()`, never synthesised input, so the page gets no transient activation (F8). Permission prompts and pop-ups are already refused in agent tabs (vimma-mcp 30).                                                                                                          |
 | **A click starts a purchase or sends a message.**                                                  | Form submissions ask every time and unasked ones are cancelled (F15, F16). A script-only button is an ordinary activation, shown in its question or notice and logged (F17); under a `vimma_activate` grant it runs unasked, with a notice and a log row (F25).                         |
 | **A local file is uploaded.**                                                                      | File fields are never filled or clicked (F9, F13).                                                                                                                                                                                                                                      |
-| **A click is a way around the cross-site question.**                                               | Links to another site are refused in `vimma_activate` and asked as `vimma_open` through `vimma_keys` (F10). Navigations a click causes count in the open rate (F11).                                                                                                                    |
+| **A click is a way around the cross-site question.**                                               | Links to another site are refused in `vimma_activate` and asked as `vimma_open` through `vimma_keys` (F10). Navigations a click causes count in the open rate (F11). (Since changed: the load rate; see vimma-mcp decision 46.)                                                         |
 | **A label names a different element than the agent saw.**                                          | Labels are bound to the document and their element must still be connected (F3, F4). (Since changed: the 120 s expiry was dropped for element lists, #591.)                                                                                                                             |
 | **The agent acts under the user's cursor.**                                                        | `in-use` (F27). Nothing is focused or selected (F8, F12).                                                                                                                                                                                                                               |
 | **A screenshot or console entry carries instructions**, or a token a page logged.                  | Both are labelled untrusted (F19, F24); they reach only the agent's own tab. Console reading runs no page code (F23).                                                                                                                                                                   |
 | **A screenshot shows a card number the user typed** in an agent tab.                               | A screenshot is refused while a sensitive field on screen has a value (F21).                                                                                                                                                                                                            |
-| **Flooding.**                                                                                      | Rates per tool (F21, F26) and the open rate for navigations (F11).                                                                                                                                                                                                                      |
+| **Flooding.**                                                                                      | Rates per tool (F21, F26) and the open rate for navigations (F11). (Since changed: the load rate; see vimma-mcp decision 46.)                                                                                                                                                           |
 
 ### docs/security/12-agents-mcp.md (§12, rules added by the sub-PR that builds each)
 

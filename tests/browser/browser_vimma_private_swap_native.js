@@ -161,6 +161,9 @@ async function enter(from = window) {
   prefix("P", { shiftKey: true }, from);
   const priv = opened ? await opened : privateWindows()[0];
   await until(() => hidden(from) && !hidden(priv), "private is shown in the normal window's place");
+  // The swap ends with its frame check, a turn after the show (decision 9): nothing may move the
+  // window before it, as a swap that waited for its page shows from a timer or an IPC reply.
+  await turns();
   return priv;
 }
 
@@ -564,6 +567,7 @@ async function leave(priv) {
   await SimpleTest.promiseFocus(priv);
   prefix("P", { shiftKey: true }, priv);
   await until(() => hidden(priv) && !hidden(window), "back to the normal window");
+  await turns();
 }
 
 /** Two turns of the event loop: past every swap's frame check. */

@@ -83,7 +83,6 @@ async function agentClient() {
 }
 
 add_task(async function setup() {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.tabSleep", true]] });
   await /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(window)).ready;
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
   await VimmaControl.settled();

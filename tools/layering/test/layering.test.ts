@@ -639,7 +639,7 @@ describe("restrictedErrors", () => {
     ]);
   });
 
-  test("the gate's importers are exactly today's seven", () => {
+  test("the gate's importers are exactly today's eight", () => {
     // Adding one is a security decision, not a list edit: review the new caller against
     // docs/security/12-agents-mcp.md section 12 first, then add it here and in layers.ts.
     expect(Object.keys(RESTRICTED)).toEqual([
@@ -648,6 +648,7 @@ describe("restrictedErrors", () => {
       "actors/agent-page.mjs",
       "actors/user-gesture.mjs",
       "actors/page-events.mjs",
+      "actors/hover.mjs",
       "ui/agent-chat-key.mjs",
       "ui/agent-chat-models.mjs",
     ]);

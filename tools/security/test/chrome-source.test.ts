@@ -126,12 +126,31 @@ describe("chrome code", () => {
   // `find`.
   test("starts an agent CLI only from its checked path, with fixed arguments and no shell", () => {
     const text = readFileSync(join(ROOT, CLI), "utf8");
-    expect(text.match(/Subprocess\.call\(/g)).toHaveLength(2);
+    // The run, runFixed, and on macOS the login shell that gives setup its PATH (C4).
+    expect(text.match(/Subprocess\.call\(/g)).toHaveLength(3);
     expect(text).toMatch(
-      /const run = \{ mcpConfig: file, vimmaCtl: ctl\.path, dir, model: o\.provider\.model, others \};\s*proc = await lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: cli\.args\(run\),\s*(\/\/[^\n]*\n\s*)*environment: \{\s*\.\.\.cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*...cli\.env\(\{ ticket: issued\.ticket, port: issued\.port, dir \}\),\s*\},\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
+      /const run = \{ mcpConfig: file, vimmaCtl: ctl\.path, dir, model: o\.provider\.model, others \};\s*proc = await lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: cli\.args\(run\),\s*(\/\/[^\n]*\n\s*)*environment: \{\s*\.\.\.\(await runEnvironment\(\)\),\s*...cli\.env\(\{ ticket: issued\.ticket, port: issued\.port, dir \}\),\s*\},\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
     );
     expect(text).toMatch(
-      /lazy\.Subprocess\.call\(\{\s*command: path,\s*arguments: \[\.\.\.args\],\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir,\s*stderr: "pipe",\s*\}\)/,
+      /lazy\.Subprocess\.call\(\{\s*command: path,\s*arguments: \[\.\.\.args\],\s*environment: await runEnvironment\(\),\s*workdir,\s*stderr: "pipe",\s*\}\)/,
+    );
+    // The CLI's environment is Vimma's without the browser's variables; on macOS its PATH is
+    // the one setup searched, nothing else of it changed.
+    expect(text).toMatch(
+      /async function runEnvironment\(\) \{\s*const env = cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\);\s*if \(onMac\(\)\) env\.PATH = \(await searchPath\(\)\)\.join\(":"\);\s*return env;\s*\}/,
+    );
+    // The login shell (C4, Since changed): only on macOS, only when Vimma's PATH is launchd's,
+    // once per session; `$SHELL` only once `inspect` passes it, with the core's fixed arguments
+    // around a hex mark, Vimma's environment without the browser's variables, and no input.
+    expect(text.match(/askLoginShell\(/g)).toHaveLength(2);
+    expect(text).toMatch(
+      /if \(!onMac\(\)\) return env\.split\(":"\);\s*const home = [^\n]*\n\s*if \(!launchdPath\(env\)\) return searchFolders\(\{ login: null, env, home \}\);\s*loginPath \?\?= askLoginShell\(\);/,
+    );
+    expect(text).toMatch(
+      /const checked = await inspect\(shell\);\s*if \(!\("path" in checked\)\) return null;\s*const mark = Services\.uuid\s*\.generateUUID\(\)\s*\.toString\(\)\s*\.replace\(\/\[\^0-9a-f\]\/g, ""\);/,
+    );
+    expect(text).toMatch(
+      /lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: loginPathArgs\(mark\),\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir: Services\.dirsvc\.get\("Home", Ci\.nsIFile\)\.path,\s*stderr: "pipe",\s*\}\);\s*proc\.stdin\.close\(\)/,
     );
     // runFixed's two callers: the version of a path inspect passed, and the server list of the
     // run's checked path, each with its CLIS entry's frozen arguments, before any ticket.
@@ -174,6 +193,10 @@ describe("chrome code", () => {
     );
     const core = readFileSync(join(ROOT, "packages/vimma-core/src/agent/agent-cli.mjs"), "utf8");
     expect(core).toContain('versionArgs: Object.freeze(["--version"]),');
+    expect(core).toContain(
+      'if (!/^[0-9a-f]{16,64}$/.test(mark)) throw new Error("the mark is not hex");\n' +
+        '  return ["-l", "-i", "-c", `echo ${mark}; /usr/bin/printenv PATH; echo ${mark}`];',
+    );
     expect(core).toContain("args: (/** @type {RunArgs} */ o) => claudeArguments(o),");
     expect(core).toContain("args: (/** @type {RunArgs} */ o) => codexArguments(o),");
     expect(core).toContain('args: Object.freeze(["mcp", "list", "--json"]),');
@@ -363,7 +386,7 @@ describe("chrome code", () => {
     // allow, and only through this one call.
     const AGENT_PAGES = "src/browser/base/content/vimma/ctl/AgentPages.sys.mjs";
     expect(writes.filter((h) => !h.startsWith(`${OPS}:`))).toEqual([
-      `${AGENT_PAGES}:195: services.perms.addFromPrincipalForBrowser(`,
+      `${AGENT_PAGES}:200: services.perms.addFromPrincipalForBrowser(`,
     ]);
     const agentPages = readFileSync(join(ROOT, AGENT_PAGES), "utf8");
     expect(

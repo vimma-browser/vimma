@@ -27,12 +27,16 @@ support-files = [
 ["browser_vimma_scroll_step.js"]
 support-files = ["file_vimma_insert_scroll.html", "file_vimma_frame.html"]
 
+["browser_vimma_scroll_area.js"]
+support-files = ["file_vimma_scroll_area.html", "file_vimma_scroll_area_inner.html"]
+
 ["browser_vimma_view_source.js"]
 support-files = ["file_vimma_view_source.html"]
 
 ["browser_vimma_insert_focus.js"]
 support-files = [
   "file_vimma_insert_focus.html",
+  "file_vimma_insert_caret.html",
   "file_vimma_insert_autofocus.html",
   "file_vimma_insert_tab_frame.html",
   "file_vimma_insert_trap.html",
@@ -65,6 +69,13 @@ support-files = [
   "file_vimma_element_many.html",
   "file_vimma_element_paragraphs.html",
   "file_vimma_test.pdf",
+]
+
+["browser_vimma_hover.js"]
+support-files = [
+  "file_vimma_hover.html",
+  "file_vimma_hover_frame.html",
+  "file_vimma_hover_other.html",
 ]
 
 ["browser_vimma_copy_mode.js"]
@@ -225,6 +236,7 @@ support-files = ["file_vimma_urlbar_suggest.sjs"]
 ["browser_vimma_workspace_store.js"]
 
 ["browser_vimma_workspace_routes.js"]
+support-files = ["file_vimma_routes_redirect.sjs"]
 
 ["browser_vimma_workspace_routes_external.js"]
 
@@ -300,6 +312,14 @@ support-files = [
   "file_vimma_agent_click.html",
   "file_vimma_agent_page.html",
   "file_vimma_agent_press.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_hover.js"]
+support-files = [
+  "file_vimma_hover.html",
+  "file_vimma_hover_frame.html",
+  "file_vimma_hover_other.html",
   "head_vimma_control.js",
 ]
 
@@ -427,6 +447,9 @@ support-files = ["file_vimma_title.html"]
 
 ["browser_vimma_private_swap_native.js"]
 
+["browser_vimma_private_swap_paint.js"]
+support-files = ["file_vimma_plain.html"]
+
 ["browser_vimma_side_panel.js"]
 
 ["browser_vimma_close_active_tab.js"]
@@ -491,6 +514,10 @@ support-files = ["file_vimma_insert_scroll.html"]
 support-files = ["file_vimma_insert_scroll.html"]
 
 ["browser_vimma_workspace_desync.js"]
+support-files = ["head_vimma_workspace_desync.js"]
+
+["browser_vimma_workspace_desync_last_window.js"]
+support-files = ["head_vimma_workspace_desync.js"]
 
 ["browser_vimma_config.js"]
 
@@ -557,6 +584,9 @@ support-files = ["file_vimma_popups.html"]
 
 ["browser_vimma_notification_bars.js"]
 support-files = ["file_vimma_popups.html"]
+
+["browser_vimma_webauthn_prompts.js"]
+support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_security_invariants.js"]
 support-files = ["head_vimma_control.js"]
@@ -681,6 +711,8 @@ support-files = [
 ]
 
 ["browser_vimma_tab_sleep_rows.js"]
+
+["browser_vimma_tab_sleep_command.js"]
 
 ["browser_vimma_agent_tab_sleep.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]

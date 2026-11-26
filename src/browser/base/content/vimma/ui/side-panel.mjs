@@ -80,6 +80,9 @@ export function rowsShown(list) {
  * @property {(tabId: string) => void} select  a row was picked; the panel closes right after
  * @property {(text: string) => void} say  a refusal for the notice
  * @property {(tabId: string) => void} closeTab  `x`: close that tab; the panel stays open
+ * @property {(tabs: { id: string, number: number }[]) => void} sleep  `z`: put those tabs to
+ *   sleep, each said by its row number (docs/specs/tab-sleep.md Behaviour 12); the panel stays
+ *   open, and the discard's TabBrowserDiscarded redraws the rows muted
  * @property {(tabId: string) => void} [move]  `m`: ask which workspace gets that tab; the panel
  *   has closed already
  * @property {(tabIds: string[], focus: string, alone?: string) => string | null} together
@@ -122,6 +125,9 @@ export class SidePanel {
       const el = this.win.document.activeElement;
       if (this.isOpen && el?.localName === "browser") this.list?.focus();
     };
+    this.onFocusIn = () => {
+      if (this.isOpen && addressBarFocused(this.win)) this.close();
+    };
   }
 
   get isOpen() {
@@ -141,6 +147,7 @@ export class SidePanel {
     const tabs = this.#tabContainer();
     for (const type of TAB_EVENTS) tabs?.addEventListener(type, this.onTabEvent);
     this.win.addEventListener("TabSwitchDone", this.onSwitchDone);
+    this.win.addEventListener("focusin", this.onFocusIn);
     // The list, which carries aria-activedescendant (m7-a11y).
     /** @type {HTMLElement} */ (this.list).focus();
     return true;
@@ -161,6 +168,7 @@ export class SidePanel {
     const tabs = this.#tabContainer();
     for (const type of TAB_EVENTS) tabs?.removeEventListener(type, this.onTabEvent);
     this.win.removeEventListener("TabSwitchDone", this.onSwitchDone);
+    this.win.removeEventListener("focusin", this.onFocusIn);
     const box = /** @type {HTMLElement} */ (this.box);
     // Focus first, then hide: hiding the focused list would drop focus to the body.
     giveFocusBack(this.win, box, this.opener);
@@ -171,7 +179,7 @@ export class SidePanel {
   /**
    * One `[modal.panel]` action (panel.down, panel.up, panel.first, panel.last, panel.half_down,
    * panel.half_up, panel.open, panel.select, panel.close, panel.close_tab,
-   * panel.close_active_tab, panel.mark, panel.visual, panel.move), with its count.
+   * panel.close_active_tab, panel.mark, panel.visual, panel.move, panel.sleep), with its count.
    * @param {{ id: string, arg?: number, count?: number, shown?: string | null }} action
    */
   action(action) {
@@ -186,6 +194,7 @@ export class SidePanel {
     if (effect?.type === "refuse") this.host.say(effect.text);
     // The highlight is on the next row already: the TabClose refresh keeps it there.
     if (effect?.type === "closeTab") this.host.closeTab(effect.id);
+    if (effect?.type === "sleep") this.host.sleep(effect.tabs);
     // Closed first, so the picker that asks where takes focus from the page, not the panel.
     if (effect?.type === "move") {
       this.close();
@@ -400,6 +409,18 @@ function tabsOf(win) {
  */
 export function rememberFocus(win) {
   return { el: Services.focus.focusedElement, tab: tabsOf(win)?.selectedTab ?? null };
+}
+
+/**
+ * Whether the address bar has focus: a panel open then closes (#1481). A new tab (ctrl+t, Vimma's
+ * new tab, the + button) focuses it on the new tab page, as does a click into it; left open, the
+ * modal `panel` mode kept every key typed there, and `m` opened the workspace picker.
+ * @param {BrowserWindow} win
+ */
+export function addressBarFocused(win) {
+  const urlbar = /** @type {{ gURLBar?: { focused: boolean } }} */ (/** @type {unknown} */ (win))
+    .gURLBar;
+  return !!urlbar?.focused;
 }
 
 /**

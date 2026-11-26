@@ -813,6 +813,60 @@ add_task(async function a_private_window_change_is_not_written() {
   await reset();
 });
 
+add_task(async function a_private_window_change_during_an_apply_is_not_written() {
+  // #1576: a private window's change that lands while the mirror applies a file edit is still
+  // that window's. Events during an apply wait for its closing compare, which wrote this one.
+  await IOUtils.writeUTF8(bookmarksFile, FILE);
+  await untilFolder("work", LOADED, "loaded");
+  const work = /** @type {Node} */ (await topFolder("work")).guid;
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  await SimpleTest.promiseFocus(priv);
+  const insertTrees = mirror.insertTrees.bind(mirror);
+  let once = true;
+  mirror.insertTrees = async (/** @type {Parameters<typeof insertTrees>[0]} */ inserts) => {
+    await insertTrees(inserts);
+    if (!once) return;
+    once = false;
+    Assert.ok(mirror.applying, "the mirror is applying");
+    await PlacesUtils.bookmarks.insert({
+      parentGuid: work,
+      url: "https://private.example/",
+      title: "secret",
+    });
+    await PlacesUtils.bookmarks.update({
+      guid: await guidOf("https://mail.example.com/"),
+      title: "secret title",
+    });
+    await PlacesUtils.bookmarks.insert({
+      parentGuid: work,
+      type: PlacesUtils.bookmarks.TYPE_FOLDER,
+      title: "hidden",
+    });
+  };
+  const edited = `${FILE}"News" = "https://news.example/"\n`;
+  try {
+    await IOUtils.writeUTF8(bookmarksFile, edited);
+    await untilFolder(
+      "work",
+      [
+        ...LOADED,
+        "News https://news.example/",
+        "secret https://private.example/",
+        { "hidden/": [] },
+      ],
+      "the rename put back; the new bookmark and folder kept in Places only",
+    );
+    await quiet();
+  } finally {
+    mirror.insertTrees = insertTrees;
+    await BrowserTestUtils.closeWindow(priv);
+    await SimpleTest.promiseFocus(window);
+  }
+  Assert.ok(!once, "the change landed during the apply");
+  Assert.equal(await IOUtils.readUTF8(bookmarksFile), edited, "nothing written");
+  await reset();
+});
+
 add_task(async function a_library_change_from_a_normal_window_is_written_beside_a_private_one() {
   await IOUtils.writeUTF8(bookmarksFile, FILE);
   await untilFolder("work", LOADED, "loaded");

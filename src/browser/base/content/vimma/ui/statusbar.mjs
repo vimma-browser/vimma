@@ -65,6 +65,7 @@ const styled = new WeakSet();
  *   update?: import("../core/updates.mjs").UpdateNotice | null,
  *   element?: import("../core/statusbar.mjs").ElementStatus | null,
  *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null,
+ *   hover?: import("../core/statusbar.mjs").HoverStatus | null, scrollArea?: boolean,
  *   pdf?: import("../core/pdf.mjs").PdfState | null,
  *   downloads?: import("../core/downloads.mjs").DownloadSegment | null }} status
  * @property {(fn: () => void) => () => void} subscribe  host state changes; returns unsubscribe
@@ -310,6 +311,8 @@ export class StatusBar {
       update: status.update ?? null,
       element: status.element ?? null,
       hint: status.hint ?? null,
+      hover: status.hover ?? null,
+      scrollArea: status.scrollArea ?? false,
       popups: status.popups ?? null,
       pdf: status.pdf ?? null,
       downloads: status.downloads ?? null,
@@ -368,6 +371,7 @@ export class StatusBar {
       agentWaiting: input.agent?.waiting ?? 0,
       element: input.element ?? null,
       hint: input.hint ?? null,
+      hover: input.hover ?? null,
     });
     this.announced = last;
     const said = [text, this.queued].filter(Boolean).join(". ");

@@ -793,6 +793,8 @@ describe("[mcp]", () => {
       downloadDir: "~/Downloads/vimma-agent",
       downloadMaxMb: 200,
       clamavMaxAgeDays: 7,
+      openPerMinute: 15,
+      loadPerMinute: 60,
     });
     expect(ok(toml()).mcp.workspace).toBe("agent");
     expect(DEFAULT_CONFIG.mcp).toEqual({
@@ -805,6 +807,8 @@ describe("[mcp]", () => {
       download_dir: "~/Downloads/vimma-agent",
       download_max_mb: 200,
       clamav_max_age_days: 7,
+      open_per_minute: 15,
+      load_per_minute: 60,
     });
     const text = formatDefaultsToml();
     expect(text).toMatch(
@@ -816,7 +820,9 @@ describe("[mcp]", () => {
     expect(text).toMatch(
       /^download_dir = "~\/Downloads\/vimma-agent"(?: +#.*)?\ndownload_max_mb = 200(?: +#.*)?$/m,
     );
-    expect(text).toMatch(/^clamav_max_age_days = 7(?: +#.*)?$/m);
+    expect(text).toMatch(
+      /^clamav_max_age_days = 7(?: +#.*)?\nopen_per_minute = 15(?: +#.*)?\nload_per_minute = 60(?: +#.*)?$/m,
+    );
   });
 
   test("every key as written; enabled only when the file sets it", () => {
@@ -833,6 +839,8 @@ describe("[mcp]", () => {
         'download_dir = "/srv/agent-files"',
         "download_max_mb = 4096",
         "clamav_max_age_days = 90",
+        "open_per_minute = 600",
+        "load_per_minute = 1",
       ),
     ).mcp;
     expect(mcp).toEqual({
@@ -846,6 +854,8 @@ describe("[mcp]", () => {
       downloadDir: "/srv/agent-files",
       downloadMaxMb: 4096,
       clamavMaxAgeDays: 90,
+      openPerMinute: 600,
+      loadPerMinute: 1,
     });
     expect(ok(cfg("[mcp]", "enabled = false")).mcp.enabled).toBe(false);
     expect("enabled" in ok(cfg("[mcp]", "notify = true")).mcp).toBe(false);

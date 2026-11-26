@@ -165,7 +165,8 @@ dropped link of the same process for two minutes.
   A page read late in a long session can steer the agent as one read early could, and under a
   session grant its acts run unasked for longer. What bounds it is unchanged and does not
   depend on time: the agent workspace's container, the checkpoints (form submission, paying,
-  show, unsafe downloads, full control), at most 10 opens a minute, a notice and a `:mcp log`
+  show, unsafe downloads, full control), at most 10 opens a minute (since changed: 15 new tabs
+  and 60 loads, vimma-mcp decision 46), a notice and a `:mcp log`
   row for every call, the status bar's `◇ agent granted`, and `ctrl+b shift+a` to end every
   grant at once. A count before `a` gives a timed grant for a task that should stay bounded. The
   guide advises a grant only for a task the user is watching, as before.

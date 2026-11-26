@@ -9,9 +9,10 @@ use super::{MAX_COUNT, MAX_KEYS, MAX_QUERY, MAX_READ_CHARS, MAX_URL, text};
 use crate::json::Value;
 use std::collections::BTreeMap;
 
-/// vimma-core's `ELEMENT_KINDS`: what an element list says an element is (mcp-forms F5).
-pub(super) const ELEMENT_KINDS: [&str; 7] = [
-    "link", "button", "field", "checkbox", "radio", "select", "click",
+/// vimma-core's `ELEMENT_KINDS`: what an element list says an element is (mcp-forms F5); `hover`
+/// only when a list's kinds ask for it (docs/specs/hover.md decision 10).
+pub(super) const ELEMENT_KINDS: [&str; 8] = [
+    "link", "button", "field", "checkbox", "radio", "select", "click", "hover",
 ];
 
 /// The longest `query` of an element list, in code points (builtin-agent B2).
@@ -142,6 +143,43 @@ pub(super) fn activate_args(arguments: &BTreeMap<String, Value>) -> Result<ToolC
     Ok(ToolCall::Activate {
         tab,
         label,
+        elements,
+        filters,
+    })
+}
+
+/// `vimma_hover`'s arguments (docs/specs/hover.md decision 9): a label, with the list after it
+/// as after a click, or `release: true` alone. A false release is left out, as a false flag is.
+pub(super) fn hover_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCall, String> {
+    only(
+        arguments,
+        &["tab", "label", "release", "elements", "query", "kinds"],
+    )?;
+    let tab = tab_arg(arguments.get("tab"))?;
+    let release = flag_arg(arguments, "release")?;
+    if arguments.contains_key("label") == release {
+        return Err("vimma_hover takes a label or release: true, not both".into());
+    }
+    if release {
+        if ["elements", "query", "kinds"]
+            .iter()
+            .any(|k| arguments.contains_key(*k))
+        {
+            return Err("a release takes no elements, query or kinds".into());
+        }
+        return Ok(ToolCall::Hover {
+            tab,
+            label: None,
+            elements: false,
+            filters: ListFilters::default(),
+        });
+    }
+    let label = label_arg(arguments.get("label"))?;
+    let elements = flag_arg(arguments, "elements")?;
+    let filters = step_filters(arguments, elements)?;
+    Ok(ToolCall::Hover {
+        tab,
+        label: Some(label),
         elements,
         filters,
     })
@@ -964,7 +1002,7 @@ mod tests {
         }
         let query = "query must be 1 to 200 characters of one line";
         let kinds = "kinds must be distinct kinds of link, button, field, checkbox, radio, select, \
-                     click";
+                     click, hover";
         let with = "query and kinds come only with elements: true";
         let long = format!(r#"{{"tab":"12","query":"{}"}}"#, "a".repeat(201));
         for (tool, arguments, says) in [
@@ -998,6 +1036,71 @@ mod tests {
             ),
         ] {
             let Action::Reply(r) = handle(&mut p, &call_line(6, tool, arguments)) else {
+                panic!("{arguments}: reached Vimma");
+            };
+            let t = tool_error_text(&r);
+            assert!(t.contains(says), "{arguments}: {t}");
+        }
+    }
+
+    // docs/specs/hover.md decision 9: vimma_hover names a label from vimma_elements, with the
+    // list after it as after a click, or release: true alone; never both, never neither. A false
+    // release is left out, as a false flag is.
+    #[test]
+    fn hover_takes_a_label_or_a_release() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        for (arguments, sent) in [
+            (
+                r#"{"tab":"12","label":"sd"}"#,
+                r#"{"label":"sd","tab":"12"}"#,
+            ),
+            (
+                r#"{"tab":"12","label":"sd","elements":true,"kinds":["button","hover"]}"#,
+                r#"{"elements":true,"kinds":["button","hover"],"label":"sd","tab":"12"}"#,
+            ),
+            (
+                r#"{"tab":"12","label":"sd","release":false}"#,
+                r#"{"label":"sd","tab":"12"}"#,
+            ),
+            (
+                r#"{"tab":"12","release":true}"#,
+                r#"{"release":true,"tab":"12"}"#,
+            ),
+        ] {
+            let Action::Call(call) = handle(&mut p, &call_line(5, "vimma_hover", arguments)) else {
+                panic!("{arguments}: not a call");
+            };
+            assert_eq!(call.tool.name(), "vimma_hover");
+            assert_eq!(call.tool.command().0, "agent-hover");
+            assert_eq!(call.tool.command().1.to_string(), sent, "{arguments}");
+        }
+        let one = "vimma_hover takes a label or release: true, not both";
+        for (arguments, says) in [
+            (r#"{"tab":"12"}"#, one),
+            (r#"{"tab":"12","release":false}"#, one),
+            (r#"{"tab":"12","label":"sd","release":true}"#, one),
+            (r#"{"label":"sd"}"#, "tab"),
+            (r#"{"tab":"12","label":"x"}"#, "label"),
+            (r##"{"tab":"12","label":"#gear"}"##, "label"),
+            (
+                r#"{"tab":"12","release":"yes"}"#,
+                "release must be true or false",
+            ),
+            (
+                r#"{"tab":"12","release":true,"elements":true}"#,
+                "a release takes no elements, query or kinds",
+            ),
+            (
+                r#"{"tab":"12","label":"sd","query":"gear"}"#,
+                "query and kinds come only with elements: true",
+            ),
+            (
+                r#"{"tab":"12","label":"sd","x":1,"y":2}"#,
+                "unknown argument \"x\"",
+            ),
+        ] {
+            let Action::Reply(r) = handle(&mut p, &call_line(6, "vimma_hover", arguments)) else {
                 panic!("{arguments}: reached Vimma");
             };
             let t = tool_error_text(&r);

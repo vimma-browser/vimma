@@ -7,6 +7,7 @@ import {
   barKey,
   dialogHint,
   dialogKey,
+  doorhangerButtons,
   doorhangerHint,
   doorhangerKey,
   popupBarHint,
@@ -142,6 +143,91 @@ describe("doorhangerHint", () => {
   });
 });
 
+// docs/specs/webauthn-prompts.md: which button y and n press. `n` is the button Esc runs, and `y`
+// the other one, so that in a passkey prompt, whose main button is Cancel, `y` never cancels.
+describe("doorhangerButtons", () => {
+  test("a permission prompt: y the main button, n the secondary one", () => {
+    expect(
+      doorhangerButtons({
+        popupid: "geolocation",
+        escAction: "secondarybuttoncommand",
+        secondary: true,
+      }),
+    ).toEqual({ yes: "main", no: "secondary" });
+    expect(doorhangerButtons({ popupid: "addon-installed", secondary: false })).toEqual({
+      yes: "main",
+      no: null,
+    });
+  });
+
+  test("a prompt whose Esc runs its main button: n the main button, y the secondary one", () => {
+    // Choosing a passkey: Cancel is the main button, the first passkey the secondary one.
+    expect(
+      doorhangerButtons({
+        popupid: "webauthn-prompt-select-sign-result",
+        escAction: "buttoncommand",
+        secondary: true,
+      }),
+    ).toEqual({ yes: "secondary", no: "main" });
+    // Touch your security key: Cancel alone.
+    expect(
+      doorhangerButtons({
+        popupid: "webauthn-prompt-presence",
+        escAction: "buttoncommand",
+        secondary: false,
+      }),
+    ).toEqual({ yes: null, no: "main" });
+  });
+
+  test("a passkey notice with only Cancel: n cancels, y has no button", () => {
+    for (const id of ["selectDevice", "deviceBlocked", "pinNotSet", "uvInvalid"]) {
+      expect(
+        doorhangerButtons({
+          popupid: `webauthn-prompt-${id}`,
+          escAction: "secondarybuttoncommand",
+          secondary: false,
+        }),
+      ).toEqual({ yes: null, no: "main" });
+    }
+  });
+
+  test("passkey prompts with two answers keep y main and n secondary", () => {
+    for (const id of ["register-direct", "related-origin-request"]) {
+      expect(
+        doorhangerButtons({
+          popupid: `webauthn-prompt-${id}`,
+          escAction: "secondarybuttoncommand",
+          secondary: true,
+        }),
+      ).toEqual({ yes: "main", no: "secondary" });
+    }
+  });
+});
+
+describe("doorhangerKey with the prompt's list open", () => {
+  test("y and n are the list's: they neither answer nor are swallowed", () => {
+    const listOpen = { ...base, inPrompt: true, listOpen: true };
+    expect(doorhangerKey("y", listOpen)).toEqual({ kind: "pass" });
+    expect(doorhangerKey("n", listOpen)).toEqual({ kind: "pass" });
+    expect(doorhangerKey("y", { ...listOpen, armed: false })).toEqual({ kind: "pass" });
+  });
+});
+
+describe("doorhangerHint for passkey prompts", () => {
+  test("a prompt with no button for y names only n", () => {
+    expect(doorhangerHint({ main: "", secondary: "Cancel" })).toBe("n cancel · Tab buttons");
+    expect(doorhangerHint({ main: "", secondary: "Cancel", inField: true })).toBe(
+      "Esc, then n cancel",
+    );
+  });
+
+  test("a prompt with more answers in a list says how to reach them", () => {
+    expect(doorhangerHint({ main: "alice", secondary: "Cancel", more: true })).toBe(
+      "y alice · n cancel · Tab, ↓ more",
+    );
+  });
+});
+
 // docs/specs/popup-blocked.md: Firefox's pop-up blocked bar takes the same keys, with the same
 // guards: `y` allows the site, `n` blocks it, `Esc` closes the bar; never from a field.
 describe("popupBarKey", () => {
@@ -262,6 +348,29 @@ describe("barKey", () => {
       expect(barKey(key, inBar)).toEqual({ kind: "pass" });
     }
     expect(barKey("esc", { ...bar, inField: true, inBar: true })).toEqual({ kind: "pass" });
+  });
+
+  // macOS Firefox leaves Enter on a focused XUL button to the window's default button
+  // (XULButtonElement::PostHandleEvent), so Vimma presses the bar's button itself.
+  test("Enter presses the bar button that has focus, on every platform", () => {
+    const onButton = { ...closable, inField: true, inBar: true, onButton: true };
+    expect(barKey("enter", onButton)).toEqual({ kind: "press" });
+    expect(barKey("enter", { ...onButton, dismissable: false })).toEqual({ kind: "press" });
+    for (const key of ["space", "tab", "shift+tab", "y"]) {
+      expect(barKey(key, onButton)).toEqual({ kind: "pass" });
+    }
+  });
+
+  test("Enter is Firefox's on the close button, held down, mid-sequence or in the agent workspace", () => {
+    const onButton = { ...closable, inField: true, inBar: true, onButton: true };
+    for (const s of [
+      { ...onButton, onButton: false },
+      { ...onButton, repeat: true },
+      { ...onButton, pending: true },
+      { ...onButton, agent: true },
+    ]) {
+      expect(barKey("enter", s)).toEqual({ kind: "pass" });
+    }
   });
 
   test("in the agent workspace Esc leaves the bar alone with focus on it too", () => {

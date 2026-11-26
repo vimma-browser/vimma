@@ -73,6 +73,8 @@ import { stripInvisible } from "../core/pdf.mjs";
 import { contentRunners, hostRunners } from "./runners.mjs";
 import { HostServices } from "./host-services.mjs";
 import { dropOutlineAsk } from "./outline-ops.mjs";
+import { HoverOps } from "./hover-ops.mjs";
+import { SCROLL_AREA_FLASH_MS, ScrollAreaOps } from "./scroll-area-ops.mjs";
 
 // Defined with the code that uses them; importers reach them here, as before the runners moved.
 export { CONFIG_EDIT_TOPIC, CONFIG_RELOAD_TOPIC } from "./runners.mjs";
@@ -123,8 +125,15 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
  * @property {Chord[]} buffered  keys typed while collecting, or while `wheel`
  * @property {boolean} [wheel]  a wheel over the page: its labels are hidden until it is known
  *   whether the wheel moved their targets (#1337)
- * @property {{ x: number, y: number }} [wheelAt]  a wheel came while collecting, here (the
- *   page's CSS pixels): the labels are looked at for it before they are shown
+ * @property {HintWheel} [wheelAt]  a wheel came while collecting: the labels are looked at
+ *   for it before they are shown
+ */
+
+/**
+ * A wheel over the page while hints are up: its point in the page's CSS pixels, its deltas,
+ * whether shift was down, and whether ctrl, alt or meta was (VimmaActors.hintsMoved).
+ * @typedef {{ x: number, y: number, dx: number, dy: number, shift: boolean, other: boolean }}
+ *   HintWheel
  */
 
 /** Element focus with no text block on screen, and in the PDF viewer (element-focus 14). */
@@ -188,10 +197,11 @@ const isRemoteBrowserTarget = (target) =>
  * @property {Element | null} focusNow  the element focus last went to in this window
  * @property {Element | null} focusBefore  the one before it
  * @property {(e: FocusEvent) => void} onFocusIn  keeps focusNow and focusBefore
- * @property {Element | null} dialogOpener  what had focus when the last dialog opened
+ * @property {Element | null} dialogOpener  what had focus when the last dialog opened, or for a
+ *   window dialog opened as the last one closed, that one's opener
  * @property {() => void} onDialogOpen  records dialogOpener
- * @property {() => void} onDialogClose  focus left on nothing by a closed dialog goes back to the
- *   hidden address bar it was opened from, else to the page
+ * @property {(e: Event) => void} onDialogClose  focus left on nothing by a closed dialog goes
+ *   back to the hidden address bar it was opened from, else to the page
  * @property {ReturnType<typeof createDispatcher>} dispatcher
  * @property {HelpOverlay} help
  * @property {Notice} notice  "<action>: not implemented yet" (m2-tab-keys)
@@ -781,10 +791,14 @@ export const VimmaHost = {
     win.addEventListener("keydown", state.onKeyDownAfter, SYSTEM_GROUP);
     // A page-first binding (firefox-keys decision 6) acts on the keypress, as Firefox's keysets
     // do: before every chrome handler to ask a remote page for its reply, after a
-    // parent-process page or a chrome field (the system group's bubble) for the others.
+    // parent-process page or a chrome field (the system group's bubble) for the others. That
+    // one listens on the root element, which the bubble reaches before the document, where
+    // Tabbrowser's on_keypress runs F7 itself unless the keypress is defaultPrevented
+    // (Tabbrowser.sys.mjs, Firefox 161): on the window, F7 in the address bar asked twice (#1557).
     win.addEventListener("keypress", state.onKeyPress, SYSTEM_GROUP_CAPTURE);
-    win.addEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
+    win.document.documentElement?.addEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
     win.addEventListener("TabSelect", state.onTabSelect, true);
+    win.addEventListener("TabClose", releaseHoverOnClose, true);
     // Bubbles from the dialog's overlay (SubDialog.sys.mjs, close).
     win.addEventListener("focusin", state.onFocusIn, true);
     win.addEventListener("dialogopen", state.onDialogOpen, true);
@@ -913,8 +927,13 @@ export const VimmaHost = {
     UpdateUi.unregister(win);
     win.removeEventListener("keydown", state.onKeyDownAfter, SYSTEM_GROUP);
     win.removeEventListener("keypress", state.onKeyPress, SYSTEM_GROUP_CAPTURE);
-    win.removeEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
+    win.document.documentElement?.removeEventListener(
+      "keypress",
+      state.onKeyPressAfter,
+      SYSTEM_GROUP,
+    );
     win.removeEventListener("TabSelect", state.onTabSelect, true);
+    win.removeEventListener("TabClose", releaseHoverOnClose, true);
     win.removeEventListener("focusin", state.onFocusIn, true);
     win.removeEventListener("dialogopen", state.onDialogOpen, true);
     win.removeEventListener("dialogclose", state.onDialogClose, true);
@@ -1006,6 +1025,7 @@ export const VimmaHost = {
    *   update?: import("../core/updates.mjs").UpdateNotice | null,
    *   element?: import("../core/statusbar.mjs").ElementStatus | null,
    *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null,
+   *   hover?: import("../core/statusbar.mjs").HoverStatus | null, scrollArea?: boolean,
    *   pdf?: import("../core/pdf.mjs").PdfState | null,
    *   downloads?: import("../core/downloads.mjs").DownloadSegment | null }}
    */
@@ -1031,6 +1051,10 @@ export const VimmaHost = {
       update: VimmaUpdates.notice(),
       // docs/specs/element-focus.md decision 5: `paragraph · 412 chars`.
       element: state.element.status(),
+      // docs/specs/hover.md decision 8: `hover · Settings`.
+      hover: HoverOps.status(browser),
+      // docs/specs/scroll-area.md behaviour 6: `scroll area` while gs or a click chose one.
+      scrollArea: ScrollAreaOps.status(browser),
       // docs/specs/follow-link-switch.md decision 8: `sd background · sD go there`.
       hint: state.hint
         ? state.hint.hs
@@ -1533,6 +1557,8 @@ export const VimmaHost = {
     // A notice shown until the next key goes on any key but a bare modifier, before the key's
     // own action can show another (docs/specs/multiple-splits.md, decision 4).
     if (chordFromEvent(e)) state.notice.keyPressed();
+    // The user's key in a tab ends an agent's hover there (docs/specs/hover.md decision 9).
+    if (e.isTrusted) HoverOps.userActs(win.gBrowser?.selectedBrowser);
     // The agent question takes its keys first, and only while it shows (vimma-mcp 13-14).
     if (AgentUi.onKey(win, e)) {
       this._emit(state);
@@ -1980,9 +2006,10 @@ export const VimmaHost = {
 
   /**
    * A page-first binding's keypress after a parent-process page (about:preferences) or a chrome
-   * field (the address bar) had it, in the system group's bubble phase as Firefox's keysets:
-   * runs the action unless something called preventDefault (a field's own edit command, such as
-   * redo on ctrl+shift+z).
+   * field (the address bar) had it, in the system group's bubble phase as Firefox's keysets, on
+   * the root element so that it comes before Tabbrowser's handler on the document: runs the
+   * action unless something called preventDefault (a field's own edit command, such as redo on
+   * ctrl+shift+z).
    * @param {WindowState} state
    * @param {KeyboardEvent} e
    */
@@ -2009,10 +2036,21 @@ export const VimmaHost = {
    *   <browser> the key went to (BrowserParent::RecvReplyKeyEvent)
    */
   _runAfterPage(state, key, pending, target = null) {
-    const escape = key === "esc" ? resolveEscape({ mode: pending.mode }) : null;
+    const hovering = HoverOps.held(state.win.gBrowser?.selectedBrowser);
+    const escape = key === "esc" ? resolveEscape({ mode: pending.mode, hovering }) : null;
     if (escape?.kind === "action" && escape.blur) {
       const browser = this._focusedBrowser(state.win);
       if (browser) blurPage(browser);
+    }
+    // A held hover ends before the page stops: the next Esc stops it (hover.md decision 5).
+    if (
+      escape?.kind === "action" &&
+      escape.action.id === "hover.release" &&
+      pending.result.kind === "action" &&
+      pending.result.action.id === "page.stop"
+    ) {
+      this._run(state, { kind: "action", action: { id: "hover.release" } });
+      return;
     }
     const { result } = pending;
     if (
@@ -2193,10 +2231,46 @@ export const VimmaHost = {
   },
 
   /**
+   * `gs` / `gS` (docs/specs/scroll-area.md): the scroll keys move the next or previous scroll
+   * area of the tab, or with a count the Nth, outlined for a moment over the page.
+   * @param {MozBrowser} browser
+   * @param {1 | -1} direction
+   * @param {number | undefined} count
+   */
+  _cycleScrollArea(browser, direction, count) {
+    const state = stateOfBrowser(browser);
+    if (!state) return;
+    ScrollAreaOps.cycle(browser, direction, count, (b, box) =>
+      state.hintOverlay.flashArea(b, box, SCROLL_AREA_FLASH_MS),
+    ).catch((e) => console.error("vimma: gs", e));
+  },
+
+  /**
+   * A frame's click chose a scroll area, or its choice ended (Vimma:ScrollAreaChosen,
+   * docs/specs/scroll-area.md).
+   * @param {CanonicalBrowsingContext} bc
+   * @param {WindowGlobalParent} wg
+   * @param {boolean} chosen
+   */
+  onScrollAreaChosen(bc, wg, chosen) {
+    ScrollAreaOps.onReport(bc, wg, chosen);
+  },
+
+  /**
+   * The user's hover ended in a frame by itself (Vimma:HoverEnded, docs/specs/hover.md).
+   * @param {WindowGlobalParent} wg  the frame's document
+   */
+  onHoverEnded(wg) {
+    HoverOps.onEnded(wg);
+  },
+
+  /**
    * A frame's document went away (VimmaParent): element focus in it ends.
    * @param {WindowGlobalParent} wg  its WindowGlobalParent
    */
   onFrameGone(wg) {
+    HoverOps.onEnded(wg);
+    ScrollAreaOps.onFrameGone(wg);
     for (const win of windows) states.get(win)?.element.onFrameGone(wg);
   },
 
@@ -2274,13 +2348,21 @@ export const VimmaHost = {
     // The wheel's point in the page's CSS pixels, as the labels' rects are.
     const box = browser.getBoundingClientRect();
     const zoom = Number(browser.fullZoom) || 1;
-    const point = { x: (e.clientX - box.left) / zoom, y: (e.clientY - box.top) / zoom };
-    if (session.hs) this._wheelCheck(state, session, point);
-    else session.wheelAt = point;
+    /** @type {HintWheel} */
+    const wheel = {
+      x: (e.clientX - box.left) / zoom,
+      y: (e.clientY - box.top) / zoom,
+      dx: e.deltaX,
+      dy: e.deltaY,
+      shift: e.shiftKey,
+      other: e.ctrlKey || e.altKey || e.metaKey,
+    };
+    if (session.hs) this._wheelCheck(state, session, wheel);
+    else session.wheelAt = wheel;
   },
 
   /**
-   * Hides the session's labels and asks the page whether a wheel at `point` moved their
+   * Hides the session's labels and asks the page whether `wheel` moved their
    * targets. If they moved, the labels are collected and drawn again where the scroll ended,
    * and the keys typed toward the old ones are dropped with them, also those typed while the
    * labels were hidden: they were aimed from memory at labels that now name other targets
@@ -2289,9 +2371,9 @@ export const VimmaHost = {
    * typed meanwhile.
    * @param {WindowState} state
    * @param {HintSession} session  with its labels collected
-   * @param {{ x: number, y: number }} point
+   * @param {HintWheel} wheel
    */
-  _wheelCheck(state, session, point) {
+  _wheelCheck(state, session, wheel) {
     const hs = session.hs;
     const gen = hs?.hints[0]?.target.gen;
     delete session.wheelAt;
@@ -2299,7 +2381,7 @@ export const VimmaHost = {
     const { browser } = session;
     session.wheel = true;
     state.hintOverlay.hide();
-    VimmaActors.hintsMoved(browser, gen, point)
+    VimmaActors.hintsMoved(browser, gen, wheel)
       .then((moved) => {
         if (state.hint !== session) return;
         this._hintWheels++;
@@ -2351,6 +2433,13 @@ export const VimmaHost = {
           // Never followed: the block is focused in its frame and outlined in chrome, where
           // the page sees nothing (element-focus decision 5).
           if (result.target.kind === "block") state.element.start(session.browser, result.target);
+          return;
+        }
+        if (result.action === "hint.hover") {
+          // docs/specs/hover.md: the page shows its hover state; normal mode stays (decision 7).
+          HoverOps.hover(session.browser, result.target).catch((e) =>
+            console.error("vimma: hover failed", e),
+          );
           return;
         }
         if (result.action === "hint.show_target" || result.action === "hint.copy_target") {
@@ -2520,6 +2609,28 @@ const BUILT = Object.freeze([...Object.keys(RUNNERS), ...Object.keys(CONTENT_RUN
  * @type {ReadonlySet<string>}
  */
 export const RUNNABLE = new Set(BUILT);
+
+/**
+ * A tab closing, or moving to another window, lets its hover go first: the hover's state is this
+ * window's (docs/specs/hover.md decision 5).
+ * @param {Event} e
+ */
+function releaseHoverOnClose(e) {
+  const tab = /** @type {MozTabbrowserTab} */ (e.target);
+  if (tab?.linkedBrowser) HoverOps.release(tab.linkedBrowser);
+}
+
+// A tab's scroll area choice redraws its window's status bar (docs/specs/scroll-area.md).
+ScrollAreaOps.onChange((browser) => {
+  const state = stateOfBrowser(browser);
+  if (state) VimmaHost._emit(state);
+});
+
+// A tab's hover changing redraws its window's status bar (docs/specs/hover.md decision 8).
+HoverOps.onChange((browser) => {
+  const state = stateOfBrowser(browser);
+  if (state) VimmaHost._emit(state);
+});
 
 // A finished update check redraws every status bar (docs/specs/m6a-updater.md §5).
 VimmaUpdates.addListener(() => {

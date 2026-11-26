@@ -424,7 +424,8 @@ own process, not a process group.
   with no folder above it that another user owns or can write, sticky ones included, since the
   CLI reads instruction files from every folder above its working folder; the folder is removed
   with the run. Nothing **must** start before a task is sent but setup's `--version`, of a
-  program that passes these checks, and nothing at all while `vimma.agent.cli.enabled` is off,
+  program that passes these checks, and on macOS the login shell that gives setup its `PATH`;
+  nothing at all while `vimma.agent.cli.enabled` is off,
   when the model picker does not look at a CLI's file either. The picker's list of a CLI's models
   is Vimma's own and starts nothing; a model picked or typed there **must** pass the same rule
   before it is used. The checks cover the file the
@@ -432,7 +433,19 @@ own process, not a process group.
   `/usr/bin/env`) is found on the user's `PATH` as it is in a terminal, so a `PATH` entry
   other users can write lets them choose it, there as here; and a version manager's shim (mise,
   asdf, volta) runs the real tool from the manager's own install folder and configuration, which
-  Vimma does not check (a group-writable `MISE_DATA_DIR`, for example). A run **must** end, and
+  Vimma does not check (a group-writable `MISE_DATA_DIR`, for example). On macOS, where an app the
+  Dock starts gets launchd's `PATH`, setup searches the login shell's `PATH`, then Vimma's own,
+  then `~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`, and the CLI runs with that
+  `PATH`: `$SHELL` **must** pass the checks above before it is run, at most once per session,
+  only when setup searches or a task starts and Vimma's `PATH` holds only launchd's folders,
+  with `-l -i -c` and a fixed command, the CLI's environment, no input and a 10 s limit after
+  which the shell is killed, and only the one line between two random marks, with
+  no control character and at most 32 KiB, is taken; its absolute entries alone are searched.
+  The shell's startup files are the user's own, read by every terminal they open; every program
+  found on the result is checked as above before it is listed and before each run. The three
+  folders come after the login shell's `PATH`, so they supply only a name (such as `node`) the
+  terminal's `PATH` lacks; where several admins share a Mac, `/usr/local/bin` may be writable by
+  the admin group, which the checks refuse for a CLI found there but not for an interpreter. A run **must** end, and
   revoke its ticket, when the CLI's work is done even if a child of it keeps its output open.
   A CLI that records its runs **must** be asked not to (`--no-session-persistence`,
   `--ephemeral`); Gemini CLI, which cannot be asked, **must** have what it recorded of a run
@@ -456,6 +469,12 @@ own process, not a process group.
   [`test_the_conversations_service_is_agentchat_without_tickets_or_reset`](../../tests/browser/browser_vimma_host_services.js),
   [`test_path_checks_refuse_a_file_others_can_write`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_shim_runs_as_the_cli_it_is_named_after`](../../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_on_macos_setup_searches_the_login_shells_path`](../../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_on_macos_the_cli_runs_with_the_login_shells_path`](../../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_on_macos_a_login_shell_others_can_write_is_not_run`](../../tests/browser/browser_vimma_agent_cli_run.js),
+  [`test_elsewhere_the_login_shell_is_never_run`](../../tests/browser/browser_vimma_agent_cli_run.js),
+  [`what an rc file prints around it is ignored`](../../packages/vimma-core/test/agent-cli-login-path.test.ts),
+  [`no answer when a mark is missing, the line is broken or too long, or holds nothing`](../../packages/vimma-core/test/agent-cli-login-path.test.ts),
   [`a link on the way to it is judged by its owner`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`a program that runs a tool by the name it is started as is a dispatcher`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`test_no_process_before_a_task`](../../tests/browser/browser_vimma_agent_cli_run.js),
