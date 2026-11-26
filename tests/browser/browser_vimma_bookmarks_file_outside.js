@@ -867,6 +867,118 @@ add_task(async function a_private_window_change_during_an_apply_is_not_written()
   await reset();
 });
 
+/**
+ * Runs `race` once while the mirror applies, after its renames: the file's edit both renames a
+ * bookmark and adds one, and the plan updates before it inserts.
+ * @param {(mail: string) => Promise<void>} race
+ */
+function raceApply(race) {
+  const insertTrees = mirror.insertTrees.bind(mirror);
+  const state = { raced: false, restore: () => (mirror.insertTrees = insertTrees) };
+  mirror.insertTrees = async (/** @type {Parameters<typeof insertTrees>[0]} */ inserts) => {
+    await insertTrees(inserts);
+    if (state.raced) return;
+    state.raced = true;
+    Assert.ok(mirror.applying, "the mirror is applying");
+    await race(await guidOf("https://mail.example.com/"));
+  };
+  return state;
+}
+
+const RENAMED = `${FILE.replace('"Mail"', '"Post"')}"News" = "https://news.example/"\n`;
+
+add_task(async function a_private_rename_of_the_bookmark_an_apply_renames_is_not_written() {
+  // #1576: a change to a bookmark the apply also writes is not the apply's own when it differs
+  // from what the apply wrote.
+  await IOUtils.writeUTF8(bookmarksFile, FILE);
+  await untilFolder("work", LOADED, "loaded");
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  await SimpleTest.promiseFocus(priv);
+  const race = raceApply(async (mail) => {
+    await PlacesUtils.bookmarks.update({ guid: mail, title: "secret title" });
+  });
+  try {
+    await IOUtils.writeUTF8(bookmarksFile, RENAMED);
+    await until(() => race.raced, "the rename raced the apply");
+    await quiet();
+  } finally {
+    race.restore();
+    await BrowserTestUtils.closeWindow(priv);
+    await SimpleTest.promiseFocus(window);
+  }
+  await untilFolder(
+    "work",
+    [...LOADED.slice(0, 2), "Post https://mail.example.com/", "News https://news.example/"],
+    "put back",
+  );
+  Assert.equal(await IOUtils.readUTF8(bookmarksFile), RENAMED, "nothing written");
+  await reset();
+});
+
+add_task(async function a_normal_rename_of_the_bookmark_an_apply_renames_is_written() {
+  await IOUtils.writeUTF8(bookmarksFile, FILE);
+  await untilFolder("work", LOADED, "loaded");
+  const race = raceApply(async (mail) => {
+    await PlacesUtils.bookmarks.update({ guid: mail, title: "Letters" });
+  });
+  try {
+    await IOUtils.writeUTF8(bookmarksFile, RENAMED);
+    await untilText(RENAMED.replace('"Post"', '"Letters"'), "the rename made during the apply");
+  } finally {
+    race.restore();
+  }
+  Assert.ok(race.raced, "the rename raced the apply");
+  await untilFolder(
+    "work",
+    [...LOADED.slice(0, 2), "Letters https://mail.example.com/", "News https://news.example/"],
+    "kept",
+  );
+  await reset();
+});
+
+add_task(async function a_private_change_during_a_keyed_move_out_is_not_written() {
+  // #1576: a Vimma key's own Places step is an apply too; what races it is still the window's.
+  await IOUtils.writeUTF8(bookmarksFile, FILE);
+  await untilFolder("work", LOADED, "loaded");
+  const calendar = await guidOf("https://calendar.example.com/");
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  await SimpleTest.promiseFocus(priv);
+  let raced = false;
+  try {
+    const r = await mirror.edit({
+      type: "move",
+      guid: calendar,
+      parent: menuGuid,
+      missing: [],
+      title: null,
+      outside: async () => {
+        Assert.ok(mirror.applying, "the key's Places step is running");
+        await PlacesUtils.bookmarks.update({
+          guid: await guidOf("https://mail.example.com/"),
+          title: "secret title",
+        });
+        raced = true;
+        return menuGuid;
+      },
+    });
+    Assert.ok(!("error" in r), "the key moved it");
+    await quiet();
+  } finally {
+    await BrowserTestUtils.closeWindow(priv);
+    await SimpleTest.promiseFocus(window);
+  }
+  Assert.ok(raced, "the rename raced the key");
+  const left = FILE.replace('"Calendar" = "https://calendar.example.com/"\n', "");
+  await untilFolder("work", [LOADED[0], LOADED[2]], "the rename put back, the move kept");
+  Assert.equal(await IOUtils.readUTF8(bookmarksFile), left, "only the move written");
+  Assert.equal(
+    (await PlacesUtils.bookmarks.fetch(calendar))?.parentGuid,
+    menuGuid,
+    "the moved bookmark stays where the key put it",
+  );
+  await reset();
+});
+
 add_task(async function a_library_change_from_a_normal_window_is_written_beside_a_private_one() {
   await IOUtils.writeUTF8(bookmarksFile, FILE);
   await untilFolder("work", LOADED, "loaded");
