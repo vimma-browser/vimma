@@ -269,8 +269,13 @@ function lsUnregister(app: string) {
 export function markTestBundle(engine: string, unregister = lsUnregister): boolean {
   const app = join(engine, ARTIFACT_OBJDIR, "dist", "Vimma.app");
   const path = join(app, "Contents", "Info.plist");
-  if (!existsSync(path)) return false;
-  const plist = readFileSync(path, "utf8");
+  let plist: string;
+  try {
+    plist = readFileSync(path, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw e;
+  }
   const marked = testBundlePlist(plist);
   if (marked === plist) return false;
   writeFileSync(path, marked);
