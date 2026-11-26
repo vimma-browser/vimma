@@ -399,7 +399,9 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
 5. **A rule naming the agent workspace is passed over, and matching goes on.** At the external
    routing points `matchRoute` gets `skip: [<agent workspace>]` and treats such a rule as one whose
    workspace does not exist, so a later rule can still apply; about:vimma marks it
-   `never for links from other apps: the agent workspace`. Reason: a rule naming a workspace that
+   `never for links from other apps: the agent workspace` (Since changed: now
+   `never applies: the agent workspace`, as such a rule routes nothing once typed opens are not
+   routed; workspace-routing decision 9). Reason: a rule naming a workspace that
    does not exist is already skipped this way (workspace-routing, decision 2), and stopping at a
    rule that can never apply would make later rules depend on a rule the user cannot see working.
    This changes today's behaviour, which falls through to Firefox's guess; the existing test

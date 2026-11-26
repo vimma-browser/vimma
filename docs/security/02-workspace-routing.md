@@ -44,6 +44,10 @@ from a link); pages try to (link clicks, `window.open`) and must fail. What you 
 - R8. A rule naming the agent workspace **never** applies to a link from another program (the
   next rule does), and when its `app` equals one of the link's names, no rule with `app` applies
   to that link, so a prompt-injected agent CLI's link cannot reach the terminal's sign-in rules.
+  As nothing but such links is routed (R1), such a rule routes nothing, and the hint,
+  `:route move` and about:vimma pass over it too: `:route move` would otherwise reopen a typed
+  URL, with any token in it, in the agent's container.
+  [`a_rule_naming_the_agent_workspace_gives_no_hint_and_no_move`](../../tests/browser/browser_vimma_workspace_routes.js),
   [`a_rule_after_one_naming_the_agent_workspace_applies`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_routes_toml_rule_naming_the_agent_workspace_is_not_followed_from_outside`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`an_agent_cli_link_skips_every_app_rule_after_an_agent_rule`](../../tests/browser/browser_vimma_agent_outside_opens.js),

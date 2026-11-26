@@ -19,8 +19,8 @@ installed here, `modules/zen/spacerouting/ZenSpaceRoutingManager.sys.mjs` and
   `domain = "github.com"` with `workspace = "work"` opens GitHub (and `gist.github.com`) in
   `work`'s container when I open it: typed, from `:open`, a bookmark or another app. A link a
   page opens stays in the page's container, with a hint (decision 3). (Since changed: only a
-  link from another app is routed; what I open inside Vimma stays in the workspace I am in, with
-  the hint; see decision 9.)
+  link from another app is routed; what I open inside Vimma stays in the workspace I am in,
+  without a hint; see decision 9.)
 - As a user, `app = "slack"` sends every link Slack opens to `work`, and `app = "discord"` to
   `personal`, whatever the site.
 - As a user, a link opened in the foreground takes me to its workspace; one opened in the
@@ -371,20 +371,37 @@ WindowWorkspaces: TabOpen/TabSelect (switch or notice), location changes (hint)
      `URILoadingHelper-sys-mjs.patch` still calls `routeLinkIn`: removing the call would change
      an upstream hunk, which needs a full build to verify (ADR-010), for no change in behaviour;
      the call goes when that hunk next changes (its ADR-003 register line says so).
-   - **The hint stays for a typed open.** A typed open into a routed site in another workspace
-     shows decision 5's hint (`claude.ai goes to "work" (route 1): :route move`), once per tab
-     and host, as a page's navigation does. Reason: the rule still decides where that site's
-     links from other apps land, and without the hint the user does not learn why the same site
-     opens elsewhere from Slack, nor that `:route move` moves this tab; once per tab and host
-     keeps it from repeating. A typed open in the workspace the rule names shows nothing, as
-     before.
-   - **The agent workspace:** a rule naming the agent workspace was already passed over for
-     links from other programs (app-routes, decision 5), so no open is ever routed into it now.
-     Routing narrows: no change to [vimma-mcp](vimma-mcp.md) decision 42.
+   - **No hint for an open the user starts inside Vimma.** The address bar, `:open`, `:tabnew`,
+     bookmarks, history, the start page, `p`/`P` and `ctrl+n` show no decision 5 hint, even for
+     a site a rule sends to another workspace, because opening a site in a workspace is the
+     choice of that workspace, and a nudge to move the tab goes against that choice. The hint
+     stays for a page's own navigation (a redirect, a sign-in bounce, a link clicked in the same
+     tab) and for a link a page opens, the cases it was made for: there a page picked the site.
+     `:route move` still moves any tab when asked.
+     - **How it tells them apart:** by the triggering principal of the tab's active
+       session-history entry (`openedByUser` in `WindowWorkspaces.sys.mjs`): the system
+       principal for what the user or Vimma's chrome opened, the page's content principal for a
+       page's navigation and the links it opens. The parent's entry is committed before the
+       location change reaches it. A server redirect keeps the principal of the load it
+       redirects, so a typed URL that the server redirects to a routed site is the user's open
+       and shows no hint, while the same redirect after a link click on a page shows it.
+       Because the hint is skipped rather than recorded, the page's own navigation to that host
+       afterwards still shows it once.
+   - **A rule naming the agent workspace is inert.** It was already passed over for links from
+     other programs (app-routes, decision 5), and typed opens are no longer routed, so it routes
+     nothing. The hint, `:route move` and about:vimma's line for the tab pass over it too
+     (`WorkspaceRouter.matchTab` matches as a link from another program does). Reason: the hint
+     would name a workspace no open goes to, and `:route move` would reopen the URL, with any
+     token in it, in the agent's container, which holds none of the user's logins
+     ([vimma-mcp](vimma-mcp.md) decision 42). Matching in `matchTab` rather than in each caller
+     keeps the three in step. Decision 42's sentence that such a rule applies to what the user
+     types no longer holds; it carries a note.
    - **Tests:** `browser_vimma_workspace_routes.js` (the URL bar, `:open`, `:tabnew`, `P`, a
      bookmark in the background and one in a new window stay in the shown workspace; the URL bar
-     still hints), `browser_vimma_workspace_routes_windows.js` (a window opened inside Vimma on a
-     routed URL is not routed; one opened for another program's link is), and
+     and `:open` show no hint, the page's own navigation in that tab then does, once; a rule
+     naming the agent workspace gives no hint and no `:route move`),
+     `browser_vimma_workspace_routes_windows.js` (a window opened inside Vimma on a routed URL is
+     not routed; one opened for another program's link is), and
      `browser_vimma_workspace_routes_external.js` (decision 4's background notice, now reached by
      an external link in the background). These replace the tests that asserted routing of
      typed, `:open`, `P` and bookmark opens.

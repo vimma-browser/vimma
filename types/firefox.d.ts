@@ -1241,6 +1241,9 @@ interface CanonicalBrowsingContext extends BrowsingContext {
   /** The tab's back/forward list (engine/docshell/shistory/nsISHistory.idl), null for a context
    * that keeps none. */
   readonly sessionHistory: nsISHistory | null;
+  /** The entry of the document shown (BrowsingContext.webidl), null without session history in
+   * the parent. */
+  readonly activeSessionHistoryEntry: nsISHEntry | null;
   getAllBrowsingContextsInSubtree(): CanonicalBrowsingContext[];
   /** The chrome window the context is in; null once it has none. */
   readonly topChromeWindow: ChromeWindow | null;
@@ -1554,6 +1557,8 @@ interface nsIURI {
 // engine/docshell/shistory/nsISHEntry.idl
 interface nsISHEntry {
   readonly URI: nsIURI;
+  /** The principal that started the load of this entry ([infallible], never null). */
+  readonly triggeringPrincipal: nsIPrincipal;
   /** Both entries show the same document (a same-document navigation between them). */
   sharesDocumentWith(entry: nsISHEntry): boolean;
 }

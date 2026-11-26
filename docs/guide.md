@@ -4187,8 +4187,10 @@ workspace = "notes"
   whatever their order: a link from a herdr pane in Ghostty matches `app = "herdr"` before
   `app = "ghostty"`. An `app` rule below a matching rule without `app` never applies to that
   link.
-- A rule naming a workspace that does not exist is skipped (`:route` says so), and so is a rule
-  naming the agent workspace for a link from another app: the next rule applies.
+- A rule naming a workspace that does not exist is skipped (`:route` says so): the next rule
+  applies. A rule naming the agent workspace does nothing: a link from another app passes over
+  it to the next rule, so no tab is ever routed into the agent workspace, and neither the
+  status bar's hint nor `:route move` offers it.
 - **Links from other programs that no rule matches** open where `[routing] default_workspace`
   says, when you set it:
 
@@ -4210,14 +4212,16 @@ in the background, it waits there and the status bar says `opened in "work"`.
 **Where they do not:** anything you open inside Vimma stays in the workspace you are in: an
 address you type in the address bar or with `:open` / `:tabnew`, a bookmark, history, the start
 page, `p` / `P`, and a new window (`ctrl+n`). Opening a site from a workspace is your choice of
-workspace, so a rule never takes you out of it. When the rule names another workspace, the
-status bar says `github.com goes to "work" (route 1): :route move` once, and `:route move` moves
-the tab there (it loses its back/forward history, as any move does). A link a page opens (a
-click, middle-click, `gF` hints, `target=_blank`, a pop-up) stays in that page's workspace too,
-because a page could otherwise open any site with another workspace's logins, and a page that
-navigates in its own tab (a redirect, a sign-in bounce) is never moved, because moving reopens
-the page and would break the load; both get the same status bar hint. A container you chose
-yourself ("Open Link in New Container Tab") is kept. Private windows are never routed.
+workspace, so a rule never takes you out of it, and the status bar does not suggest moving it.
+`:route move` moves any tab to the workspace its rule names when you ask (it loses its
+back/forward history, as any move does). A link a page opens (a click, middle-click, `gF` hints,
+`target=_blank`, a pop-up) stays in that page's workspace too, because a page could otherwise
+open any site with another workspace's logins, and a page that navigates in its own tab (a
+redirect, a sign-in bounce) is never moved, because moving reopens the page and would break the
+load. For these two, which you did not choose, the status bar says
+`github.com goes to "work" (route 1): :route move` once per tab and site when the rule names
+another workspace. A container you chose yourself ("Open Link in New Container Tab") is kept.
+Private windows are never routed.
 
 **By application.** Vimma's packages install `vimma-open` and make it the desktop entry's
 command, so when Slack, Discord, a terminal or Neovim opens a link, `vimma-open` looks up which

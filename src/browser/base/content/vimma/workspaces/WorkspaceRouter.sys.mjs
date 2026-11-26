@@ -356,15 +356,18 @@ export const WorkspaceRouter = {
 
   /**
    * The rule for `tab`'s page (or `url`, the location it is changing to): with the names of the
-   * link an app rule placed it for while it stays on that host, else with none, as what the
-   * user opens (decision 14). For the hint, `:route move` and about:vimma.
+   * link an app rule placed it for while it stays on that host, else with none (decision 14).
+   * For the hint, `:route move` and about:vimma. Matched as a link from another program, the
+   * only open rules route (workspace-routing, decision 9), so a rule naming the agent workspace
+   * is passed over: it routes nothing, and `:route move` would otherwise reopen the page, with
+   * any token in its URL, in the agent's container (vimma-mcp, decision 42).
    * @param {MozTabbrowserTab} tab
    * @param {string} [url]
    */
   matchTab(tab, url = tab?.linkedBrowser?.currentURI?.spec ?? "") {
     const rec = placed.get(tab);
-    if (rec && hostOf(url) === rec.host) return this.match(url, rec.names, { external: true });
-    return this.match(url);
+    const names = rec && hostOf(url) === rec.host ? rec.names : [];
+    return this.match(url, names, { external: true });
   },
 
   /** The most recent link from another program: its names and what it matched, or null. */

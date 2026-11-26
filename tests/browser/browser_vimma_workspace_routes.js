@@ -4,10 +4,10 @@
 
 // Spec: docs/specs/workspace-routing.md. `[[routes]]` rules send links from other programs to a
 // workspace's container; what the user opens inside Vimma (the URL bar, `:open`, `:tabnew`, `P`,
-// bookmarks) and a link a page opens stay in the workspace shown (decision 9), with the hint.
-// Same-tab navigation is never moved, only hinted; `:route add` writes a rule. Split so that each file stays under the
-// harness's 45 s limit on two busy CPUs: links from other programs are in
-// browser_vimma_workspace_routes_external.js, new windows in
+// bookmarks) stays in the workspace shown without a hint (decision 9), and a link a page opens
+// stays there with the hint. Same-tab navigation is never moved, only hinted; `:route add` writes
+// a rule. Split so that each file stays under the harness's 45 s limit on two busy CPUs: links
+// from other programs are in browser_vimma_workspace_routes_external.js, new windows in
 // browser_vimma_workspace_routes_windows.js.
 
 "use strict";
@@ -162,6 +162,25 @@ async function loadedIn(url) {
   return /** @type {MozTabbrowserTab} */ (gBrowser.tabs.find(done));
 }
 
+/**
+ * The page in `tab` navigates itself to `url` (its own content principal), loaded.
+ * @param {MozTabbrowserTab} tab
+ * @param {string} url
+ */
+async function navigate(tab, url) {
+  const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, url);
+  await SpecialPowers.spawn(tab.linkedBrowser, [url], (u) => {
+    // A link the page's own document follows: the load's triggering principal is the page's.
+    // `content.location.href = u` here would run with the test sandbox's system principal, as
+    // what the user opens does (decision 9).
+    const link = content.document.createElement("a");
+    link.href = u;
+    content.document.body.append(link);
+    link.click();
+  });
+  await loaded;
+}
+
 add_task(async function the_url_bar_opens_a_routed_site_in_the_shown_workspace() {
   // Decision 9: what the user opens from inside a workspace stays there; only links from other
   // programs are routed.
@@ -182,8 +201,48 @@ add_task(async function the_url_bar_opens_a_routed_site_in_the_shown_workspace()
   Assert.equal(gBrowser.tabs.length, count, "no tab opens");
   Assert.equal(blank.userContextId, home.userContextId, "in rt-home's container");
   Assert.equal(activeName(), "rt-home", "and the workspace stays");
-  await until(() => noticeText() === HINT, "the hint says where links from outside go");
+  // Decision 9: opening a site in a workspace chooses that workspace, so no hint to move it.
+  Assert.ok(!noticeText().includes("goes to"), "no hint for what the user opened");
+
+  // The page's own navigation in that tab is hinted, once per tab and host.
+  await navigate(tab, `${WORK}?nav`);
+  await until(() => noticeText() === HINT, "the page's own navigation is hinted");
+  clearNotice();
+  await navigate(tab, `${WORK}?nav2`);
+  Assert.ok(!noticeText().includes("goes to"), "and only once for that host");
   tidy();
+});
+
+// A rule naming the agent workspace routes nothing: links from other programs pass over it
+// (app-routes decision 5, vimma-mcp decision 42) and what the user opens is not routed (decision
+// 9). So neither the hint nor `:route move` offers it, which would reopen the URL, and any token
+// in it, in the agent's container.
+add_task(async function a_rule_naming_the_agent_workspace_gives_no_hint_and_no_move() {
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
+  Assert.greater(agent?.userContextId ?? 0, 0, "the agent workspace has its container");
+  route([{ domain: "example.com", workspace: agent.name }]);
+  try {
+    const page = await inHome();
+    const count = gBrowser.tabs.length;
+    // The page's own navigation, which a rule naming another workspace would hint.
+    await navigate(page, `${WORK}?nav`);
+    Assert.ok(!noticeText().includes("goes to"), "no hint names the agent workspace");
+
+    await runCommand("route move");
+    await until(
+      () => noticeText() === ":route move: no rule matches this page",
+      ":route move finds no rule",
+    );
+    Assert.equal(gBrowser.tabs.length, count, "no tab opens");
+    Assert.equal(page.userContextId, home.userContextId, "the tab stays in rt-home's container");
+    Assert.ok(
+      !gBrowser.tabs.some((t) => t.userContextId === agent.userContextId),
+      "nothing opens in the agent's container",
+    );
+  } finally {
+    route([{ domain: "example.com", workspace: "rt-work" }]);
+    tidy();
+  }
 });
 
 add_task(async function open_loads_a_routed_site_in_the_shown_workspace() {
@@ -194,6 +253,7 @@ add_task(async function open_loads_a_routed_site_in_the_shown_workspace() {
   Assert.equal(gBrowser.tabs.length, count, "no tab opens");
   Assert.equal(page.userContextId, home.userContextId, ":open stays in rt-home's container");
   Assert.equal(activeName(), "rt-home", "and the workspace stays");
+  Assert.ok(!noticeText().includes("goes to"), "no hint for what the user opened");
   tidy();
 });
 
@@ -372,11 +432,7 @@ add_task(async function a_page_can_never_route_the_links_it_opens() {
 add_task(async function same_tab_navigation_is_never_moved_but_hinted() {
   const page = await inHome();
   const count = gBrowser.tabs.length;
-  const loaded = BrowserTestUtils.browserLoaded(page.linkedBrowser, false, `${WORK}?nav`);
-  await SpecialPowers.spawn(page.linkedBrowser, [`${WORK}?nav`], (url) => {
-    content.location.href = url;
-  });
-  await loaded;
+  await navigate(page, `${WORK}?nav`);
   Assert.equal(gBrowser.tabs.length, count, "no tab opens");
   Assert.equal(page.userContextId, home.userContextId, "the tab stays in rt-home's container");
   Assert.equal(activeName(), "rt-home", "and the workspace stays");

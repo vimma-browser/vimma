@@ -361,7 +361,7 @@ function render(d) {
       : last.by === "default"
         ? `[routing] default_workspace (${last.workspace})`
         : "no rule: Firefox's container guess, then the window's workspace";
-  const AGENT_MARK = "never for links from other apps: the agent workspace";
+  const AGENT_MARK = "never applies: the agent workspace";
   const dw = routes.defaultWorkspace;
   const dwText = !dw
     ? "not set: Firefox's container guess, then the window's workspace"

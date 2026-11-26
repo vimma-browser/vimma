@@ -149,6 +149,20 @@ function layoutPending(browser) {
   return doc.isInitialDocument || doc.readyState === "loading";
 }
 
+/**
+ * Whether the user or Vimma's chrome started the load of `tab`'s page (the URL bar, `:open`, a
+ * bookmark, history, `P`): its session-history entry was loaded with the system principal. A
+ * page's own navigation and a link a page opened carry that page's content principal. The
+ * parent's active entry is current by the time onLocationChange arrives: the docshell commits
+ * it (nsDocShell::Embed, MoveLoadingToActiveEntry) before it fires the location change, over
+ * the same IPC channel. A server redirect keeps the principal of the load it redirects.
+ * @param {Tab} tab
+ */
+function openedByUser(tab) {
+  const entry = tab.linkedBrowser?.browsingContext?.activeSessionHistoryEntry;
+  return entry?.triggeringPrincipal?.isSystemPrincipal === true;
+}
+
 /** A new uuid, without braces. */
 function newId() {
   return Services.uuid.generateUUID().toString().slice(1, -1);
@@ -714,13 +728,15 @@ export class WindowWorkspacesImpl {
 
   /**
    * The hint for `tab` (selected) when a rule sends its page to another workspace's container:
-   * a page's own navigation, or a link a page opened (never routed: spec workspace-routing,
-   * decision 3), once per tab and host.
+   * a page's own navigation or a link a page opened (spec workspace-routing, decision 3), which
+   * are never routed; once per tab and host. Never for a page the user opened inside the browser
+   * (decision 9): they chose this workspace. A rule naming the agent workspace is never hinted
+   * (`matchTab`).
    * @param {Tab} tab
    * @param {nsIURI | null} [location]  the browser's current one by default
    */
   #hint(tab, location = tab.linkedBrowser?.currentURI) {
-    if (tab.pinned || !location) return;
+    if (tab.pinned || !location || openedByUser(tab)) return;
     const hit = lazy.WorkspaceRouter.matchTab(tab, location.spec);
     if (!hit || hit.workspace.userContextId === tab.userContextId) {
       this.#hinted.delete(tab);

@@ -373,14 +373,20 @@ function recordNotices(win = window) {
 }
 
 /**
- * Loads `url` in `tab` as the page's own navigation.
+ * Loads `url` in `tab` as the page's own navigation (its own content principal).
  * @param {MozTabbrowserTab} tab
  * @param {string} url
  */
 async function navigate(tab, url) {
   const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, url);
   await SpecialPowers.spawn(tab.linkedBrowser, [url], (u) => {
-    content.location.href = u;
+    // A link the page's own document follows: the load's triggering principal is the page's.
+    // `content.location.href = u` here would run with the test sandbox's system principal, as
+    // what the user opens does (decision 9).
+    const link = content.document.createElement("a");
+    link.href = u;
+    content.document.body.append(link);
+    link.click();
   });
   await loaded;
 }

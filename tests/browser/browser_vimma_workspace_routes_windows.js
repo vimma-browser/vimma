@@ -5,9 +5,9 @@
 // Spec: docs/specs/workspace-routing.md, docs/specs/app-routes.md. A new window's first tab: a
 // cold start's or another program's window routes it (by the startup names `VIMMA_FROM`, read
 // once and cleared, by a domain rule, or by `[routing] default_workspace`); a window opened from
-// inside Vimma is not routed and takes no default. Every task opens windows, the slow part of routing's tests, so
-// they run apart from browser_vimma_workspace_routes.js to keep each file under the harness's
-// 45 s limit on two busy CPUs.
+// inside Vimma is not routed and takes no default. Every task opens windows, the slow part of
+// routing's tests, so they run apart from browser_vimma_workspace_routes.js to keep each file
+// under the harness's 45 s limit on two busy CPUs.
 
 "use strict";
 
