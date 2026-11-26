@@ -109,7 +109,8 @@ changed) are already asked separately, whatever is granted.
 - `host/agent-ui.mjs`: `ctrl+b shift+a` with nothing waiting asks `Revoke N agent grants? y/N`
   (`:343-351`).
 - The limits that hold under any grant are per connection and do not depend on the tool: at
-  most 4 requests waiting or running (vimma-mcp 17), 10 opens a minute (security.md M3), 30
+  most 4 requests waiting or running (vimma-mcp 17), 10 opens a minute (security.md M3; since changed: 15 new tabs and 60 loads into a tab, each
+  set in `[mcp]`; see vimma-mcp decision 46), 30
   keys, 30 element lists, 30 clicks and fills, 12 screenshots and 30 console reads a minute
   (`agent.mjs:137-175`).
 

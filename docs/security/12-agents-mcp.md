@@ -417,7 +417,11 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   without it; a top-level document it loads over HTTP loses its `Cross-Origin-Opener-Policy`,
   which Firefox refuses in a sandboxed tab, since an agent tab has no opener and opens no window)
   and launch no other app through an external protocol (Firefox's chooser is wrapped for the
-  agent container). Their downloads follow M11-M13. A tab of another workspace
+  agent container). Known gap: while the user's own input in an agent tab gives the page
+  transient activation, the page can open one new tab per gesture through Firefox's
+  modified-click path (`ClickHandlerChild` to `openLinkIn`), which the sandbox flags do not cover
+  and neither rate of M3 counts; an agent's own clicks carry no user activation and open nothing
+  this way (issue #1568). Their downloads follow M11-M13. A tab of another workspace
   still asks, opens pop-ups and downloads as before.
   [`test_the_agent_container_asks_for_nothing`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_another_workspace_still_asks`](../../tests/browser/browser_vimma_mcp_agent_pages.js),

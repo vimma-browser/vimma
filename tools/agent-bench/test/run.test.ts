@@ -5,7 +5,6 @@ import {
 } from "../../../packages/vimma-core/src/agent/agent-tools.mjs";
 import { answerer, grantSession, parseArgs, runOne, waitOutRate } from "../run.ts";
 import { OPEN_RATE } from "../../../packages/vimma-core/src/agent/agent.mjs";
-
 import { RATE_PACE_MS, SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../scripted.ts";
 import { loadLists } from "../lists.ts";
 import { loadCatalog, startShop } from "../shop.ts";

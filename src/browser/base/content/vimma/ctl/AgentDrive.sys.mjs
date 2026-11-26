@@ -81,12 +81,12 @@ const FIND_WRAPPED = 2;
  *   (docs/specs/mcp-checkpoints.md C1, C6), withdrawn at `until`; null when it may run (no
  *   payment, or the user's yes), else the denial's reason. `found`: a follow's link and whether
  *   it is from a `vimma_elements` list
- * @property {() => boolean} canLoad  whether the open rate has a slot left, without taking it
+ * @property {() => boolean} canLoad  whether the load rate has a slot left, without taking it
  * @property {() => boolean} stillAgent  the tab is still an agent tab (M2), checked before
  *   each step
  * @property {(url: string) => boolean} load  loads `url` in the tab as the agent's (its
- *   principal, its downloads, a slot of the open rate); false when the rate is used up
- * @property {(url: string) => boolean} countLoad  a history load of `url`: a slot of the open
+ *   principal, its downloads, a slot of the load rate); false when the rate is used up
+ * @property {(url: string) => boolean} countLoad  a history load of `url`: a slot of the load
  *   rate, its downloads the agent's; false when the rate is used up
  * @property {number} deadline  ms since the epoch: the call stops here (D15)
  */

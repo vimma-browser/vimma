@@ -991,8 +991,13 @@ at risk, and the number could not be changed.
     into an existing agent tab takes a slot of `[mcp] load_per_minute` (default 60, core
     `LOAD_RATE`, `LoadRate`): an `agent-open` with `tab`, and the page loads that clicks, fills,
     hovers, follows, `gu`, `gU` and history steps cause (mcp-drive D12, mcp-forms F11, hover
-    decision 9), since each of those loads into the tab it acts in and agent tabs open no
-    pop-ups (mcp-forms, Research, "Agent pages"). The two count apart, in a window of 60 s, with
+    decision 9), since each of those loads into the tab it acts in and a page in an agent tab
+    opens no pop-up on its own (mcp-forms, Research, "Agent pages"): an agent's clicks carry no
+    user activation. While the user's own input in an agent tab gives the page transient
+    activation, the page can still open one new tab per gesture through Firefox's modified-click
+    path (`ClickHandlerChild`, `openLinkIn`), which the pop-up sandbox does not cover and neither
+    rate counts; issue [#1568](https://github.com/vimma-browser/vimma/issues/1568) tracks it.
+    The two count apart, in a window of 60 s, with
     grants and Vimma's own agent (`ctrl+b i`, which runs the same agent commands) included.
     - **Why two.** The limit exists because a grant runs these unasked: without it, a looping or
       prompt-injected agent could open thousands of tabs, which the agent workspace keeps awake

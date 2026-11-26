@@ -4,13 +4,6 @@ import {
   AGENT_INSTRUCTIONS,
 } from "../../../packages/vimma-core/src/agent/agent-tools.mjs";
 import { OPEN_RATE } from "../../../packages/vimma-core/src/agent/agent.mjs";
-
-/**
- * The fake Vimma's one rate, for opens and the loads a click may make: a config with
- * `[mcp] open_per_minute = 10` and `load_per_minute = 10` (vimma-mcp decision 46). Vimma's
- * defaults leave these lists inside both rates; these runs are about waiting one out.
- */
-const RATE = { max: 10, ms: OPEN_RATE.ms };
 import { runOne, waitOutRate } from "../run.ts";
 import { passes } from "../score.ts";
 import { SCRIPTED_PROVIDER, scriptedFetch } from "../scripted.ts";
@@ -29,6 +22,13 @@ import {
 import type { RunTool } from "../../../packages/vimma-core/src/agent/agent-loop.mjs";
 import type { ScriptRequest } from "../scripted.ts";
 import type { Shop } from "../two-shops.ts";
+
+/**
+ * The fake Vimma's one rate, for opens and the loads a click may make: a config with
+ * `[mcp] open_per_minute = 10` and `load_per_minute = 10` (vimma-mcp decision 46). Vimma's
+ * defaults leave these lists inside both rates; these runs are about waiting one out.
+ */
+const RATE = { max: 10, ms: OPEN_RATE.ms };
 
 const fixture = loadTwoShops();
 

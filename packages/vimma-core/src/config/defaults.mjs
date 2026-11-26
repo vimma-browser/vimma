@@ -14,6 +14,7 @@ import { MAIN_SIZE_DEFAULT } from "../panes/layouts.mjs";
 import { DEFAULT_THEME_NAME } from "./theme.mjs";
 import { SCROLL_STEP_DEFAULT, SCROLL_STEP_MAX, SCROLL_STEP_MIN } from "../page/scroll.mjs";
 import { SLEEP_AFTER } from "../workspaces/tabsleep.mjs";
+import { LOAD_RATE, OPEN_RATE } from "../agent/agent.mjs";
 
 /** @typedef {"off" | "always" | "auto"} TabLineSetting */
 
@@ -592,9 +593,9 @@ export const DEFAULT_CONFIG = Object.freeze({
     download_dir: "~/Downloads/vimma-agent",
     download_max_mb: 200,
     clamav_max_age_days: 7,
-    // vimma-mcp decision 46: agent-open's two rates, as core's OPEN_RATE and LOAD_RATE.
-    open_per_minute: 15,
-    load_per_minute: 60,
+    // vimma-mcp decision 46: agent-open's two rates, from the agent gate's own defaults.
+    open_per_minute: OPEN_RATE.max,
+    load_per_minute: LOAD_RATE.max,
   },
 });
 
