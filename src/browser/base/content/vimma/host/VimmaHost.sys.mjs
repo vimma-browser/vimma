@@ -791,9 +791,12 @@ export const VimmaHost = {
     win.addEventListener("keydown", state.onKeyDownAfter, SYSTEM_GROUP);
     // A page-first binding (firefox-keys decision 6) acts on the keypress, as Firefox's keysets
     // do: before every chrome handler to ask a remote page for its reply, after a
-    // parent-process page or a chrome field (the system group's bubble) for the others.
+    // parent-process page or a chrome field (the system group's bubble) for the others. That
+    // one listens on the root element, which the bubble reaches before the document, where
+    // Tabbrowser's on_keypress runs F7 itself unless the keypress is defaultPrevented
+    // (Tabbrowser.sys.mjs, Firefox 161): on the window, F7 in the address bar asked twice (#1557).
     win.addEventListener("keypress", state.onKeyPress, SYSTEM_GROUP_CAPTURE);
-    win.addEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
+    win.document.documentElement?.addEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
     win.addEventListener("TabSelect", state.onTabSelect, true);
     win.addEventListener("TabClose", releaseHoverOnClose, true);
     // Bubbles from the dialog's overlay (SubDialog.sys.mjs, close).
@@ -924,7 +927,11 @@ export const VimmaHost = {
     UpdateUi.unregister(win);
     win.removeEventListener("keydown", state.onKeyDownAfter, SYSTEM_GROUP);
     win.removeEventListener("keypress", state.onKeyPress, SYSTEM_GROUP_CAPTURE);
-    win.removeEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
+    win.document.documentElement?.removeEventListener(
+      "keypress",
+      state.onKeyPressAfter,
+      SYSTEM_GROUP,
+    );
     win.removeEventListener("TabSelect", state.onTabSelect, true);
     win.removeEventListener("TabClose", releaseHoverOnClose, true);
     win.removeEventListener("focusin", state.onFocusIn, true);
@@ -1999,9 +2006,10 @@ export const VimmaHost = {
 
   /**
    * A page-first binding's keypress after a parent-process page (about:preferences) or a chrome
-   * field (the address bar) had it, in the system group's bubble phase as Firefox's keysets:
-   * runs the action unless something called preventDefault (a field's own edit command, such as
-   * redo on ctrl+shift+z).
+   * field (the address bar) had it, in the system group's bubble phase as Firefox's keysets, on
+   * the root element so that it comes before Tabbrowser's handler on the document: runs the
+   * action unless something called preventDefault (a field's own edit command, such as redo on
+   * ctrl+shift+z).
    * @param {WindowState} state
    * @param {KeyboardEvent} e
    */

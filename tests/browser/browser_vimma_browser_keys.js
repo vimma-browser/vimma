@@ -415,6 +415,50 @@ add_task(async function ctrl_m_mutes_unless_the_page_takes_it() {
   BrowserTestUtils.removeTab(tab);
 });
 
+// #1557: in the address bar, Tabbrowser's own keypress handler (on the document) toggled caret
+// browsing before Vimma's page-first keypress (on the window) ran the same action, so F7 asked
+// twice.
+add_task(async function f7_asks_once_from_the_page_and_from_the_address_bar() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["accessibility.warn_on_browsewithcaret", true],
+      ["accessibility.browsewithcaret", false],
+    ],
+  });
+  let asked = 0;
+  const onPrompt = (/** @type {nsISupports} */ subject) => {
+    asked++;
+    const w = /** @type {Window & { Dialog: { ui: { button1: HTMLElement } } }} */ (
+      /** @type {unknown} */ (subject)
+    );
+    // No: the first prompt's answer, so the pref stays off and a second F7 would ask again.
+    Promise.resolve().then(() => w.Dialog.ui.button1.click());
+  };
+  Services.obs.addObserver(onPrompt, "common-dialog-loaded");
+  const tab = await normalPage();
+  try {
+    for (const [where, focus] of /** @type {const} */ ([
+      ["the page", () => focusContent(tab.linkedBrowser)],
+      ["the address bar", () => gURLBar.focus()],
+    ])) {
+      asked = 0;
+      await focus();
+      EventUtils.synthesizeKey("KEY_F7");
+      await TestUtils.waitForCondition(() => asked > 0, `F7 in ${where} asks`);
+      await new Promise((r) => setTimeout(r, 300));
+      Assert.equal(asked, 1, `F7 in ${where} asks once`);
+      Assert.ok(
+        !Services.prefs.getBoolPref("accessibility.browsewithcaret"),
+        "and No keeps it off",
+      );
+    }
+  } finally {
+    Services.obs.removeObserver(onPrompt, "common-dialog-loaded");
+  }
+  await SpecialPowers.popPrefEnv();
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function redo_in_a_field_redoes_and_opens_no_debugger() {
   const tab = await normalPage();
   const browser = tab.linkedBrowser;
