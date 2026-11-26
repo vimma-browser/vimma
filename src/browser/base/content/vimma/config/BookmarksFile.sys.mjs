@@ -2149,16 +2149,19 @@ export class BookmarksFileImpl {
     // (Behaviour 14, #1368).
     const before = new Map([...this.burst].map(([t, who]) => [t, new Set(who)]));
     this.applying = true;
-    for (const o of ops) {
-      if (o.op === "insert") this.expectWrite(o.guid, { added: true });
-      else if (o.op === "update") {
-        const { title, url, parentGuid } = o;
-        this.expectWrite(o.guid, { title, url, parentGuid });
-      } else if (o.op === "reorder") {
-        o.guids.forEach((g, index) => this.expectWrite(g, { parentGuid: o.parentGuid, index }));
-      }
-    }
     try {
+      for (const o of ops) {
+        if (o.op === "insert") this.expectWrite(o.guid, { added: true });
+        else if (o.op === "update") {
+          const { title, url, parentGuid } = o;
+          this.expectWrite(o.guid, { title, url, parentGuid });
+        } else if (o.op === "reorder") {
+          // The plan lists every child, so each lands at its place in the list. A child removed
+          // meanwhile closes the gap: its later siblings then read as a change from the window,
+          // which at worst is put back to where the apply put it.
+          o.guids.forEach((g, index) => this.expectWrite(g, { parentGuid: o.parentGuid, index }));
+        }
+      }
       // Runs of inserts go in as trees, one transaction per parent (insertTree appends in the
       // order given, as the plan expects); removals in one call.
       for (let i = 0; i < ops.length;) {
