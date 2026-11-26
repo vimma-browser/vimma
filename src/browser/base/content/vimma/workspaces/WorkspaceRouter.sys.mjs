@@ -4,14 +4,14 @@
 
 /**
  * Workspace routing (spec: docs/specs/workspace-routing.md): `[[routes]]` rules pick the
- * container a tab opens in. One per app. The routing points, each only filling in a container
- * for a tab or window being created (never moving a tab, so nothing here can loop):
- * - `routeLinkIn`, from URILoadingHelper-sys-mjs.patch: the URL bar, `:open`, bookmarks, and
- *   links a page opens in a new tab or window;
+ * container a link from outside the browser opens in; what the user opens inside Vimma stays in
+ * the active workspace (decision 9). One per app. The routing points, each only filling in a
+ * container for a tab or window being created (never moving a tab, so nothing here can loop):
  * - `externalUserContextId` and `externalWhere`, from BrowserDOMWindow-sys-mjs.patch: links
  *   from other apps;
- * - `firstTab`, from Tabbrowser-sys-mjs.patch hunk 2 (through WorkspaceStore): a new window's
- *   first tab, with the app of a cold start.
+ * - `firstTab`, from Tabbrowser-sys-mjs.patch hunk 2 (through WorkspaceStore): the first tab of
+ *   a cold start from a link or of a window opened for another app's link, with their apps.
+ * `routeLinkIn`, from URILoadingHelper-sys-mjs.patch, routes nothing any more.
  * The programs that opened a link come from vimma-open as `-vimma-from <names>` on the remote
  * command line (a handler registered here) or, at a cold start, as `VIMMA_FROM`: up to eight
  * names, nearest first (docs/specs/app-routes.md). They are an untrusted hint: tokens only, ever
@@ -170,8 +170,7 @@ function unroutable(win) {
 }
 
 /**
- * What the URL bar or `:open` would load for `url` (`example.com` → `http://example.com/`), or
- * `url` itself.
+ * What a command line's `url` loads as (`example.com` → `http://example.com/`), or `url` itself.
  * @param {string} url
  */
 function fixup(url) {
@@ -183,20 +182,6 @@ function fixup(url) {
   } catch {
     return url;
   }
-}
-
-/**
- * A tab nothing has been loaded in yet: a new-tab page or blank, with no history.
- * @param {BrowserWindow} win
- * @param {MozTabbrowserTab} tab
- */
-function untouched(win, tab) {
-  const browser = tab.linkedBrowser;
-  if (!browser || browser.canGoBack || tab.pinned) return false;
-  const spec = browser.currentURI?.spec ?? "";
-  return typeof win.isBlankPageURL === "function"
-    ? win.isBlankPageURL(spec)
-    : spec === "about:blank" || spec === "about:newtab";
 }
 
 /** `-vimma-from <names>`: held for the command line being handled, then dropped. */
@@ -316,16 +301,6 @@ export const WorkspaceRouter = {
   },
 
   /**
-   * The container a rule gives `url` (opened by `apps`), or null.
-   * @param {string} url
-   * @param {readonly string[]} [apps]
-   * @returns {number | null}
-   */
-  userContextIdFor(url, apps = []) {
-    return this.match(url, apps)?.workspace.userContextId ?? null;
-  },
-
-  /**
    * The container for a link from another program: a rule's (never the agent workspace's),
    * else `[routing] default_workspace`'s, else null.
    * @param {string} url
@@ -430,57 +405,18 @@ export const WorkspaceRouter = {
   },
 
   /**
-   * URILoadingHelper.openLinkIn, before it fills in a new window's container: sets
-   * `params.userContextId` when a rule routes the load. Only a load the user or chrome started
-   * (system principal, no container chosen): the URL bar, `:open`, bookmarks. Never one a page
-   * triggered (a link click, middle- or ctrl-click, `target=_blank`, `window.open`): a page can
-   * fake those with a synthetic click, and routing them would let a page in one workspace open
-   * a URL of its choosing with another workspace's cookies (spec workspace-routing, decision
-   * 3). Never a private or popup window. A `current` load routed elsewhere becomes a new tab
-   * (openLinkIn's own rule); an untouched new tab it leaves behind is closed.
-   * @param {Window | null} win  the window the load starts from
-   * @param {string} url  as given, maybe not yet fixed up (`example.com`)
-   * @param {string} where
-   * @param {OpenLinkInParams} params  openLinkIn's copy, changed in place
-   * @param {BrowserWindow | null} target  the window it loads in, null for a new one
-   * @returns {number | null | undefined} `params.userContextId` afterwards, for openLinkIn's own
-   *   copy
-   */
-  routeLinkIn(win, url, where, params, target) {
-    this._routeLinkIn(win, url, where, params, target);
-    return params.userContextId;
-  },
-
-  /**
-   * @param {Window | null} win
-   * @param {string} url
-   * @param {string} where
+   * URILoadingHelper.openLinkIn, before it fills in a new window's container: what the user or
+   * a page opens inside the browser (the URL bar, `:open`, bookmarks, a link) is never routed
+   * (spec workspace-routing, decision 9), so `params.userContextId` is returned unchanged. The
+   * patch keeps calling this until its hunk next changes (ADR-003's register line).
+   * @param {Window | null} _win
+   * @param {string} _url
+   * @param {string} _where
    * @param {OpenLinkInParams} params
-   * @param {BrowserWindow | null} target
+   * @returns {number | null | undefined} `params.userContextId`, for openLinkIn's own copy
    */
-  _routeLinkIn(win, url, where, params, target) {
-    try {
-      if (!routes.length || params.private || unroutable(win)) return;
-      if (target && unroutable(target)) return;
-      if (!params.triggeringPrincipal?.isSystemPrincipal || params.userContextId != null) return;
-      const ucid = this.userContextIdFor(fixup(url));
-      if (ucid === null) return;
-      if (where === "current" && target) {
-        const browser = params.targetBrowser ?? target.gBrowser.selectedBrowser;
-        if (browser.browsingContext?.originAttributes.userContextId === ucid) return;
-        const tab = target.gBrowser.getTabForBrowser(browser);
-        if (tab && untouched(target, tab)) {
-          target.setTimeout(() => {
-            if (tab.isConnected && !tab.selected && untouched(target, tab)) {
-              target.gBrowser.removeTab(tab);
-            }
-          }, 0);
-        }
-      }
-      params.userContextId = ucid;
-    } catch (e) {
-      console.error("vimma: routing failed; the load goes on unrouted", e);
-    }
+  routeLinkIn(_win, _url, _where, params) {
+    return params.userContextId;
   },
 
   /**
@@ -533,11 +469,12 @@ export const WorkspaceRouter = {
   },
 
   /**
-   * A new window's first tab (WorkspaceStore.firstTabUserContextId): the container a rule gives
-   * the window's single URL argument, opened by the cold start's programs (`VIMMA_FROM`, read
-   * once and cleared), or null. A window opened for another program's link (`fromExternal`)
-   * routes as such a link does, `[routing] default_workspace` included; any other window by
-   * rules alone, as what the user opens.
+   * A new window's first tab (WorkspaceStore.firstTabUserContextId): for a cold start from a link
+   * or a window opened for another program's link (`fromExternal`), the container that link
+   * takes, as a link from another program does (`externalContainer`, `[routing]
+   * default_workspace` included), opened by the cold start's programs (`VIMMA_FROM`, read once
+   * and cleared); null for any other window: one opened inside Vimma (`ctrl+n` to a routed home
+   * page, a URL opened in a new window) is never routed (spec workspace-routing, decision 9).
    * @param {BrowserWindow | null} win
    * @returns {number | null}
    */
@@ -549,33 +486,29 @@ export const WorkspaceRouter = {
       coldStart = false;
       if (!win || (!routes.length && defaultWorkspace === null) || unroutable(win)) return null;
       const url = singleUrl(win.arguments?.[0]);
-      if (!url) return null;
-      WorkspaceStore.ensureLoaded();
       // At a cold start BrowserContentHandler passes the command line's URLs as an nsIArray in
       // arguments[0], without `fromExternal` (openBrowserWindow's list branch); its default
       // arguments (the home page) arrive as a string, also for a Smart Window, whose nsIArray
       // is the argument list itself.
       const external =
         fromExternal(win.arguments?.[1]) || (first && win.arguments?.[0] instanceof Ci.nsIArray);
-      if (external) {
-        const ucid = this.externalContainer(fixup(url), apps);
-        const place = pendingPlace;
-        pendingPlace = null;
-        // The first tab is made by #setupInitialBrowserAndTab, which fires no TabOpen: it is
-        // the window's first tab once this window's setup task has ended (never whichever tab
-        // a restore may have selected by then).
-        if (place) {
-          Services.tm.dispatchToMainThread(() => {
-            const tab = win.closed ? null : win.gBrowser?.tabs?.[0];
-            if (tab?.userContextId === place.ucid) {
-              placed.set(tab, { names: place.names, host: place.host });
-            }
-          });
-        }
-        return ucid;
+      if (!url || !external) return null;
+      WorkspaceStore.ensureLoaded();
+      const ucid = this.externalContainer(fixup(url), apps);
+      const place = pendingPlace;
+      pendingPlace = null;
+      // The first tab is made by #setupInitialBrowserAndTab, which fires no TabOpen: it is the
+      // window's first tab once this window's setup task has ended (never whichever tab a
+      // restore may have selected by then).
+      if (place) {
+        Services.tm.dispatchToMainThread(() => {
+          const tab = win.closed ? null : win.gBrowser?.tabs?.[0];
+          if (tab?.userContextId === place.ucid) {
+            placed.set(tab, { names: place.names, host: place.host });
+          }
+        });
       }
-      // Names count only for links from other programs (app-routes, decision 13).
-      return notAgent(this.userContextIdFor(fixup(url)));
+      return ucid;
     } catch (e) {
       console.error("vimma: routing a new window failed", e);
       return null;

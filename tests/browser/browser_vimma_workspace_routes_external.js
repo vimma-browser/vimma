@@ -198,6 +198,26 @@ add_task(async function an_external_link_routes_by_the_app_that_opened_it() {
   tidy();
 });
 
+add_task(async function a_background_external_link_goes_there_and_says_so() {
+  // Decision 4: with links from other programs opened in the background, the routed tab joins
+  // its workspace hidden and the notice says where it went.
+  await SpecialPowers.pushPrefEnv({ set: [["browser.tabs.loadDivertedInBackground", true]] });
+  try {
+    ww().switchTo({ id: home.id });
+    const page = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${ELSEWHERE}?page`);
+    clearNotice();
+    const { tab } = await remote([`${WORK}?background`]);
+    Assert.equal(tab.userContextId, work.userContextId, "the link is in rt-work's container");
+    await until(() => tab.hidden, "hidden: it is not in the workspace shown");
+    Assert.equal(activeName(), "rt-home", "a background open never switches");
+    Assert.equal(gBrowser.selectedTab, page, "the page stays selected");
+    await until(() => noticeText() === 'opened in "rt-work"', "the notice says where it went");
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    tidy();
+  }
+});
+
 // docs/specs/app-routes.md: a link carries every program on the way, nearest first.
 add_task(async function an_external_link_matches_by_the_nearest_name() {
   route([

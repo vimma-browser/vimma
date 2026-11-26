@@ -4,13 +4,18 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
 routes.toml when it exists, else config.toml. Specs:
 [workspace-routing](../specs/workspace-routing.md), [routes-file](../specs/routes-file.md).
 
-**Reach:** you (URL bar, `:open`, bookmarks, `p`); local apps (links they open through
-`vimma-open`); pages try to (link clicks, `window.open`) and must fail.
+**Reach:** local apps (links they open, through `vimma-open` or `vimma <url>`, and a cold start
+from a link); pages try to (link clicks, `window.open`) and must fail. What you open inside Vimma
+(URL bar, `:open`, bookmarks, `p`) is never routed.
 
-- R1. Routing **must** apply only to opens you or Vimma's chrome started, and to links from other
-  apps. [`the_url_bar_routes_to_the_rules_workspace_and_switches`](../../tests/browser/browser_vimma_workspace_routes.js),
-  [`shift_p_routes_a_clipboard_url`](../../tests/browser/browser_vimma_workspace_routes.js),
-  [`an_external_link_routes_by_the_app_that_opened_it`](../../tests/browser/browser_vimma_workspace_routes_external.js)
+- R1. Routing **must** apply only to links from other apps: the remote command line, a cold start
+  from a link, and such a link opened as a window. What you or Vimma's chrome open inside the
+  browser stays in the active workspace's container (workspace-routing, decision 9).
+  [`an_external_link_routes_by_the_app_that_opened_it`](../../tests/browser/browser_vimma_workspace_routes_external.js),
+  [`only_a_window_opened_for_another_programs_link_is_routed`](../../tests/browser/browser_vimma_workspace_routes_windows.js),
+  [`the_url_bar_opens_a_routed_site_in_the_shown_workspace`](../../tests/browser/browser_vimma_workspace_routes.js),
+  [`tabnew_and_shift_p_open_a_routed_site_in_the_shown_workspace`](../../tests/browser/browser_vimma_workspace_routes.js),
+  [`a_bookmark_or_a_new_window_opens_a_routed_site_in_the_shown_workspace`](../../tests/browser/browser_vimma_workspace_routes.js)
 - R2. A page **never** routes what it opens (clicks, `target=_blank`, `window.open`, redirects,
   same-tab navigation): it could open a URL of its choice with another workspace's cookies.
   [`a_page_can_never_route_the_links_it_opens`](../../tests/browser/browser_vimma_workspace_routes.js),

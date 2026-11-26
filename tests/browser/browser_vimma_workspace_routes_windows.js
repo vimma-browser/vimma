@@ -5,7 +5,7 @@
 // Spec: docs/specs/workspace-routing.md, docs/specs/app-routes.md. A new window's first tab: a
 // cold start's or another program's window routes it (by the startup names `VIMMA_FROM`, read
 // once and cleared, by a domain rule, or by `[routing] default_workspace`); a window opened from
-// inside Vimma takes no default. Every task opens windows, the slow part of routing's tests, so
+// inside Vimma is not routed and takes no default. Every task opens windows, the slow part of routing's tests, so
 // they run apart from browser_vimma_workspace_routes.js to keep each file under the harness's
 // 45 s limit on two busy CPUs.
 
@@ -161,14 +161,36 @@ add_task(async function a_new_windows_first_tab_is_routed_with_the_startup_app()
   );
   await BrowserTestUtils.closeWindow(afterPrivate);
 
-  const byDomain = await openWindow(`${WORK}?window`);
-  Assert.equal(
-    byDomain.gBrowser.selectedTab.userContextId,
-    work.userContextId,
-    "a window opened on a routed URL starts in that workspace",
-  );
-  await BrowserTestUtils.closeWindow(byDomain);
   route([{ domain: "example.com", workspace: "rt-work" }]);
+});
+
+add_task(async function only_a_window_opened_for_another_programs_link_is_routed() {
+  // Decision 9: a window opened inside Vimma (ctrl+n to a routed home page, a URL handed to a
+  // new window) starts in the workspace shown; one opened for another program's link is routed.
+  ww().switchTo({ id: home.id });
+  const inside = BrowserTestUtils.waitForNewWindow({ url: `${WORK}?inside` });
+  window.openDialog(
+    AppConstants.BROWSER_CHROME_URL,
+    "_blank",
+    "chrome,all,dialog=no",
+    `${WORK}?inside`,
+  );
+  const own = await inside;
+  Assert.equal(
+    own.gBrowser.selectedTab.userContextId,
+    home.userContextId,
+    "a window opened inside Vimma on a routed URL starts in rt-home",
+  );
+  await BrowserTestUtils.closeWindow(own);
+
+  const external = await openExternalWindow(`${WORK}?external`);
+  Assert.equal(
+    external.gBrowser.selectedTab.userContextId,
+    work.userContextId,
+    "a window opened for another program's link on a routed URL starts in rt-work",
+  );
+  await BrowserTestUtils.closeWindow(external);
+  tidy();
 });
 
 /**

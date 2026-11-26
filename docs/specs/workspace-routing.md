@@ -18,7 +18,9 @@ installed here, `modules/zen/spacerouting/ZenSpaceRoutingManager.sys.mjs` and
 - As a user, `[[routes]]` tables in `config.toml` say which workspace a site opens in:
   `domain = "github.com"` with `workspace = "work"` opens GitHub (and `gist.github.com`) in
   `work`'s container when I open it: typed, from `:open`, a bookmark or another app. A link a
-  page opens stays in the page's container, with a hint (decision 3).
+  page opens stays in the page's container, with a hint (decision 3). (Since changed: only a
+  link from another app is routed; what I open inside Vimma stays in the workspace I am in, with
+  the hint; see decision 9.)
 - As a user, `app = "slack"` sends every link Slack opens to `work`, and `app = "discord"` to
   `personal`, whatever the site.
 - As a user, a link opened in the foreground takes me to its workspace; one opened in the
@@ -152,7 +154,8 @@ caller reaches the running Vimma.
      new-window default: a load with the system triggering principal and no container given (URL
      bar, `:open`, `:tabnew`, bookmarks, history, and `p`/`P` once they exist), any `where`. An
      explicit container ("Open in New Container Tab", an extension) is the user's choice and
-     stays.
+     stays. (Since changed: `openLinkIn` no longer routes; these opens stay in the active
+     workspace's container; see decision 9.)
    - **Never an open a page triggers** (this replaces an earlier option "(b)",
      which routed a page's links opened in a new tab or window in the page's own container). The
      threat: `ClickHandlerChild` accepts synthetic ctrl- and middle-clicks from the page's own
@@ -174,6 +177,8 @@ caller reaches the running Vimma.
      `WorkspaceStore.firstTabUserContextId(window)`: the window's single URL argument is routed
      (a cold start from a link, an external link opened as a window, `ctrl+n` to a routed home
      page), else the default as before. `openLinkIn`'s own windows are routed by its hunk.
+     (Since changed: only a cold start from a link and an external link opened as a window are
+     routed; `ctrl+n` to a routed home page and `openLinkIn`'s windows are not; see decision 9.)
    - **Not:** same-tab navigation (link clicks, redirects, form posts, history), session restore,
      pinned tabs, Vimma's own moves, `target=_blank` / `window.open` (fixed by the opener, above),
      private windows and popups.
@@ -182,7 +187,9 @@ caller reaches the running Vimma.
    target workspace's container. A foreground open selects it, and `WindowWorkspaces`' existing
    `TabSelect` handling switches to its workspace. A background open (a bookmark opened in the
    background, a link from another app with `browser.tabs.loadDivertedInBackground`) joins
-   that workspace hidden with the existing `opened in "work"` notice (m3 decision 12). Change to
+   that workspace hidden with the existing `opened in "work"` notice (m3 decision 12). (Since
+   changed: a bookmark is no longer routed, so only a link from another app does this; see
+   decision 9.) Change to
    `WindowWorkspaces.#adopt`: the hide and the notice now wait for a microtask and are skipped
    when the tab got selected meanwhile, so a foreground open is never hidden first and never says
    "opened in" (no flicker: no paint between). **No loops:** a routing point only picks a
@@ -343,6 +350,44 @@ WindowWorkspaces: TabOpen/TabSelect (switch or notice), location changes (hint)
 - Mutation check: without the system-principal check, the page in no container's scripted
   ctrl-click opens in `rt-work` ("its scripted ctrl-click stays in no container" fails);
   reverted. (With a container, ClickHandler's explicit container already stops it.)
+
+## Links from outside only (#1562)
+
+9. **Rules route only links from outside the browser.** Routed: a link from another app (the
+   remote command line, `vimma <url>`, Apple Events on macOS, through `vimma-open` or not), a cold
+   start from a link, and another program's link opened as a window (`fromExternal`). Not
+   routed: anything started inside Vimma (the address bar, `:open`, `:tabnew`, bookmarks,
+   history, the start page, `p`/`P`, `ctrl+n` to a routed home page, a URL opened in a new
+   window), which opens in the active workspace's container as any other open does. Reason:
+   opening a site from inside a workspace is the user's choice of workspace; a rule that
+   overrode it took them out of the workspace they were working in. Rules still send other
+   programs' links to the right workspace, which is what `app` and `domain` rules are for. Opens
+   a page starts stay in the opener's container (decision 3), and `:route move` stays the way to
+   move a tab to the workspace a rule names.
+   - **Where:** `WorkspaceRouter.routeLinkIn` returns the container it is given and routes
+     nothing; `firstTab` routes only a window whose single URL came from a command line (the
+     cold start's `nsIArray`, or `fromExternal`) and leaves every other window to the workspace
+     default. The external routing point (`BrowserDOMWindow-sys-mjs.patch`) is unchanged.
+     `URILoadingHelper-sys-mjs.patch` still calls `routeLinkIn`: removing the call would change
+     an upstream hunk, which needs a full build to verify (ADR-010), for no change in behaviour;
+     the call goes when that hunk next changes (its ADR-003 register line says so).
+   - **The hint stays for a typed open.** A typed open into a routed site in another workspace
+     shows decision 5's hint (`claude.ai goes to "work" (route 1): :route move`), once per tab
+     and host, as a page's navigation does. Reason: the rule still decides where that site's
+     links from other apps land, and without the hint the user does not learn why the same site
+     opens elsewhere from Slack, nor that `:route move` moves this tab; once per tab and host
+     keeps it from repeating. A typed open in the workspace the rule names shows nothing, as
+     before.
+   - **The agent workspace:** a rule naming the agent workspace was already passed over for
+     links from other programs (app-routes, decision 5), so no open is ever routed into it now.
+     Routing narrows: no change to [vimma-mcp](vimma-mcp.md) decision 42.
+   - **Tests:** `browser_vimma_workspace_routes.js` (the URL bar, `:open`, `:tabnew`, `P`, a
+     bookmark in the background and one in a new window stay in the shown workspace; the URL bar
+     still hints), `browser_vimma_workspace_routes_windows.js` (a window opened inside Vimma on a
+     routed URL is not routed; one opened for another program's link is), and
+     `browser_vimma_workspace_routes_external.js` (decision 4's background notice, now reached by
+     an external link in the background). These replace the tests that asserted routing of
+     typed, `:open`, `P` and bookmark opens.
 
 ## Out of scope
 

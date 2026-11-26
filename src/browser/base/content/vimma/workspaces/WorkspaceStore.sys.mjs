@@ -697,10 +697,11 @@ export class WorkspaceStoreImpl {
 
   /**
    * A new window's first tab (Tabbrowser-sys-mjs.patch, hunk 2): the container a `[[routes]]`
-   * rule gives the window's URL (spec workspace-routing), else nonAgentUserContextId's: a new
-   * window never starts in the agent workspace. Null where that is null (private windows,
-   * popups, containers off), and for a window an extension opens (`windows.create`, whose
-   * triggering principal is `arguments[8]`): no container, as in Firefox.
+   * rule gives the window's URL when it came from another program (spec workspace-routing,
+   * decision 9), else nonAgentUserContextId's: a new window never starts in the agent
+   * workspace. Null where that is null (private windows, popups, containers off), and for a
+   * window an extension opens (`windows.create`, whose triggering principal is `arguments[8]`):
+   * no container, as in Firefox.
    * @param {BrowserWindow | null} win  the window being set up
    * @returns {number | null}
    */
