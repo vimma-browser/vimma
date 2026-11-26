@@ -31,7 +31,7 @@ import { bookmarkContext, openBookmarkByTitle, quickAdd } from "./bookmark-actio
 import { browserRunners, openSettings, xulElementById } from "./browser-ops.mjs";
 import { ControlHost } from "./control-ops.mjs";
 import { HostServices } from "./host-services.mjs";
-import { copyModeRunners } from "./copy-mode.mjs";
+import { copyModeRunners, yankLink } from "./copy-mode.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 import { openOutline } from "./outline-ops.mjs";
 import { tabById } from "./goto.mjs";
@@ -830,6 +830,12 @@ export function contentRunners(host, page) {
     "element.child": (b, a) => page.elementOf(b)?.move("child", a.count),
     "element.next": (b, a) => page.elementOf(b)?.move("next", a.count),
     "element.prev": (b, a) => page.elementOf(b)?.move("prev", a.count),
+    // gy (docs/specs/copy-link-url.md): one action, run on what the mode points at; no count.
+    "link.yank": (b) => {
+      const element = page.elementOf(b);
+      if (element) return element.yankLink();
+      return yankLink(b, page.browserMode, page.setBrowserMode, page.noticeFor);
+    },
     // Explicit insert, even with no text field to focus (pass-through for pages that take keys).
     // The field the user was last in comes first, then the page's first one (insert-focus).
     "mode.insert": (b) => {

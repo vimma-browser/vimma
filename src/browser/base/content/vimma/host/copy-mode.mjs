@@ -8,6 +8,7 @@
 // Esc is its `mode.normal`, which asks the frame to leave copy mode first.
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
+import { linkYank } from "../core/link-urls.mjs";
 import { repeatFind } from "../core/motions.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
@@ -69,6 +70,42 @@ export const NOTHING_TO_YANK = "nothing to yank";
 export function yankedText(text) {
   const n = [...text].length;
   return `yanked ${n} ${n === 1 ? "char" : "chars"}`;
+}
+
+/**
+ * The last `gy` asked of each tab: a reply that comes after a newer one was asked is dropped.
+ * @type {WeakMap<MozBrowser, number>}
+ */
+const linkTurns = new WeakMap();
+
+/**
+ * `gy` in copy mode or normal mode (docs/specs/copy-link-url.md): the URL of the link at the
+ * caret or in the selection, or of the focused link, to the clipboard as plain text. Copy mode
+ * ends when something was copied and stays otherwise (decision 12). A reply that comes after
+ * another `gy`, or after the tab left or entered copy mode, changes nothing.
+ * @param {MozBrowser} b
+ * @param {(browser: MozBrowser) => string | undefined} modeOf  the tab's page mode now
+ * @param {(browser: MozBrowser, mode: "normal" | "visual") => void} setMode
+ * @param {(browser: MozBrowser, text: string) => void} notify
+ */
+export async function yankLink(b, modeOf, setMode, notify) {
+  const mode = modeOf(b);
+  const visual = mode === "visual";
+  const turn = (linkTurns.get(b) ?? 0) + 1;
+  linkTurns.set(b, turn);
+  const reply = await VimmaActors.linkUrls(b, visual ? "caret" : "focus");
+  if (linkTurns.get(b) !== turn || modeOf(b) !== mode) return;
+  const { text, notice } = linkYank(reply);
+  if (text !== null) {
+    Cc["@mozilla.org/widget/clipboardhelper;1"]
+      .getService(Ci.nsIClipboardHelper)
+      .copyString(text, b.browsingContext?.currentWindowContext);
+    if (visual) {
+      setMode(b, "normal");
+      VimmaActors.caret(b, "exit");
+    }
+  }
+  notify(b, notice);
 }
 
 /**

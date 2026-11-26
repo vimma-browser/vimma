@@ -8,6 +8,7 @@
 // until `v`: the block is kept in this actor, and the scroll and resize listeners are in the
 // system group (`mozSystemGroup`), which the page cannot see or stop.
 
+import { linkUrls, linksOfBlock } from "./link-at.mjs";
 import {
   adjacentBlock,
   blockObject,
@@ -474,6 +475,9 @@ export class BlockFocus {
       }
       case "yank":
         return blockText(blockRange(el, win), el);
+      case "links":
+        // `gy` (docs/specs/copy-link-url.md decision 15): the block's link, or its links.
+        return linkUrls(linksOfBlock(el));
       case "select":
         return this.#select(el, win, data.line === true, ctx);
     }

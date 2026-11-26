@@ -230,6 +230,7 @@ Copy mode
   select_a_block            ap [visual]                                          Select the block at the caret; again: its parent
   yank_selection            y [visual]                                           Copy selection and leave copy mode
   yank_lines                Y [visual]                                           Copy the selection's whole lines and leave
+  yank_link                 gy, gy [visual], gy [element]                        Copy the URL of the link at the caret, selection or focus
 
 Side panel
   panel_down                j [panel]                                            Next row (4j: four rows)
@@ -569,6 +570,7 @@ Copy mode
   select_a_block            ap [visual]                                          Select the block at the caret; again: its parent
   yank_selection            y [visual]                                           Copy selection and leave copy mode
   yank_lines                Y [visual]                                           Copy the selection's whole lines and leave
+  yank_link                 gy, gy [visual], gy [element]                        Copy the URL of the link at the caret, selection or focus
 
 Side panel
   panel_down                j [panel]                                            Next row (4j: four rows)

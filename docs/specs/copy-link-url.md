@@ -1,9 +1,10 @@
 # Spec: copy-link-url
 
-Status: draft · Area: core (`packages/vimma-core/src/keys/actions.mjs`,
+Status: implemented · Area: core (`packages/vimma-core/src/keys/actions.mjs`,
 `packages/vimma-core/src/config/defaults.mjs`, `packages/vimma-core/src/agent/agent-keys.mjs`),
-actors (`actors/caret.mjs`, `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, a new
-`actors/link-at.mjs`), chrome (`host/copy-mode.mjs`, `host/element-focus.mjs`) · Upstream
+actors (`actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, `actors/block.mjs`, a new
+`actors/link-at.mjs`), chrome (`host/copy-mode.mjs`, `host/element-focus.mjs`,
+`host/runners.mjs`), a new `packages/vimma-core/src/page/link-urls.mjs` for the parent's checks · Upstream
 patches: none · ADR: none
 
 Issue: [#1531](https://github.com/vimma-browser/vimma/issues/1531)
@@ -11,7 +12,7 @@ Issue: [#1531](https://github.com/vimma-browser/vimma/issues/1531)
 ## Summary
 
 A new action, `yank_link`, copies the URL of the link under the caret or the selection in copy
-mode, of the focused block in element mode, and of the link a find (`/word` `Enter`) landed on.
+mode, of the focused block in element mode, and of the link a find (`/word` `Enter`) landed on, on the key `gy` in all three modes.
 The URL copied is the link's resolved, absolute address, the one a click would load. It closes
 the gap between moving to a link by keys and copying where it points, which today needs a
 second, separate pass with hints.
@@ -44,31 +45,34 @@ Examples:
    range intersects, even partly.
 3. In element mode, `yank_link` copies the URLs of the focused block: the block itself or the
    link around it when it is inside one, and otherwise every link inside the block.
-4. Right after a find, when the match is inside a link (Firefox's find has then focused that
-   link, see Research), the same URL can be copied: from copy mode entered with `v` (the match is
-   the selection) always, and from normal mode if open question 4 adds a normal-mode key.
+4. In normal mode, `yank_link` copies the URL of the focused link (after `/word` `Enter` on a
+   link's text, Firefox's find has focused that link, see Research; or after `Tab`), else the
+   URL of the one link that holds the whole selection on screen (a selection, not a bare caret,
+   since normal mode shows none), else it says `no link here`. A selection over several links
+   copies nothing in normal mode (decision 14). It never starts hints. Copy mode entered with `v` after a find starts with the
+   match selected, so `v` `gy` copies the same link.
 5. The URL is the link's resolved, absolute `href`: a relative `href="/a?b=1"` on
    `https://example.org/x/` copies `https://example.org/a?b=1`, and a `<base href>` is applied.
    It is copied to the clipboard as plain text.
-6. One URL copied: the status bar says `yanked <url>`, as `yy` and `c` do. Several: the status
-   bar says `yanked 3 links`. No link: the status bar says `no link here`, and nothing is copied
-   (the clipboard keeps what it had).
-7. A `javascript:` link is never copied; when it was the only link, the status bar says
+6. One URL copied: the status bar says `yanked <url>`, as `yy` and `c` do. Several: they are
+   copied one per line, each once, in document order, and the status bar says `yanked 3 links`.
+   No link: the status bar says `no link here`, and nothing is copied (the clipboard keeps what
+   it had).
+7. Copy mode and element mode end when something was copied, as after `y`; with nothing copied
+   they stay, with the caret, the selection or the focused block where it was.
+8. A `javascript:` link is never copied; when it was the only link, the status bar says
    `link runs a script: not copied`. Decision 5.
-8. A `data:` URL is copied like any other while it fits the length cap; one over the cap is
+9. A `data:` URL is copied like any other while it fits the length cap; one over the cap is
    skipped, and when it was the only link the status bar says `link too long to copy`.
    Decision 6.
-9. In a frame, `yank_link` sees the links of the frame copy mode works in, resolved against that
-   frame's own address and base. Links in a frame nested inside the selection are not included.
-10. In the PDF viewer, a link is the PDF's link annotation drawn over the text the caret or the
+10. In a frame, `yank_link` sees the links of the frame copy mode works in, resolved against that
+    frame's own address and base. Links in a frame nested inside the selection are not included.
+11. In the PDF viewer, a link is the PDF's link annotation drawn over the text the caret or the
     selection is in. An external link copies its URL; an internal link (to a page of the same
     PDF) copies the PDF's URL with the fragment that reopens that place, as `c` does.
-11. A count before the key is ignored: `3gy` copies what `gy` copies.
-12. Every key can be remapped in `config.toml`: the action is `yank_link` in the `visual`,
-    `element` and (open question 4) `normal` tables.
-
-The default key, whether copy mode ends after copying, and the result for several links are
-open questions 1 to 3; the behaviours above hold for every answer.
+12. A count before the key is ignored: `3gy` copies what `gy` copies.
+13. The default key is `gy` in the `normal`, `visual` and `element` tables. Every key can be
+    remapped in `config.toml`: the action is `yank_link`.
 
 ## Research
 
@@ -116,17 +120,18 @@ Checked against the engine tree of Firefox 160.0.1 (`surfer.json`), and Vimma's 
 ## Design
 
 1. **One action for every mode.** `yank_link` (id `link.yank`) is a single action bound in the
-   `visual` and `element` tables (and `normal`, open question 4); the host runs it on what the
+   `visual`, `element` and `normal` tables; the host runs it on what the
    mode points at. Reason: one name to learn and to remap, and the help overlay lists it once.
    Rejected: one action per mode (`selection.yank_link`, `element.yank_link`), because the
    behaviour is the same and only the target differs, as it is for `y`'s two actions only
    because their text differs.
-2. **The child finds the links; the parent checks and copies.** A new `link_urls` copy-mode
-   operation in `actors/caret.mjs` (and an element-focus counterpart) returns the URLs, in
-   document order, from a shared `actors/link-at.mjs`: for a collapsed selection,
-   `closest(":any-link")` from the focus node (crossing out of a shadow root to its host); for a
-   range, that same ancestor of the common ancestor, then every `:any-link` element the range
-   intersects (`Range.intersectsNode`). An HTML link's URL is its `href` property, which the
+2. **The child finds the links; the parent checks and copies.** A `Vimma:LinkUrls` message to
+   the focused frame (`from: "caret"` in copy mode, `"focus"` in normal mode) and an element
+   focus `links` op return the URLs, in document order, from a shared `actors/link-at.mjs`: for
+   a collapsed selection, the link (`a[href]`, `area[href]` or an SVG `a`) around the focus node,
+   crossing out of a shadow root to its host; for a range, the link around the common ancestor,
+   then every link whose contents share text or an element with the range (`Range.intersectsNode`,
+   then a check that the link does not only touch an end of the range). An HTML link's URL is its `href` property, which the
    document has already resolved; an SVG link's is `new URL(attribute, node.baseURI)`. Reason:
    only the content process sees the DOM, and the parent already treats replies as untrusted
    (Security and privacy).
@@ -139,7 +144,8 @@ Checked against the engine tree of Firefox 160.0.1 (`surfer.json`), and Vimma's 
 5. **`javascript:` is not copied.** A `javascript:` link is dropped from the result. Reason: it is
    a script, not an address; Firefox's address bar strips the scheme on paste (Research), and
    pasted anywhere else it hands over the page's script under a link's name. Rejected: copying
-   it as `c` does today, because the action promises an address the user can open.
+   it as `c` does today, because the action promises an address the user can open. A `vbscript:` link is dropped the same way: no current browser
+   runs it, but it is a script, not an address.
 6. **`data:` and other schemes are copied within the cap.** `data:`, `blob:`, `mailto:`, `tel:`,
    `about:` and `file:` URLs are copied as the URL parser writes them, and one longer than 8192
    characters is skipped. Reason: they are what the link points at, and a user who selected them
@@ -158,6 +164,34 @@ Checked against the engine tree of Firefox 160.0.1 (`surfer.json`), and Vimma's 
 10. **Count ignored.** The action does not take a count. Reason: there is no meaning for "copy
     the link three times", and repeating it would only repeat the message.
 
+11. **The key is `gy`.** It is bound in `visual`, `element` and `normal`. Reason: `g` already
+    starts `gg` and `ge` in copy mode, so nothing waits on a new key, while `yl` would make every
+    `y` wait `timeout_ms`, since `y` alone is bound (Research); it keeps Vim's `y` and `Y`, and
+    `gy` has no Vim meaning that muscle memory would fight. Rejected: `gY`, a shifted key for
+    the common case, and moving `Y`'s `yank_lines`.
+12. **Copy mode ends when something was copied, and stays otherwise.** Reason: a copy finishes
+    the task as `y` does, while `no link here` means the caret is in the wrong place and the
+    next step is to move it. Element mode follows the same rule, for the same reason. Rejected:
+    always ending, as `y` does, which throws the caret away on a miss, and never ending, which
+    leaves the user to press `Esc` after every copy.
+13. **Several links: all of them**, one per line, deduplicated, in document order, with
+    `yanked N links`. Reason: a selection is a range picked on purpose, and collecting the links
+    of a list or a paragraph is what a range over several links is for; one link is still one
+    key away by moving the caret onto it with no selection. Rejected: the first link only, which
+    drops the others without saying so, and hints over the selected links, which add a mode to
+    a one-key action.
+14. **`gy` in normal mode too, with no hint fallback.** It copies the focused link, else the
+    one link around the selection on screen, else says `no link here`. Only that one link,
+    because in normal mode the selection may be one the page made by itself, and a list of
+    links it chose, joined by line breaks, must not reach the clipboard on a key the user
+    pressed for one link; in copy mode the user made or adjusted the range. Reason: after `/word`
+    `Enter` the link already has focus and one key should be enough, the same key in both modes
+    is one thing to learn, and a key that sometimes copies and sometimes opens hints is harder to
+    predict. A hint key for `copy_link_target` on web pages (Vimium's `yf`) is a separate change.
+15. **`gy` in element mode too.** Reason: element focus exists to copy from a block without a
+    selection, and the action is the same one. Rejected: leaving it out, which makes the user
+    press `v` first.
+
 ## Security and privacy
 
 - **Content replies are untrusted.** The list comes from a content process, which may be
@@ -173,14 +207,16 @@ Checked against the engine tree of Firefox 160.0.1 (`surfer.json`), and Vimma's 
   (`agent-keys.mjs`, "the clipboard is the user's"), because an agent must not write the user's
   clipboard.
 - **What is copied.** A page chooses its links' addresses, and with several links the status bar
-  shows only their number. That is the same trust as `y` on page text: the range was selected by hand,
-  and the clipboard holds exactly the addresses of the links in it.
+  shows only their number. In copy mode that is the same trust as `y` on page text: the user
+  entered copy mode on the range and can see it, and the clipboard holds exactly the addresses
+  of the links in it. Normal mode copies one link at most (decision 14), because there the
+  selection can be the page's own, as can the focus (`el.focus()`).
 
 ## Tests
 
 Vitest (`packages/vimma-core`):
 
-- `yank_link is bound to gy in visual and element mode` (key per open question 1).
+- `yank_link is bound to gy in normal, visual and element mode`.
 - `the help overlay lists yank_link once, under Copy mode` (help snapshot).
 - `vimma_keys refuses link.yank because the clipboard is the user's`.
 
@@ -190,18 +226,17 @@ Mochitest (`tests/browser/browser_vimma_copy_link.js`, new):
 - `caret_outside_any_link_says_no_link_here_and_keeps_the_clipboard`.
 - `selection_inside_one_link_copies_that_link`.
 - `selection_over_part_of_a_link_copies_it`.
-- `selection_over_several_links_copies_them` (per open question 3; deduplicated, document
-  order).
+- `selection_over_several_links_copies_them` (deduplicated, document order).
 - `javascript_link_is_not_copied`.
 - `data_url_over_the_cap_is_skipped`.
-- `copy_mode_ends_after_copying` (per open question 2).
+- `copy_mode_ends_after_copying_and_stays_on_no_link`.
 - `in_a_frame_the_frame_base_resolves_the_url`.
 - `after_find_enter_on_a_link_v_then_gy_copies_it`.
 - `element_mode_copies_the_focused_link_or_the_links_inside_the_block`.
 - `pdf_external_link_under_the_selection_is_copied` and
   `pdf_internal_link_copies_the_url_with_its_fragment`.
 - `a_malformed_or_oversized_reply_copies_nothing` (the parent's checks).
-- With open question 4: `normal_mode_gy_after_find_copies_the_focused_link`.
+- `normal_mode_gy_after_find_copies_the_focused_link`.
 
 E2e (`tests/e2e`): one scenario, `/` to a link's text, `Enter`, `v`, `gy`, then `p` opens the
 copied URL in the tab.
@@ -219,34 +254,3 @@ the selection with gy`.
 One pull request: the action and its keys, the child operation, the parent's checks, element
 mode, the PDF viewer, docs and the security items. It changes the keymap, so it runs alone
 among keymap changes, and it adds a default key, so the maintainer merges it.
-
-## Open questions
-
-1. **Which key in copy mode?** Options: `gy`, free in `visual`, where `g` already starts `gg` and
-   `ge`, so nothing waits; `yl` (or `yu`), which reads as "yank link" but makes every `y` wait
-   `timeout_ms` because `y` alone is bound (Research); `gY`, free but a shifted key for the more
-   common case; a remap of `Y`, which would move `yank_lines`. Recommendation: `gy`, because it
-   costs no delay on `y`, keeps Vim's `y`/`Y`, and in Vim `gy` has no meaning that muscle memory
-   would fight.
-2. **Does copy mode end after copying?** Options: always end, as `y` does, even with nothing
-   copied; end when something was copied and stay when there is no link; never end.
-   Recommendation: end when something was copied and stay otherwise, because a copy finishes the
-   task as `y` does, while `no link here` means the caret is in the wrong place and the user's
-   next step is to move it.
-3. **Several links in the selection?** Options: all of them, one per line, deduplicated, in
-   document order, with `yanked N links`; the first only; hints on just those links to pick one.
-   Recommendation: all of them, because a selection is a range picked on purpose, and
-   collecting the links of a list or a paragraph is what a range over several links is for; one
-   link is still one key away by moving the caret onto it with no selection. Copying the first
-   drops the others without saying so, and hints add a mode to a one-key action.
-4. **A normal-mode key for the focused link?** Options: none, so after a find the user types
-   `v` then `gy` (the match is kept as the selection); `gy` in normal mode too, copying the
-   focused link (after a find, or `Tab`), else the link around the selection on screen, else
-   `no link here`; the same, but with no link it starts `copy_link_target` hints. Recommendation:
-   `gy` in normal mode with no hint fallback, because after `/word` `Enter` the link already has
-   focus and one key should be enough, the same key in both modes is one thing to learn, and a
-   key that sometimes copies and sometimes opens hints is harder to predict. A hint key for
-   `copy_link_target` on web pages (Vimium's `yf`) is a separate change.
-5. **Element mode too?** Options: bind `gy` in `element` (behaviour 3); leave element mode out,
-   so the user presses `v` first. Recommendation: bind it, because element focus exists to copy
-   from a block without a selection, and the action is the same one.

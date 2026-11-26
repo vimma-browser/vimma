@@ -18,7 +18,8 @@ What works today, each with the section that explains it:
   new tab: in the background, or with an upper-case last key, switching to it); `gh`
   [hovers](#hovering-an-element) what a page shows only under the mouse; `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
   list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
-  with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
+  with Vim motions and `y`; `gy` copies the address of the link at the caret, in the selection
+  or that a find landed on; insert mode in text fields, `Esc` to leave; `:` a
   [command line](#the-command-line) with completion and history.
 - **[PDFs with the same keys](#pdf-viewer):** `J`/`K` and `12G` by page, zoom and fit (`+`, `-`,
   `a`, `s`), two pages side by side, the outline beside the page with `Tab` and a filter,
@@ -1109,6 +1110,7 @@ the block as the page scrolls.
 | Key       | Does                                                                        |
 | --------- | --------------------------------------------------------------------------- |
 | `y`       | copies the block's text and goes back to normal mode                        |
+| `gy`      | copies the address of the link the block is in, or of the links inside it   |
 | `v`       | selects the whole block in [copy mode](#copy-mode), to adjust it before `y` |
 | `V`       | the same, line-wise, so `j` and `k` extend it by lines                      |
 | `+` / `-` | focuses the block around it (the list around a list item) / back down again |
@@ -1119,6 +1121,9 @@ the block as the page scrolls.
 Counts work on `+`, `-`, `j` and `k` (`3j`). Any other binding, a tab switch, a navigation or a
 click leaves element focus.
 
+- **Links.** `gy` copies the address of the link the block is part of, or of every link inside
+  it, one per line, as [copy mode](#copy-mode)'s `gy` does, then goes back to normal mode. A
+  block with no link says `no link here` and stays focused.
 - **Plain text.** `y` copies the block as plain text, as copy mode's `y` copies a selection, and
   says `yanked N chars`. After `v`, `y` gives the same text.
 - **Code blocks** copy exactly as shown: indentation, tabs, blank lines and line breaks are kept,
@@ -1147,7 +1152,8 @@ is on screen), as Vim's starts at the cursor.
 - **Case:** smart case. An all lower-case search ignores case (`word` finds `Word`); one capital
   letter makes it match case (`Word` finds only `Word`). `ctrl+f` uses the same rule.
 - **`Enter`** keeps the match selected and closes the bar; you are back in normal mode. A search
-  that found nothing goes back to where you were, and the status bar says `not found`.
+  that found nothing goes back to where you were, and the status bar says `not found`. When the
+  match is a link's text, that link has the focus, and `gy` copies its address.
 - **`Esc`** cancels: the bar closes, nothing stays selected and the page scrolls back to where
   it was when you pressed `/`.
 - **A click outside the prompt** closes it as `Esc` does, as the pickers close: nothing stays
@@ -1261,6 +1267,15 @@ caret browsing (`F7`), for this page only, driven by Vim keys:
 - **`y`** copies the selection to the clipboard as plain text, says "yanked 12 chars" and goes
   back to normal mode. With nothing selected it says "nothing to yank". **`Y`** copies the whole
   lines the selection (or the caret) is on, then leaves the same way.
+- **`gy`** copies the address of the link the caret is in, or of the links the selection is in
+  or touches, and goes back to normal mode. The address is the full one a click would open
+  (`https://example.org/a`, not the `/a` written in the page), and several links are copied one
+  per line, each once, in page order (`yanked 3 links`). With no link it says `no link here` and
+  stays in copy mode, so you can move the caret onto one. A link that runs a script
+  (`javascript:`) is never copied (`link runs a script: not copied`), nor an address longer than
+  8,192 characters (`link too long to copy`). In the [PDF viewer](#pdf-viewer) it copies the
+  link drawn over the text, as `c` does. In normal mode `gy` copies the focused link (after
+  `/word` `Enter`, or `Tab`), else the one link the selection on screen is in.
 - **`Esc`** drops the selection and goes back to normal mode.
 
 **With the mouse.** Selecting text with the mouse in normal mode (dragging, a double click for a

@@ -20,6 +20,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/actors/grep-worker.mjs": typeof import("../src/browser/base/content/vimma/actors/grep-worker.mjs");
   "chrome://browser/content/vimma/actors/hint-collect.mjs": typeof import("../src/browser/base/content/vimma/actors/hint-collect.mjs");
   "chrome://browser/content/vimma/actors/hover.mjs": typeof import("../src/browser/base/content/vimma/actors/hover.mjs");
+  "chrome://browser/content/vimma/actors/link-at.mjs": typeof import("../src/browser/base/content/vimma/actors/link-at.mjs");
   "chrome://browser/content/vimma/actors/page-events.mjs": typeof import("../src/browser/base/content/vimma/actors/page-events.mjs");
   "chrome://browser/content/vimma/actors/page-scroll.mjs": typeof import("../src/browser/base/content/vimma/actors/page-scroll.mjs");
   "chrome://browser/content/vimma/actors/pdf-view.mjs": typeof import("../src/browser/base/content/vimma/actors/pdf-view.mjs");
@@ -82,6 +83,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/keymap.mjs": typeof import("../src/browser/base/content/vimma/core/keymap.mjs");
   "chrome://browser/content/vimma/core/keys.mjs": typeof import("../src/browser/base/content/vimma/core/keys.mjs");
   "chrome://browser/content/vimma/core/layouts.mjs": typeof import("../src/browser/base/content/vimma/core/layouts.mjs");
+  "chrome://browser/content/vimma/core/link-urls.mjs": typeof import("../src/browser/base/content/vimma/core/link-urls.mjs");
   "chrome://browser/content/vimma/core/load-errors.mjs": typeof import("../src/browser/base/content/vimma/core/load-errors.mjs");
   "chrome://browser/content/vimma/core/modes.mjs": typeof import("../src/browser/base/content/vimma/core/modes.mjs");
   "chrome://browser/content/vimma/core/motions.mjs": typeof import("../src/browser/base/content/vimma/core/motions.mjs");

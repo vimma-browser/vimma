@@ -81,6 +81,9 @@ support-files = [
 ["browser_vimma_copy_mode.js"]
 support-files = ["file_vimma_copy.html", "file_vimma_copy_frame.html"]
 
+["browser_vimma_copy_link.js"]
+support-files = ["file_vimma_copy_link.html", "file_vimma_copy_link_frame.html", "file_vimma_pdf_links.pdf"]
+
 ["browser_vimma_copy_motions.js"]
 support-files = ["file_vimma_copy_motions.html"]
 

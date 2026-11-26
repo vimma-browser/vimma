@@ -268,6 +268,13 @@ describe("toolbar toggle", () => {
     }
   });
 
+  // docs/specs/copy-link-url.md decisions 1, 11, 14 and 15.
+  test("yank_link is link.yank in Copy mode, bound to gy in normal, visual and element mode", () => {
+    expect(getAction("yank_link")).toMatchObject({ id: "link.yank", group: "Copy mode" });
+    expect(resolveActionName("link.yank")?.name).toBe("yank_link");
+    expect(compileKeymap().bindingsFor("yank_link")).toEqual(["gy", "gy [visual]", "gy [element]"]);
+  });
+
   test("prefix+u is the only default binding of toggle_toolbar, and no other action has it", () => {
     // compileKeymap throws on a conflict between default bindings.
     const km = compileKeymap();

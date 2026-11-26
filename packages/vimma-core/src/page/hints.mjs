@@ -9,10 +9,12 @@
 
 /** @import { Chord } from "../keys/keys.mjs" */
 /** @import { BlockKind } from "./blocks.mjs" */
+/** @import { LinkUrlsReply } from "./link-urls.mjs" */
 /** @import { AgentElementInfo, AgentForm } from "../agent/agent-element.mjs" */
 
 import { BLOCK_KINDS } from "./blocks.mjs";
 import { stripInvisible } from "./pdf.mjs";
+import { parseLinkUrlsReply } from "./link-urls.mjs";
 import { parseAgentElement, parseAgentForms } from "../agent/agent-element.mjs";
 import { clusterWidth, graphemes, textWidth } from "../text/textwidth.mjs";
 
@@ -551,7 +553,7 @@ const BLOCK_MOVES = new Set(["focus", "parent", "child", "next", "prev"]);
  * @typedef {{ kind: BlockKind, length: number, box: Rect }} BlockMoved  a block was focused:
  *   its border box in its frame's CSS pixels, unclipped, and its text's length in characters
  * @typedef {BlockMoved | { box: Rect } | { rect: Rect } | { text: string, unselectable: boolean }
- *   | { unselectable: boolean }} BlockReply
+ *   | { unselectable: boolean } | LinkUrlsReply} BlockReply
  */
 
 /**
@@ -559,7 +561,7 @@ const BLOCK_MOVES = new Set(["focus", "parent", "child", "next", "prev"]);
  * compromised: a fresh copy with only the fields `op` replies, each of its exact type and within
  * the caps, or null. Never throws. `focus`, `parent`, `child`, `next` and `prev` reply the block
  * now focused; `rect` its box; `frame` a subframe's viewport; `yank` the block's text; `select`
- * whether the page marks it unselectable.
+ * whether the page marks it unselectable; `links` the URLs of its links (copy-link-url).
  * @param {unknown} value
  * @param {string} op
  * @returns {BlockReply | null}
@@ -598,6 +600,8 @@ export function parseBlockReply(value, op) {
         const { unselectable } = v;
         return typeof unselectable === "boolean" ? { unselectable } : null;
       }
+      case "links":
+        return parseLinkUrlsReply(v);
     }
     return null;
   } catch {

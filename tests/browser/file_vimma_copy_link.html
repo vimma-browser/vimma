@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_copy_link.js: links with a relative href under a <base href>, a
+   - paragraph of several links (one repeated, one a script), a javascript: link, a data: link
+   - over the cap, plain text, and a cross-origin frame with its own relative link. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <base href="https://example.org/base/" />
+    <title>vimma copy link</title>
+    <style>
+      body {
+        font: 16px/1.5 monospace;
+        margin: 0;
+      }
+      p {
+        margin: 0 0 8px;
+      }
+      iframe {
+        border: 0;
+        height: 40px;
+        width: 400px;
+      }
+    </style>
+  </head>
+  <body>
+    <p id="plain">plain words with no link</p>
+    <p id="one">before <a id="rel" href="/a?b=1">relative link text</a> after</p>
+    <p id="based">see <a id="page" href="page?x=1">based link</a> too</p>
+    <p id="list">
+      <a href="https://a.example/one">first</a>, <a href="https://a.example/two">second</a>,
+      <a href="https://a.example/one">first again</a>, <a href="javascript:void(0)">script</a>.
+    </p>
+    <p id="script">a <a id="js" href="javascript:void(0)">script link</a> here</p>
+    <p id="data">a <a id="big" href="data:text/plain,x">long data link</a> here</p>
+    <iframe
+      id="frame"
+      src="https://example.org/browser/browser/base/zen-components/tests/browser/file_vimma_copy_link_frame.html"
+    ></iframe>
+    <script>
+      // A data: URL longer than the 8192-character cap (copy-link-url decision 6).
+      document.getElementById("big").href = "data:text/plain," + "x".repeat(9000);
+    </script>
+  </body>
+</html>

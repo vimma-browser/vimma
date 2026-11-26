@@ -192,3 +192,24 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   [`a_click_the_page_dispatches_does_not_move_the_target`](../../tests/browser/browser_vimma_scroll_area.js),
   [`anything malformed drops the reply`](../../packages/vimma-core/test/scroll-areas.test.ts),
   [`at most a frame's share of areas and subframes is kept`](../../packages/vimma-core/test/scroll-areas.test.ts)
+- K16. `gy` ([copy-link-url](../specs/copy-link-url.md)) copies the URLs of links that a content
+  process lists (`Vimma:LinkUrls`, and the element focus `links` op), so the parent **must**
+  treat that list as untrusted: it reads only an object with an array of at most 100 strings and
+  two counts, drops a string over 8,192 characters, removes control and format characters,
+  keeps only what `URL.parse` accepts and writes it as the parser serialises it, and drops a
+  `javascript:` or `vbscript:` URL again after the child did. Nothing else from the reply reaches the clipboard
+  or the status bar. The clipboard is written in the parent, only on the user's key; a page can
+  neither start the action nor learn that it ran. `Vimma:LinkUrls` is answered only by a frame
+  that has focus, and for copy mode's caret only while copy mode is on there; the element focus
+  `links` op is answered only for the block of the current generation, in the document it was
+  chosen in. In normal mode, where the selection or the focus can be the page's own, at most one
+  link is copied, so a page cannot fill the clipboard with lines of its choosing; a reply that
+  arrives after another `gy`, a mode change or a move of the element focus is dropped. `vimma_keys` refuses `link.yank`,
+  because the clipboard is the user's.
+  [`a malformed or oversized reply copies nothing`](../../packages/vimma-core/test/link-urls.test.ts),
+  [`a javascript: URL is dropped, by the frame or again here`](../../packages/vimma-core/test/link-urls.test.ts),
+  [`control and format characters are removed before parsing`](../../packages/vimma-core/test/link-urls.test.ts),
+  [`malformed_link_messages_are_refused`](../../tests/browser/browser_vimma_copy_link.js),
+  [`normal_mode_gy_copies_only_the_one_link_around_the_selection`](../../tests/browser/browser_vimma_copy_link.js),
+  [`javascript_link_is_not_copied`](../../tests/browser/browser_vimma_copy_link.js),
+  [`each refused group is invalid-args naming the key (M16)`](../../packages/vimma-core/test/agent-keys.test.ts)

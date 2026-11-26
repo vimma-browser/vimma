@@ -457,6 +457,23 @@ describe("copy mode: Vim motions, selection and yank keys", () => {
   });
 });
 
+// docs/specs/copy-link-url.md decision 11: g already starts gg and ge, so y does not wait.
+describe("gy copies a link's URL (docs/specs/copy-link-url.md)", () => {
+  test.each(["normal", "visual", "element"] as const)("gy in %s mode runs link.yank", (mode) => {
+    expect(last(feed(make(), mode, "g y"))).toEqual({
+      kind: "action",
+      action: { id: "link.yank" },
+    });
+  });
+
+  test("y in copy mode still runs at once", () => {
+    expect(feed(make(), "visual", "y")[0]).toEqual({
+      kind: "action",
+      action: { id: "selection.yank" },
+    });
+  });
+});
+
 describe("element focus keys (docs/specs/element-focus.md, decision 7)", () => {
   test.each([
     ["v", "element.visual"],
