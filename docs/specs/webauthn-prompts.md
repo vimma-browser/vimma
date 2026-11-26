@@ -146,8 +146,9 @@ out a key with no button and takes `more` for the list.
 `_onButtonEvent` on top; no button is pressed that a mouse click could not press. The change
 makes `y` the answer that signs in or registers, so the guards of decision 11a matter for it as
 they do for Allow: a page raising a WebAuthn prompt while the user types never gets `y` from that
-typing. With the passkey list open, `y` and `n` are the list's, so no key answers from behind a
-highlighted row. `docs/security/06-chrome-ui-rendering.md` describes the prompt keys' guards,
+typing. With the passkey list open, `y` and `n` are the list's, so neither answers from behind
+the highlighted row; the list's own keys, Firefox's digit access keys for its rows among them,
+stay Firefox's. `docs/security/06-chrome-ui-rendering.md` describes the prompt keys' guards,
 unchanged, and names the WebAuthn buttons `y` and `n` press.
 
 ## Tests

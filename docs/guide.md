@@ -1509,17 +1509,17 @@ everywhere inside the prompt.
 
 When a site asks for a passkey or a security key, Firefox's prompts hang from the address bar in
 the same theme and take the same keys, with the same half-second wait. In these prompts `n` is
-always Cancel, the button `Esc` runs, and `y` is the answer that goes ahead, so `y` never cancels
-by accident:
+always the button `Esc` runs (Cancel, or Block in the make-and-model question), and `y` is the
+answer that goes ahead, so `y` never cancels by accident:
 
 - **Touch your security key**, and the notices: several keys found (touch the one to use), the
-  key already holds a passkey for the site, the PIN is not set, too many tries. `n` cancels. They have nothing for `y`, and the line reads
-  `n cancel · Tab buttons`.
+  key already holds a passkey for the site, the PIN is not set, too many tries. `n` cancels.
+  They have nothing for `y`, and the line reads `n cancel · Tab buttons`.
 - **Choose a passkey** for the site: `y` signs in with the passkey on the prompt's button and `n`
   cancels. With more passkeys, the line ends in `Tab, ↓ more`: `Tab` moves focus onto that
   button, `↓` opens the list of the others, the arrow keys move through it and `Enter` chooses.
-  While the list is open, `y` and `n` are the list's and answer nothing, so `y` never signs in
-  with a passkey other than the one you highlighted; `Esc` closes the list.
+  While the list is open, `y` and `n` are the list's and answer nothing, so they never answer
+  from behind the passkey you highlighted; `Esc` closes the list.
 - **Allow the site to see your key's make and model**: `y` allows and `n` blocks, as in a
   permission prompt.
 - **Use a passkey saved for another site**: when a site asks for a passkey that belongs to a

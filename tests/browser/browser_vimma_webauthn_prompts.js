@@ -347,11 +347,33 @@ add_task(async function the_passkey_notices_cancel_with_n() {
 add_task(async function the_attestation_question_answers_y_and_n() {
   await withAuthenticator(async () => {
     const tab = await openPage();
-    for (const key of ["y", "n"]) {
+    for (const [key, pressed] of [
+      ["y", "allow"],
+      ["n", "block"],
+    ]) {
       const result = create(tab.linkedBrowser, { attestation: "direct" });
       const n = await armed("webauthn-prompt-register-direct");
       Assert.ok(hintText(n).startsWith("y allow · n block"), hintText(n));
+      // Both answers make the passkey (Block only anonymizes the key), so the button is told by
+      // which action runs.
+      const notification =
+        /** @type {{ mainAction: { callback: Function }, secondaryActions: { callback: Function }[] }} */ (
+          /** @type {unknown} */ (n.notification)
+        );
+      /** @type {string[]} */
+      const ran = [];
+      const allow = notification.mainAction.callback;
+      const block = notification.secondaryActions[0].callback;
+      notification.mainAction.callback = (/** @type {unknown[]} */ ...args) => {
+        ran.push("allow");
+        return allow(...args);
+      };
+      notification.secondaryActions[0].callback = (/** @type {unknown[]} */ ...args) => {
+        ran.push("block");
+        return block(...args);
+      };
       EventUtils.synthesizeKey(key);
+      Assert.deepEqual(ran, [pressed], `${key} presses ${pressed}`);
       Assert.equal(await result, "ok", `${key} answers and the passkey is made`);
       await until(() => panel().state === "closed", "the prompt goes");
     }

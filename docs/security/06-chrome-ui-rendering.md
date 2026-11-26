@@ -147,7 +147,8 @@ text that pages, add-ons and bookmarks choose.
   their main button is Cancel: `n` presses the button `Esc` runs (Cancel, also in the notices
   whose `Esc` only hides them) and `y` the answer that goes ahead (the passkey, Continue or
   Allow), or nothing where the prompt has none. While the list of other passkeys is open, `y`
-  and `n` are the list's, so no key signs in with a passkey other than the highlighted one.
+  and `n` are the list's, so neither answers from behind the highlighted row; the list's own keys
+  (the arrow keys, `Enter`, `Esc` and Firefox's digit access keys for its rows) stay Firefox's.
   [`doorhangerButtons`](../../packages/vimma-core/test/prompt-keys.test.ts),
   [`choosing_a_passkey_from_the_keyboard`](../../tests/browser/browser_vimma_webauthn_prompts.js),
   [`the_passkey_notices_cancel_with_n`](../../tests/browser/browser_vimma_webauthn_prompts.js),
