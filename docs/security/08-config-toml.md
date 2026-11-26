@@ -192,7 +192,10 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   change to that bookmark itself from a normal window (its title, URL or folder; not a sort,
   which moves every bookmark of the folder) takes it off the `local` list and writes it; a
   folder made in a private window stays local with its contents. A run forgets only the window
-  marks no event touched while it ran. An add-on's write carries no window either and counts as
+  marks no event touched while it ran. A change that lands while Vimma writes to Places (a run's
+  apply, a key's Places step, an export's renames) is told apart from Vimma's own writes by what
+  each write sets, not only by the item it names, so a private window's change to the bookmark
+  Vimma is writing at that moment is still put back. An add-on's write carries no window either and counts as
   the focused window's.
   What an outside change can put into the file is what Places holds in the mirrored folders,
   where the user, Sync or an add-on put it: the merge writes it through the same line writer and
@@ -277,6 +280,10 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a_sync_removal_of_many_asks_and_n_puts_them_back`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_url_the_file_cannot_hold_stays_in_places_only`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_private_window_change_is_not_written`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_private_window_change_during_an_apply_is_not_written`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_private_rename_of_the_bookmark_an_apply_renames_is_not_written`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_normal_rename_of_the_bookmark_an_apply_renames_is_written`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_private_change_during_a_keyed_move_out_is_not_written`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_library_change_from_a_normal_window_is_written_beside_a_private_one`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`the_loop_guard_holds_across_two_simulated_devices`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_move_out_whose_places_step_fails_and_whose_line_cannot_go_back_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),

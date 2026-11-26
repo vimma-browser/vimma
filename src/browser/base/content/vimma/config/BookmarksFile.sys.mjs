@@ -183,7 +183,14 @@ function sha256(text) {
 /**
  * A PlacesBookmark event: the fields read here (PlacesEvent.webidl).
  * @typedef {{ type: string, guid: string, parentGuid?: string, oldParentGuid?: string,
- *   source: number, isTagging?: boolean, itemType?: number }} BookmarkEvent
+ *   source: number, isTagging?: boolean, itemType?: number, title?: string, url?: string,
+ *   index?: number }} BookmarkEvent
+ */
+
+/**
+ * One Places write of the mirror's own, as its event will show it (#1576).
+ * @typedef {{ added?: true, title?: string, url?: string, parentGuid?: string, index?: number }}
+ *   OwnWrite
  */
 
 /**
@@ -353,11 +360,12 @@ export class BookmarksFileImpl {
     /** A run is applying: Places events wait for its closing compare (D5). */
     this.applying = false;
     /**
-     * The guids the running apply writes: its own events, told apart from a change that races
-     * it, which still needs its window noted (#1576). Null: every event is taken as the apply's.
-     * @type {Set<string> | null}
+     * What the running apply writes, by guid: its own events, told apart from a change that
+     * races it, which still needs its window noted (#1576). A change to an item the apply also
+     * writes is the apply's only when it is what the apply wrote.
+     * @type {Map<string, OwnWrite[]>}
      */
-    this.applyingGuids = null;
+    this.applyingWrites = new Map();
     /** @type {number | null} */
     this.burstTimer = null;
     /** @type {number | null} */
@@ -659,10 +667,10 @@ export class BookmarksFileImpl {
     const B = places().bookmarks;
     let n = 0;
     this.applying = true;
-    this.applyingGuids = new Set(renames.map((r) => r.guid));
     try {
       for (const { guid, title } of renames) {
         try {
+          this.expectWrite(guid, { title });
           await B.update({ guid, title });
           n++;
         } catch (e) {
@@ -671,7 +679,7 @@ export class BookmarksFileImpl {
       }
     } finally {
       this.applying = false;
-      this.applyingGuids = null;
+      this.applyingWrites.clear();
       this.burst.clear();
     }
     return n;
@@ -886,12 +894,7 @@ export class BookmarksFileImpl {
     }
     // A change that lands during an apply waits for its closing compare, which reads Places and
     // must already know which of it a private window made, or it writes it (#1576).
-    const ownGuids = this.applyingGuids;
-    const theirs = !this.applying
-      ? mine
-      : ownGuids
-        ? mine.filter((e) => !ownGuids.has(e.guid))
-        : [];
+    const theirs = this.applying ? mine.filter((e) => !this.ownWrite(e)) : mine;
     // Behaviour 12: what is added or changed from a private window is never written; an addition
     // stays in Places only, a change is put back. The event names no window, so the window it
     // came from is the focused one, or the browser window that opened it (the Library, a
@@ -933,6 +936,48 @@ export class BookmarksFileImpl {
       },
       Services.prefs.getIntPref(BURST_PREF, DEFAULT_BURST_MS),
     );
+  }
+
+  /**
+   * Notes a write the running apply is about to make, so that its event is told apart from a
+   * change that races it (#1576). Places keeps 4096 characters of a title and a URL's href.
+   * @param {string} guid
+   * @param {OwnWrite} write
+   */
+  expectWrite(guid, write) {
+    const w = { ...write };
+    if (w.title !== undefined) w.title = w.title.slice(0, 4096);
+    if (w.url !== undefined) w.url = URL.parse(w.url)?.href ?? w.url;
+    const list = this.applyingWrites.get(guid) ?? [];
+    list.push(w);
+    this.applyingWrites.set(guid, list);
+  }
+
+  /**
+   * The event is one of the running apply's own writes (expectWrite); a removal always counts,
+   * as no removal is put back or kept out of the file.
+   * @param {BookmarkEvent} e
+   */
+  ownWrite(e) {
+    if (e.type === "bookmark-removed") return true;
+    return (this.applyingWrites.get(e.guid) ?? []).some((w) => {
+      switch (e.type) {
+        case "bookmark-added":
+          return !!w.added;
+        case "bookmark-title-changed":
+          return w.title !== undefined && e.title === w.title;
+        case "bookmark-url-changed":
+          return w.url !== undefined && e.url === w.url;
+        case "bookmark-moved":
+          return (
+            w.parentGuid !== undefined &&
+            e.parentGuid === w.parentGuid &&
+            (w.index === undefined || e.index === w.index)
+          );
+        default:
+          return false;
+      }
+    });
   }
 
   /**
@@ -1707,6 +1752,7 @@ export class BookmarksFileImpl {
             /** @type {{ guid: string, parentGuid: string, index: number, title?: string }} */
             const info = { guid, parentGuid, index: B.DEFAULT_INDEX };
             if (change.title !== null) info.title = change.title;
+            this.expectWrite(guid, { parentGuid, title: info.title });
             await step(B.update(info));
           };
           restore = async () => {
@@ -1739,6 +1785,7 @@ export class BookmarksFileImpl {
           ];
           baseEdit = (res) => ({ add: [{ table: dst.table, entries: res[0]?.entries ?? [] }] });
           placesOp = async () => {
+            this.expectWrite(guid, { parentGuid: change.parent });
             await step(B.update({ guid, parentGuid: change.parent, index: B.DEFAULT_INDEX }));
           };
         } else return { error: notYet };
@@ -1818,6 +1865,7 @@ export class BookmarksFileImpl {
         if (h) return { error: h };
         placesOp = async () => {
           for (const k of kids) {
+            this.expectWrite(/** @type {string} */ (k.guid), { parentGuid: into });
             await step(
               B.update({
                 guid: /** @type {string} */ (k.guid),
@@ -1847,6 +1895,7 @@ export class BookmarksFileImpl {
         failed = e ?? "failed";
       } finally {
         this.applying = false;
+        this.applyingWrites.clear();
         this.burst.clear();
       }
       if (failed) {
@@ -2100,7 +2149,15 @@ export class BookmarksFileImpl {
     // (Behaviour 14, #1368).
     const before = new Map([...this.burst].map(([t, who]) => [t, new Set(who)]));
     this.applying = true;
-    this.applyingGuids = new Set(ops.flatMap((o) => (o.op === "reorder" ? o.guids : o.guid)));
+    for (const o of ops) {
+      if (o.op === "insert") this.expectWrite(o.guid, { added: true });
+      else if (o.op === "update") {
+        const { title, url, parentGuid } = o;
+        this.expectWrite(o.guid, { title, url, parentGuid });
+      } else if (o.op === "reorder") {
+        o.guids.forEach((g, index) => this.expectWrite(g, { parentGuid: o.parentGuid, index }));
+      }
+    }
     try {
       // Runs of inserts go in as trees, one transaction per parent (insertTree appends in the
       // order given, as the plan expects); removals in one call.
@@ -2139,7 +2196,7 @@ export class BookmarksFileImpl {
       }
     } finally {
       this.applying = false;
-      this.applyingGuids = null;
+      this.applyingWrites.clear();
       this.burst = before;
     }
   }
