@@ -513,6 +513,10 @@ support-files = ["file_vimma_insert_scroll.html"]
 support-files = ["file_vimma_insert_scroll.html"]
 
 ["browser_vimma_workspace_desync.js"]
+support-files = ["head_vimma_workspace_desync.js"]
+
+["browser_vimma_workspace_desync_last_window.js"]
+support-files = ["head_vimma_workspace_desync.js"]
 
 ["browser_vimma_config.js"]
 

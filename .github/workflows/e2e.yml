@@ -446,12 +446,18 @@ jobs:
       # the pref off, docs/runbook/ci-macos-mochitests.md "macOS mochitests"). Agent commands raise their own tab
       # (agent-commands.mjs, raisePriority), which browser_vimma_mcp_agent.js checks either way.
       # --shard=N/2 runs this shard's files of tests/browser/ (tools/mochitest-shards.ts).
+      # Issue #1570: each file's time limit is 68 s here, 1.5 times the harness's 45 s (and a file's
+      # requestLongerTimeout scales it alike), because this shared runner's speed varies by up to
+      # 1.46 times between runs and its slowest file times in November 2026 reached 44 s of 45
+      # (docs/runbook/ci-macos-mochitests.md, "Per-file time limit"). The pref, not mach's --timeout,
+      # which also cuts the no-output limit of the whole run to that value plus 30 s.
       - name: Mochitests (npm run mochitest -- --artifact --shard=N/2)
         env:
           SHARD: ${{ matrix.shard }}
         run: |
           npm run mochitest -- --artifact "--log-tbpl=$RUNNER_TEMP/mochitest.tbpl.log" \
             --setpref=threads.lower_mainthread_priority_in_background.enabled=false \
+            --setpref=testing.browserTestHarness.timeout=68 \
             "--shard=$SHARD/2"
           df -k .
 
