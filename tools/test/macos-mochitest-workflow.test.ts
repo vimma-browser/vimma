@@ -8,7 +8,7 @@ import { jobs } from "./workflow-runners.ts";
 // parallel shards, split by file on the measured times (tools/mochitest-shards.ts, issue #1569),
 // and, like macos.yml's build, each shard stops at about 1.5 times its measured run.
 const TEXT = readFileSync(new URL("../../.github/workflows/e2e.yml", import.meta.url), "utf8");
-const SHARD_MINUTES = 23;
+const SHARD_MINUTES = 24.5;
 
 const mac = () => jobs(TEXT).get("mochitest-macos") ?? {};
 

@@ -28,8 +28,10 @@ hold 985 s of tests; mochitest's own `--total-chunks 2`, which cuts the manifest
 equal file counts, left them 13 % apart. When the shards drift apart by more than a few minutes,
 refresh the table from the `TEST_START` lines of recent green job logs (`gh run view --log`).
 
-**Time limit.** A shard was estimated at 23 minutes (5.5 minutes of setup and Vitest, 16.4 of
-mochitests), so `timeout-minutes` is 35, about 1.5 times a shard, as for the macOS build
+**Time limit.** A shard took 23.6 to 27.2 minutes in three runs in November 2026 (median 24.5;
+about 16.4 of them in the mochitests, the rest setup, Vitest and the artifact build), against 40
+to 44 minutes for the single job, so `timeout-minutes` is 37, about 1.5 times a shard, as for the
+macOS build
 ([#1546](https://github.com/vimma-browser/vimma/issues/1546)): the growing suite does not hit the
 limit, and a hung run still fails with its own log.
 

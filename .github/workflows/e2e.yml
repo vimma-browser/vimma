@@ -388,10 +388,10 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2]
-    # About 1.5 times a shard's measured run, 23 min: 5.5 min of setup and Vitest, and 16.4 min
-    # of mochitests, half of the single job's 33 (docs/runbook/ci-macos-mochitests.md). The
+    # About 1.5 times a shard's measured run: 23.6 to 27.2 min, median 24.5, in three runs of
+    # November 2026, of which 16.4 min are mochitests (docs/runbook/ci-macos-mochitests.md). The
     # growing suite does not hit the limit, while a hung run still fails here with its own log.
-    timeout-minutes: 35
+    timeout-minutes: 37
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
