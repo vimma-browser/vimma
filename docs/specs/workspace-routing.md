@@ -387,6 +387,11 @@ WindowWorkspaces: TabOpen/TabSelect (switch or notice), location changes (hint)
        and shows no hint, while the same redirect after a link click on a page shows it.
        Because the hint is skipped rather than recorded, the page's own navigation to that host
        afterwards still shows it once.
+       A registered web protocol handler (`mailto:`, `web+foo:`) that a page triggers is the
+       exception: Firefox loads the handler's URL with the system principal
+       (`uriloader/exthandler/WebHandlerApp.sys.mjs`, `launchWithURI`), so a handler on a routed
+       site shows no hint. The load stays in the page's container (decision 3); only the hint is
+       lost, because telling it apart would need an upstream patch for a rare case.
    - **A rule naming the agent workspace is inert.** It was already passed over for links from
      other programs (app-routes, decision 5), and typed opens are no longer routed, so it routes
      nothing. The hint, `:route move` and about:vimma's line for the tab pass over it too
