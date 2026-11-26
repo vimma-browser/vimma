@@ -148,7 +148,9 @@ async function openWithHelper(
   vimmaArgs: string[] = [],
 ) {
   const out = join(mkdtempSync(join(root, "opener-")), "result");
-  await run("open", ["-a", apps.opener, "--args", apps.vimma, url, out, ...vimmaArgs]);
+  // -n: the previous helper may still run (it stays for the receiver's look-up); without it,
+  // LaunchServices only activates that one and drops these arguments.
+  await run("open", ["-n", "-a", apps.opener, "--args", apps.vimma, url, out, ...vimmaArgs]);
   const deadline = Date.now() + 60_000;
   while (!existsSync(out)) {
     if (Date.now() > deadline) throw new Error(`the link opener wrote no result for ${url}`);
