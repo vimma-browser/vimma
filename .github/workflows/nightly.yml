@@ -202,9 +202,10 @@ jobs:
       # `surfer import` needed engine/'s empty repository; mach must not see it: its taskgraph
       # hashes the files a repository tracks to find Mozilla's toolchains for --enable-bootstrap,
       # and finds none in an empty one. Without .git, engine/ is a source tarball to mach.
-      # Issue #1033: hosted runners were lost here, 61 to 72 min in, in the libxul link window,
-      # while the build swapped about 19 GB. mach would run 4 jobs for 16 GB; 3 leave memory for
-      # the link. tools/ci/memory-watch.sh logs memory each minute, warns when it runs short, and
+      # Issues #1033 and #1572: hosted runners were lost here, 61 to 74 min in. The build's memory
+      # peak is the Rust stage (gkrust), not the libxul link; configs/linux/mozconfig drops debug
+      # symbols, which kept it out of swap, and mach would run 4 jobs for 16 GB where 3 leave
+      # room. tools/ci/memory-watch.sh logs memory each minute, warns when it runs short, and
       # keeps the OOM killer off the runner agent until the build ends (runbook, "Full builds").
       - name: Build
         run: |

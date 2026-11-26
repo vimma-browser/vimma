@@ -4,9 +4,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 # Watches memory beside a full build (issue #1033): nightly.yml and release.yml start it in the
-# background in their Build step and kill it on exit. Hosted runners were lost 61 to 72 min into
-# the build, in the libxul link window, while the build swapped about 19 GB
-# (docs/runbook/ci-full-builds.md, "Full builds").
+# background in their Build step and kill it on exit, as do macos.yml and release.yml's
+# macos-build (#1572). Hosted runners were lost 61 to 74 min into the build; its memory peak is
+# the Rust stage (docs/runbook/ci-full-builds.md, "Full builds").
 #
 #   tools/ci/memory-watch.sh &      from the repository root, in a GitHub Actions step
 #

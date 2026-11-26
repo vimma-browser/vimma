@@ -186,9 +186,9 @@ jobs:
 
       # As nightly.yml: mach must not see engine/'s empty repository, or --enable-bootstrap finds
       # none of Mozilla's toolchains (its taskgraph hashes only the files a repository tracks).
-      # As nightly.yml (#1033): 3 jobs, not mach's 4, leave memory for the libxul link, and the
-      # memory watch logs memory each minute and keeps the OOM killer off the runner agent until
-      # the build ends.
+      # As nightly.yml (#1033, #1572): 3 jobs, not mach's 4, leave memory for the Rust stage, and
+      # the memory watch logs memory each minute and keeps the OOM killer off the runner agent
+      # until the build ends.
       - name: Build
         run: |
           rm -rf engine/.git
@@ -1115,13 +1115,17 @@ jobs:
       - name: Fix the build ID for every mach call
         run: echo "MOZ_BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"
 
-      # SURFER_PLATFORM picks configs/macos/mozconfig (--target=aarch64-apple-darwin).
+      # SURFER_PLATFORM picks configs/macos/mozconfig (--target=aarch64-apple-darwin). 3 jobs and
+      # the memory watch, as build (#1572; docs/runbook/ci-full-builds.md, "Full builds").
       - name: Build
         env:
           SURFER_PLATFORM: darwin
         run: |
           rm -rf engine/.git
-          npx --no -- surfer build
+          tools/ci/memory-watch.sh &
+          watch=$!
+          trap 'kill "$watch" 2>/dev/null || true; wait "$watch" || true' EXIT
+          npx --no -- surfer build --jobs 3
 
       - name: rcodesign (pinned)
         run: tools/package/fetch-rcodesign.sh "$RUNNER_TEMP/rcodesign"

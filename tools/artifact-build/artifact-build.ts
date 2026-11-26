@@ -55,6 +55,7 @@ const DROPPED: Array<[RegExp, string]> = [
     "Mozilla's libxul has the updater and aborts without UpdateServiceStub.sys.mjs",
   ],
   [/^ac_add_options\s+--with-ccache\b/, "nothing is compiled"],
+  [/^ac_add_options\s+--disable-debug-symbols\b/, "configure: not available in this configuration"],
 ];
 
 /**
