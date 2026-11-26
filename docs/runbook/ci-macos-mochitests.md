@@ -35,6 +35,46 @@ macOS build
 ([#1546](https://github.com/vimma-browser/vimma/issues/1546)): the growing suite does not hit the
 limit, and a hung run still fails with its own log.
 
+**Per-file time limit** ([#1570](https://github.com/vimma-browser/vimma/issues/1570)). The
+shards pass `--setpref=testing.browserTestHarness.timeout=68`, so a test file's limit is 68 s
+instead of the harness's 45 s, and a file's `requestLongerTimeout(n)` gives it 68 × n s. The
+limits were set on Linux, and this runner varies: over 106 macOS jobs from 23 to 26 November 2026
+(green and red, re-run attempts included), the median file took between 0.67 and 1.46 times its
+own median time depending on the run, and the slowest times came close to 45 s or past it:
+
+| File                                 | Median | Slowest | Linux median |
+| ------------------------------------ | ------ | ------- | ------------ |
+| `browser_vimma_workspace_desync.js`  | 25.2 s | 54.4 s  | 9.4 s        |
+| `browser_vimma_insert_scroll.js`     | 23.7 s | 44.1 s  | 10.9 s       |
+| `browser_vimma_hints.js`             | 26.6 s | 42.4 s  | 18.4 s       |
+| `browser_vimma_insert_focus.js`      | 18.4 s | 41.8 s  | 13.9 s       |
+| `browser_vimma_live_grep.js`         | 25.8 s | 38.3 s  | 20.0 s       |
+| `browser_vimma_element.js`           | 19.6 s | 36.7 s  | 15.8 s       |
+| `browser_vimma_cmdline.js`           | 19.8 s | 35.2 s  | 14.1 s       |
+| `browser_vimma_mcp_prompt.js`        | 33.6 s | 35.1 s  | 33.4 s       |
+| `browser_vimma_pdf_outline.js`       | 24.2 s | 34.4 s  | 17.8 s       |
+| `browser_vimma_split_contract.js`    | 17.1 s | 33.7 s  | 6.2 s        |
+| `browser_vimma_control.js`           | 23.9 s | 33.4 s  | 22.4 s       |
+| `browser_vimma_workspace_restore.js` | 15.3 s | 32.3 s  | 6.6 s        |
+| `browser_vimma_private_swap.js` (×2) | 53.0 s | 73.0 s  | 44.0 s       |
+
+Those are the files whose slowest time left less than 1.5 times headroom under their limit. 1.5
+times 45 s covers the runner's measured spread and leaves each of them at least 1.5 times
+headroom over its slowest time (`browser_vimma_insert_scroll.js`: 44.1 s of 68). One setting for
+the job, rather than `requestLongerTimeout` in each of these files, because the cause is the
+runner and not the file: `requestLongerTimeout` would raise the limit on Linux as well, where
+the same files have the headroom (their Linux medians in the table), and a new file would meet the same runner without one. Mozilla's
+harness does the same for its slower builds (90 s for debug and ASan, 120 s for TSan). The Linux
+job keeps 45 s, so a file that grows towards the limit still fails there first, and gets split.
+The one file that ran past 45 s, `browser_vimma_workspace_desync.js`, was split instead
+([#1566](https://github.com/vimma-browser/vimma/issues/1566)): its three cases that close the
+last window took half its time, and they are now `browser_vimma_workspace_desync_last_window.js`.
+The harness reads the pref (`testing.browserTestHarness.timeout`) directly; mach's `--timeout`
+would set it too, but also cuts the no-output limit of the whole run to that value plus 30 s,
+which a file with `requestLongerTimeout(6)` can need. Re-measure from the `TEST_START` and
+`TEST_END` lines of recent job logs (`gh run view --log`, attempts included with
+`gh api .../runs/<id>/jobs?filter=all`) when a file's slowest time comes within 1.5 times of 68 s.
+
 It runs on every pull request except a docs-only one, gated by the same `changes` job as the
 Linux job, and on a manual run without a `firefox-version`. It does not run when `upstream.yml` or
 `upstream-beta.yml` call `e2e.yml` with a version, because a macOS failure must never block a

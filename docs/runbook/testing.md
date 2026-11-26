@@ -38,7 +38,10 @@ mochitests" in [ci-macos-mochitests.md](ci-macos-mochitests.md)), and takes no t
 Pass `--repeat=N` with `=`: `tools/mochitest.ts` treats a bare `N` as a test path. Under
 `--repeat`, the harness never resets a test's `unexpectedTimeouts`, so after one repetition runs
 over the limit every later one also reports "exceeded the timeout threshold": count overruns from
-the `Entering test`/`Leaving test` timestamps instead. No retries in CI; a flaky test gets
+the `Entering test`/`Leaving test` timestamps instead. A file's limit is 45 s (times its
+`requestLongerTimeout`), and 68 s on the macOS job, whose runner is up to 1.5 times slower
+("Per-file time limit" in [ci-macos-mochitests.md](ci-macos-mochitests.md)); a file near the
+limit is split, as `browser_vimma_workspace_desync.js` was. No retries in CI; a flaky test gets
 quarantined and an issue the same day.
 
 ### The control socket (spec m0-control-server)
