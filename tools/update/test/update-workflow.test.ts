@@ -1493,28 +1493,34 @@ describe("update-publish.yml", () => {
     expect(stepOf(announce, "Post it to the Discord announcement channel")).toContain(
       "DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}",
     );
-    expect(stepOf(announce, "Post it to the Discord announcement channel")).toContain(
-      "run: node tools/release/discord-announce.ts post --payload payload.json",
-    );
     expect(announce).not.toMatch(/environment:|id-token|GCP_|UPDATES_DEPLOY_KEY/);
     expect(announce.split("secrets.").length - 1).toBe(1);
   });
 
-  it("announce reads the release's name and notes as data, through gh and a file, never an expression", () => {
+  it("announce reads the release's name and notes as data, through gh and env, never an expression", () => {
     const announce = job("announce");
     expect(announce).not.toContain("github.event.");
-    const run = runOf(announce, "Build the announcement");
+    const run = runOf(announce, "Read the release");
     expect(run).not.toContain("${{");
     expect(run).toContain(
-      'gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,body,url,isDraft,isPrerelease > release.json',
+      'release=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,body,url,isDraft,isPrerelease)',
     );
+    // The dry run shows the payload in the log; base64 keeps the notes on one output line, so
+    // no text in them can end the output early or add another.
     expect(run).toContain(
-      "node tools/release/discord-announce.ts build --release release.json --out payload.json",
+      'RELEASE_JSON="$release" node tools/release/discord-announce.ts post --dry-run',
     );
-    // build writes no payload for a draft or a pre-release, and then nothing is posted.
-    expect(stepOf(announce, "Post it to the Discord announcement channel")).toContain(
-      "if: hashFiles('payload.json') != ''",
+    expect(run).toContain(`echo "json=$(printf '%s' "$release" | base64 -w0)" >> "$GITHUB_OUTPUT"`);
+    // The post step builds the payload in memory from the release JSON, reading no file
+    // (CodeQL js/file-access-to-http); a draft or a pre-release gets a notice and no post.
+    const post = stepOf(announce, "Post it to the Discord announcement channel");
+    expect(post).toContain("RELEASE_BASE64: ${{ steps.release.outputs.json }}");
+    expect(post).toContain(
+      `run: RELEASE_JSON=$(printf '%s' "$RELEASE_BASE64" | base64 -d) node tools/release/discord-announce.ts post`,
     );
+    expect(announce).not.toMatch(/payload\.json|release\.json|hashFiles/);
+    expect(stepOf(announce, "Read the release")).not.toContain("secrets.");
+    expect(post).not.toContain("GH_TOKEN");
   });
 
   it("a failed announcement opens the release-failure issue, saying the update is live", () => {

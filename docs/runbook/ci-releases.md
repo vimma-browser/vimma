@@ -212,13 +212,15 @@ commit links), and links to the full release notes and to
 [vimma.dev/install](https://vimma.dev/install/). It stays within Discord's 4096-character embed
 description, cutting at a whole line and ending with how many lines the notes have beyond it.
 The payload sets `allowed_mentions` to parse nothing, so no text in a release can ping
-`@everyone`, `@here`, a role or a user (docs/security/16-update-check.md, UP15).
+`@everyone`, `@here`, a role or a user (docs/security/16-update-check.md, UP15). The post step
+builds the payload in memory from the release JSON and posts it in the same process; no file is
+read on the way to the request.
 
 See the message a release would get, without posting it:
 
 ```sh
-gh release view vX.Y.Z --json tagName,name,body,url,isDraft,isPrerelease > release.json
-node tools/release/discord-announce.ts build --release release.json
+RELEASE_JSON=$(gh release view vX.Y.Z --json tagName,name,body,url,isDraft,isPrerelease) \
+  node tools/release/discord-announce.ts post --dry-run
 ```
 
 Setting it up, once:

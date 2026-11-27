@@ -1659,19 +1659,24 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Build the announcement
+      # The notes are base64 on one output line, so no text in them can end the output early or
+      # add another; the dry run shows the payload in the log.
+      - name: Read the release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,body,url,isDraft,isPrerelease > release.json
-          node tools/release/discord-announce.ts build --release release.json --out payload.json
-          [ ! -f payload.json ] || cat payload.json
+          release=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,body,url,isDraft,isPrerelease)
+          RELEASE_JSON="$release" node tools/release/discord-announce.ts post --dry-run
+          echo "json=$(printf '%s' "$release" | base64 -w0)" >> "$GITHUB_OUTPUT"
 
+      # The payload is built in memory from the release JSON and posted by the same process; a
+      # draft or a pre-release gets a notice and no post.
       - name: Post it to the Discord announcement channel
-        if: hashFiles('payload.json') != ''
         env:
+          RELEASE_BASE64: ${{ steps.release.outputs.json }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: node tools/release/discord-announce.ts post --payload payload.json
+        run: RELEASE_JSON=$(printf '%s' "$RELEASE_BASE64" | base64 -d) node tools/release/discord-announce.ts post
 
   # The release manifest's failures, and a failed Discord announcement; a failed mar-sign or
   # nightly manifest job fails the calling release.yml or nightly.yml run, whose own failure or

@@ -10,19 +10,18 @@
  * never taken from the JSON.
  *
  * Usage:
- *   discord-announce.ts build --release FILE [--out FILE]
- *       FILE is `gh release view TAG --json tagName,name,body,url,isDraft,isPrerelease`; prints
- *       the webhook payload (a dry run), or writes it to --out. A draft or a pre-release gets a
- *       notice and no payload.
- *   discord-announce.ts post --payload FILE [--dry-run]
- *       posts the payload to $DISCORD_WEBHOOK_URL; unset, it exits 0 with a notice. --dry-run
- *       prints the payload and posts nothing.
+ *   discord-announce.ts post [--dry-run]
+ *       $RELEASE_JSON is `gh release view TAG --json tagName,name,body,url,isDraft,isPrerelease`;
+ *       builds the webhook payload from it in memory and posts it to $DISCORD_WEBHOOK_URL. Unset,
+ *       that URL gets a notice and exit 0; a draft or a pre-release gets a notice and no post.
+ *       --dry-run prints the payload and posts nothing. The payload never goes through a file,
+ *       so nothing read from disk reaches the request.
  *   discord-announce.ts offered --tag vX.Y.Z --published FILE...
  *       prints offered=true when a published update manifest (a missing file is none) already
  *       offers the tag, offered=false otherwise, for $GITHUB_OUTPUT.
  * Node built-ins only.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { publishedState } from "../update/manifest.ts";
@@ -261,32 +260,21 @@ async function main(argv: string[]) {
   const { values } = parseArgs({
     args: rest,
     options: {
-      release: { type: "string" },
-      out: { type: "string" },
-      payload: { type: "string" },
       "dry-run": { type: "boolean" },
       tag: { type: "string" },
       published: { type: "string", multiple: true },
     },
   });
-  if (command === "build" && values.release) {
-    const result = announcement(JSON.parse(readFileSync(values.release, "utf8")) as Release);
+  if (command === "post") {
+    const json = process.env.RELEASE_JSON ?? "";
+    if (json === "") throw new Error("RELEASE_JSON is not set");
+    const result = announcement(JSON.parse(json) as Release);
     if ("skip" in result) {
       console.error(`::notice::no announcement: ${result.skip}`);
       return;
     }
-    const json = `${JSON.stringify(result.payload, null, 2)}\n`;
-    if (values.out) writeFileSync(values.out, json);
-    else process.stdout.write(json);
-    return;
-  }
-  if (command === "post" && values.payload) {
-    const payload = JSON.parse(readFileSync(values.payload, "utf8")) as Partial<Payload>;
-    if (JSON.stringify(payload.allowed_mentions) !== JSON.stringify({ parse: [] })) {
-      throw new Error('the payload must set allowed_mentions to {"parse": []}');
-    }
     if (values["dry-run"]) {
-      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+      process.stdout.write(`${JSON.stringify(result.payload, null, 2)}\n`);
       return;
     }
     const secret = process.env.DISCORD_WEBHOOK_URL ?? "";
@@ -294,7 +282,7 @@ async function main(argv: string[]) {
       console.log("::notice::DISCORD_WEBHOOK_URL is not set; the release is not announced");
       return;
     }
-    const id = await postAnnouncement(payload, webhookUrl(secret));
+    const id = await postAnnouncement(result.payload, webhookUrl(secret));
     console.log(`posted the announcement (message ${id})`);
     return;
   }
@@ -306,8 +294,7 @@ async function main(argv: string[]) {
     return;
   }
   throw new Error(
-    "usage: discord-announce.ts build --release FILE [--out FILE] | " +
-      "post --payload FILE [--dry-run] | offered --tag vX.Y.Z --published FILE...",
+    "usage: discord-announce.ts post [--dry-run] | offered --tag vX.Y.Z --published FILE...",
   );
 }
 

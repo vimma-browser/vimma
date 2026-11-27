@@ -432,59 +432,49 @@ describe("the CLI", () => {
       env: { ...process.env, DISCORD_WEBHOOK_URL: undefined, ...env },
     });
 
-  it("build prints the payload, and --out writes it", () => {
-    const dir = tempDir("vimma-discord-");
-    const file = join(dir, "release.json");
-    writeFileSync(file, JSON.stringify(fixture()));
-    const res = run(["build", "--release", file]);
-    expect(res.status, res.stderr).toBe(0);
-    expect(JSON.parse(res.stdout).embeds[0].title).toBe("Vimma 0.1.25 · Firefox 161.0");
-    const out = join(dir, "payload.json");
-    expect(run(["build", "--release", file, "--out", out]).status).toBe(0);
-    expect(JSON.parse(readFileSync(out, "utf8"))).toEqual(JSON.parse(res.stdout));
-  });
+  // The post path builds the payload in memory from $RELEASE_JSON and reads no file, so no file
+  // content flows into the request (CodeQL js/file-access-to-http).
+  const release = (over: object = {}) => JSON.stringify({ ...fixture(), ...over });
+  const webhook = "https://discord.com/api/webhooks/1/secret-token";
 
-  it("build writes nothing for a pre-release and says why", () => {
-    const dir = tempDir("vimma-discord-");
-    const file = join(dir, "release.json");
-    writeFileSync(file, JSON.stringify({ ...fixture(), isPrerelease: true }));
-    const out = join(dir, "payload.json");
-    const res = run(["build", "--release", file, "--out", out]);
-    expect(res.status).toBe(0);
-    expect(res.stdout).toBe("");
-    expect(res.stderr).toContain("::notice::no announcement: v0.1.25 is a pre-release");
-    expect(() => readFileSync(out)).toThrow();
-  });
-
-  it("post --dry-run prints the payload and posts nothing", () => {
-    const dir = tempDir("vimma-discord-");
-    const file = join(dir, "payload.json");
-    writeFileSync(file, JSON.stringify({ content: "x", allowed_mentions: { parse: [] } }));
-    const res = run(["post", "--payload", file, "--dry-run"], {
-      DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/1/secret-token",
+  it("post --dry-run builds the payload from $RELEASE_JSON, prints it and posts nothing", () => {
+    const res = run(["post", "--dry-run"], {
+      RELEASE_JSON: release(),
+      DISCORD_WEBHOOK_URL: webhook,
     });
     expect(res.status, res.stderr).toBe(0);
-    expect(res.stdout).toContain('"content": "x"');
+    const payload = JSON.parse(res.stdout);
+    expect(payload).toEqual(embedOf(fixture()).payload);
+    expect(payload.allowed_mentions).toEqual({ parse: [] });
     expect(res.stdout + res.stderr).not.toContain("secret-token");
   });
 
+  it("post announces nothing for a pre-release or a draft, and says why", () => {
+    for (const [over, why] of [
+      [{ isPrerelease: true }, "is a pre-release"],
+      [{ isDraft: true }, "is a draft"],
+    ] as const) {
+      const res = run(["post"], { RELEASE_JSON: release(over), DISCORD_WEBHOOK_URL: webhook });
+      expect(res.status, res.stderr).toBe(0);
+      expect(res.stdout).toBe("");
+      expect(res.stderr).toContain(`::notice::no announcement: v0.1.25 ${why}`);
+    }
+  });
+
   it("post exits 0 with a notice while DISCORD_WEBHOOK_URL is unset", () => {
-    const dir = tempDir("vimma-discord-");
-    const file = join(dir, "payload.json");
-    writeFileSync(file, JSON.stringify({ content: "x", allowed_mentions: { parse: [] } }));
     for (const env of [{}, { DISCORD_WEBHOOK_URL: "" }]) {
-      const res = run(["post", "--payload", file], env);
+      const res = run(["post"], { RELEASE_JSON: release(), ...env });
       expect(res.status).toBe(0);
       expect(res.stdout + res.stderr).toContain("::notice::DISCORD_WEBHOOK_URL is not set");
     }
   });
 
-  it("post refuses a payload that could mention someone", () => {
+  it("post fails without $RELEASE_JSON, and takes no payload or release file", () => {
+    expect(run(["post", "--dry-run"]).stderr).toContain("RELEASE_JSON");
     const dir = tempDir("vimma-discord-");
     const file = join(dir, "payload.json");
-    writeFileSync(file, JSON.stringify({ content: "x" }));
-    const res = run(["post", "--payload", file, "--dry-run"]);
-    expect(res.status).toBe(1);
-    expect(res.stderr).toContain("allowed_mentions");
+    writeFileSync(file, JSON.stringify(embedOf(fixture()).payload));
+    expect(run(["post", "--payload", file, "--dry-run"]).status).toBe(1);
+    expect(run(["build", "--release", file]).status).toBe(1);
   });
 });

@@ -636,8 +636,9 @@ _Pages_ and _extensions_ cannot reach it.
   environment, no OIDC token and `contents: read` alone, and runs `main`'s
   `tools/release/discord-announce.ts` with Node built-ins only. Without the secret the step exits 0
   with a notice, so a missing webhook never fails a release. The release's name and notes are
-  text anyone who can edit a release controls: they reach the tool through `gh release view` and a
-  file, never through an expression in a `run:` script, and the payload **never** mentions
+  text anyone who can edit a release controls: they reach the tool through `gh release view` and an
+  environment variable (base64 on one step output line between the two steps), never through an
+  expression in a `run:` script; the post step builds the payload in memory and reads no file, and the payload **never** mentions
   anyone, since it sets `allowed_mentions` to parse nothing and breaks up `@everyone`, `@here` and
   `<@` besides. The release link is built from the tag, never taken from the release's JSON, and
   the tool posts **only** to a Discord webhook URL (on `discord.com`, `discordapp.com`, or their
@@ -653,11 +654,12 @@ _Pages_ and _extensions_ cannot reach it.
   [`announce posts only after the Linux release's manifest is pushed and served, never in a dry run`](../../tools/update/test/update-workflow.test.ts),
   [`prepare records whether the published manifest already offered the tag, so a re-run posts nothing`](../../tools/update/test/update-workflow.test.ts),
   [`the webhook secret reaches only announce's post step, and no environment or OIDC token`](../../tools/update/test/update-workflow.test.ts),
-  [`announce reads the release's name and notes as data, through gh and a file, never an expression`](../../tools/update/test/update-workflow.test.ts),
+  [`announce reads the release's name and notes as data, through gh and env, never an expression`](../../tools/update/test/update-workflow.test.ts),
   [`a failed announcement opens the release-failure issue, saying the update is live`](../../tools/update/test/update-workflow.test.ts),
   [`is true when either published copy already offered the tag before this run`](../../tools/release/test/discord-announce.test.ts),
   [`mentions no one: allowed_mentions parses nothing, and mention text is broken up`](../../tools/release/test/discord-announce.test.ts),
-  [`post refuses a payload that could mention someone`](../../tools/release/test/discord-announce.test.ts),
+  [`post --dry-run builds the payload from $RELEASE_JSON, prints it and posts nothing`](../../tools/release/test/discord-announce.test.ts),
+  [`post announces nothing for a pre-release or a draft, and says why`](../../tools/release/test/discord-announce.test.ts),
   [`skips a draft and a pre-release`](../../tools/release/test/discord-announce.test.ts),
   [`builds the release link from the tag, whatever url the release JSON gives`](../../tools/release/test/discord-announce.test.ts),
   [`refuses any other host, scheme or path, without echoing the value`](../../tools/release/test/discord-announce.test.ts),
