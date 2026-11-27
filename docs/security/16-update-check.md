@@ -630,27 +630,29 @@ _Pages_ and _extensions_ cannot reach it.
   `main`, **only** after `publish` pushed the Linux release's manifest and `updates.vimma.dev`
   serves it, and **at most once** per version while that version stays offered: a run whose
   `prepare` found the version already offered by a published copy of the manifest posts nothing
-  (after a manifest that offers nothing, publishing the same tag again posts again), nor does a dry run, a draft, a
-  pre-release, a manifest that offers nothing or the macOS manifest. The channel webhook is the
-  repository secret `DISCORD_WEBHOOK_URL`, which **only** the post step receives; the job has no
-  environment, no OIDC token and `contents: read` alone, and runs `main`'s
+  (after a manifest that offers nothing, publishing the same tag again posts again), nor does a dry
+  run, a draft, a pre-release, a manifest that offers nothing or the macOS manifest. The channel
+  webhook is the repository secret `DISCORD_WEBHOOK_URL`, which **only** the post step receives; the
+  job has no environment, no OIDC token and `contents: read` alone, and runs `main`'s
   `tools/release/discord-announce.ts` with Node built-ins only. Without the secret the step exits 0
-  with a notice, so a missing webhook never fails a release. The release's name and notes are
-  text anyone who can edit a release controls: they reach the tool through `gh release view` and an
+  with a notice, so a missing webhook never fails a release. The release's name and notes are text
+  anyone who can edit a release controls: they reach the tool through `gh release view` and an
   environment variable (base64 on one step output line between the two steps), never through an
-  expression in a `run:` script; the post step builds the payload in memory and reads no file, and the payload **never** mentions
-  anyone, since it sets `allowed_mentions` to parse nothing and breaks up `@everyone`, `@here` and
-  `<@` besides. The release link is built from the tag, never taken from the release's JSON, and
-  the tool posts **only** to a Discord webhook URL (on `discord.com`, `discordapp.com`, or their
-  `ptb.` and `canary.` hosts), without following a redirect or printing the URL. Links inside
-  changelog lines are kept as written: they come from the same people who can edit a release. Nothing a pull request runs reaches the job: it runs only by a `workflow_dispatch` on
-  `main`, and a fork's pull request gets no repository secret. **⚠ limit:** anyone who holds the
-  webhook URL can post to the announcement channel as the webhook, under any name and avatar,
-  until it is deleted; so can a workflow on any branch pushed by someone with write access, which
-  can read repository secrets. The webhook reaches only that one channel and cannot read it, so a
-  leak costs a spoofed post, not access to the server. If the URL leaks, delete the webhook in
-  Discord and store a new one (docs/runbook/ci-releases.md, "Release announcements on Discord").
-  Crossposting to following servers stays a person's click on **Publish**: no bot token is held.
+  expression in a `run:` script; the post step builds the payload in memory and reads no file, and
+  the payload **never** mentions anyone, since it sets `allowed_mentions` to parse nothing and
+  breaks up `@everyone`, `@here` and `<@` besides. The release link is built from the tag, never
+  taken from the release's JSON, and the tool posts **only** to a Discord webhook URL (on
+  `discord.com`, `discordapp.com`, or their `ptb.` and `canary.` hosts), without following a
+  redirect or printing the URL. Links inside changelog lines are kept as written: they come from the
+  same people who can edit a release. Nothing a pull request runs reaches the job: it runs only by a
+  `workflow_dispatch` on `main`, and a fork's pull request gets no repository secret. **⚠ limit:**
+  anyone who holds the webhook URL can post to the announcement channel as the webhook, under any
+  name and avatar, until it is deleted; so can a workflow on any branch pushed by someone with write
+  access, which can read repository secrets. The webhook reaches only that one channel and cannot
+  read it, so a leak costs a spoofed post, not access to the server. If the URL leaks, delete the
+  webhook in Discord and store a new one (docs/runbook/ci-releases.md, "Release announcements on
+  Discord"). Crossposting to following servers stays a person's click on **Publish**: no bot token
+  is held.
   [`announce posts only after the Linux release's manifest is pushed and served, never in a dry run`](../../tools/update/test/update-workflow.test.ts),
   [`prepare records whether the published manifest already offered the tag, so a re-run posts nothing`](../../tools/update/test/update-workflow.test.ts),
   [`the webhook secret reaches only announce's post step, and no environment or OIDC token`](../../tools/update/test/update-workflow.test.ts),

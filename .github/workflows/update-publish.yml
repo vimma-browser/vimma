@@ -1636,7 +1636,8 @@ jobs:
   # version already offered posts nothing (needs.prepare.outputs.offered must be 'false'; a run
   # without that output posts nothing either). The webhook is the repository secret
   # DISCORD_WEBHOOK_URL, given to the post step alone; without it the step exits 0 with a notice.
-  # The release's name and notes reach the tool through gh and a file, never through ${{ }}.
+  # The release's name and notes reach the tool through gh, then a base64 step output and an
+  # environment variable, never through ${{ }}.
   announce:
     needs: [prepare, publish]
     if: >-
@@ -1650,6 +1651,10 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    # `shell: bash` runs each step with -eo pipefail, so a failed gh or base64 stops the step.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1659,14 +1664,16 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # The notes are base64 on one output line, so no text in them can end the output early or
-      # add another; the dry run shows the payload in the log.
+      # The body is cut at 15000 characters: Linux takes at most 128 KiB in one environment
+      # string, and the embed shows only 4096 characters (a giant release's "N more" count may
+      # then be low). The notes are base64 on one output line, so no text in them can end the
+      # output early or add another; the dry run shows the payload in the log.
       - name: Read the release
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          release=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,body,url,isDraft,isPrerelease)
+          release=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,body,url,isDraft,isPrerelease --jq '.body |= .[0:15000]')
           RELEASE_JSON="$release" node tools/release/discord-announce.ts post --dry-run
           echo "json=$(printf '%s' "$release" | base64 -w0)" >> "$GITHUB_OUTPUT"
 
@@ -1676,7 +1683,9 @@ jobs:
         env:
           RELEASE_BASE64: ${{ steps.release.outputs.json }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: RELEASE_JSON=$(printf '%s' "$RELEASE_BASE64" | base64 -d) node tools/release/discord-announce.ts post
+        run: |
+          release=$(printf '%s' "$RELEASE_BASE64" | base64 -d)
+          RELEASE_JSON="$release" node tools/release/discord-announce.ts post
 
   # The release manifest's failures, and a failed Discord announcement; a failed mar-sign or
   # nightly manifest job fails the calling release.yml or nightly.yml run, whose own failure or

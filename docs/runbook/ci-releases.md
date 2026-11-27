@@ -193,28 +193,29 @@ Turning on security releases (`AUTO_SECURITY_RELEASE`), once, while releases are
 
 #### Release announcements on Discord
 
-Each published stable release is posted once to Vimma's Discord announcement channel, so people
-who follow the server hear about it without watching GitHub. The post comes from
-`update-publish.yml`'s `announce` job, after its `publish` job has pushed the Linux update
-manifest and `updates.vimma.dev` serves it: the message never goes out before installs can
-update. It runs in the Linux run only, because that is the one run every published release
-starts (the macOS run waits for the `.dmg`, which can come hours later). `prepare` notes whether
-either published copy of the manifest already offered the tag before the run, and `announce`
-posts only when neither did, so re-running a finished run, or publishing the same tag's
-manifest again by hand, posts nothing a second time. The one exception: after a manifest that
-offers nothing (`-f offer=nothing`), publishing the same tag again posts it again. A dry run (`-f dry_run=true`), a draft, a
-pre-release, `-f offer=nothing` and the macOS manifest post nothing.
+Each published stable release is posted once to Vimma's Discord announcement channel, so people who
+follow the server hear about it without watching GitHub. The post comes from `update-publish.yml`'s
+`announce` job, after its `publish` job has pushed the Linux update manifest and `updates.vimma.dev`
+serves it: the message never goes out before installs can update. It runs in the Linux run only,
+because that is the one run every published release starts (the macOS run waits for the `.dmg`,
+which can come hours later). `prepare` notes whether either published copy of the manifest already
+offered the tag before the run, and `announce` posts only when neither did, so re-running a finished
+run, or publishing the same tag's manifest again by hand, posts nothing a second time. The one
+exception: after a manifest that offers nothing (`-f offer=nothing`), publishing the same tag again
+posts it again. A dry run (`-f dry_run=true`), a draft, a pre-release, `-f offer=nothing` and the
+macOS manifest post nothing.
 
 The message is built by `tools/release/discord-announce.ts` from the GitHub release: the title
 `Vimma X.Y.Z · Firefox N` linking to the release, the lines of the version's Security, breaking
-changes, Added, Changed, Deprecated, Removed and Fixed sections (without the pull request and
-commit links), and links to the full release notes and to
-[vimma.dev/install](https://vimma.dev/install/). It stays within Discord's 4096-character embed
-description, cutting at a whole line and ending with how many lines the notes have beyond it.
-The payload sets `allowed_mentions` to parse nothing, so no text in a release can ping
-`@everyone`, `@here`, a role or a user (docs/security/16-update-check.md, UP15). The post step
-builds the payload in memory from the release JSON and posts it in the same process; no file is
-read on the way to the request.
+changes, Added, Changed, Deprecated, Removed and Fixed sections (without the pull request and commit
+links), and links to the full release notes and to [vimma.dev/install](https://vimma.dev/install/).
+It stays within Discord's 4096-character embed description, cutting at a whole line and ending with
+how many lines the notes have beyond it. The payload sets `allowed_mentions` to parse nothing, so no
+text in a release can ping `@everyone`, `@here`, a role or a user (docs/security/16-update-check.md,
+UP15). The post step builds the payload in memory from the release JSON and posts it in the same
+process; no file is read on the way to the request. The release body is cut at 15,000 characters
+before it is passed on, because Linux takes at most 128 KiB in one environment variable; the embed
+shows 4096 characters, so only a giant release's "N more" count can come out low.
 
 See the message a release would get, without posting it:
 

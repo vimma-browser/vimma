@@ -1503,8 +1503,12 @@ describe("update-publish.yml", () => {
     const run = runOf(announce, "Read the release");
     expect(run).not.toContain("${{");
     expect(run).toContain(
-      'release=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,body,url,isDraft,isPrerelease)',
+      `release=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,body,url,isDraft,isPrerelease --jq '.body |= .[0:15000]')`,
     );
+    // Linux takes at most 128 KiB in one environment string: 15000 characters stay under it
+    // as JSON (a control character escapes to six bytes) and then as base64 (4/3 of that), and
+    // still hold far more of the notes than Discord's 4096-character embed shows.
+    expect(15000 * 6 * (4 / 3)).toBeLessThan(131072);
     // The dry run shows the payload in the log; base64 keeps the notes on one output line, so
     // no text in them can end the output early or add another.
     expect(run).toContain(
@@ -1515,8 +1519,12 @@ describe("update-publish.yml", () => {
     // (CodeQL js/file-access-to-http); a draft or a pre-release gets a notice and no post.
     const post = stepOf(announce, "Post it to the Discord announcement channel");
     expect(post).toContain("RELEASE_BASE64: ${{ steps.release.outputs.json }}");
+    // With -eo pipefail (shell: bash), a failed decode stops the step before node runs.
+    expect(announce).toMatch(/^ {4}defaults:\n {6}run:\n {8}shell: bash$/m);
     expect(post).toContain(
-      `run: RELEASE_JSON=$(printf '%s' "$RELEASE_BASE64" | base64 -d) node tools/release/discord-announce.ts post`,
+      "run: |\n" +
+        `          release=$(printf '%s' "$RELEASE_BASE64" | base64 -d)\n` +
+        '          RELEASE_JSON="$release" node tools/release/discord-announce.ts post\n',
     );
     expect(announce).not.toMatch(/payload\.json|release\.json|hashFiles/);
     expect(stepOf(announce, "Read the release")).not.toContain("secrets.");
