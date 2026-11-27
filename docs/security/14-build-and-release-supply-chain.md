@@ -57,37 +57,37 @@ of the same commit read it too, so a tree without it could not be released anywa
   the `key-rotation-approved` label, which needs triage access to the repository. No automation
   or agent adds that label; a maintainer adds it only after the checks in `docs/runbook/ci-mozillas-release-key.md`,
   "Mozilla's release key", and removes it if a later push changes the key again, since the label
-  stays on the pull request across pushes. The check runs on `pull_request_target`, so its
-  workflow and `tools/ci/key-guard.mjs` are the base branch's copies: a pull request cannot change
-  how this workflow judges it. It runs again on every push, label change and edit, a change of
-  base branch included, so a pull request opened against another branch, whose own workflows
-  judged it there, is judged again by `main`'s guard once it targets `main`. The job is fenced so that nothing from the head runs: a
-  `contents: read` token that is not kept in the checkout, no secret, the base checked out, and
-  the head commit fetched by its hash and read as git objects, never checked out,
-  installed from or run. It is the only workflow on `pull_request_target`. It is skipped only on
-  a merged pull request: release-please relabels a merged release pull request after its branch
-  is deleted. A skipped job reports success, which is safe only once merged, because the head is
-  already in `main`. A label change on a closed, unmerged pull request still runs the check, so
-  its head commit cannot gain a passing check that a later pull request with the same head would
-  inherit.
+  stays on the pull request across pushes. The check runs on `pull_request_target`, so its workflow
+  and `tools/ci/key-guard.mjs` are the base branch's copies: a pull request cannot change how this
+  workflow judges it. It runs again on every push, label change and edit, a change of base branch
+  included, so a pull request opened against another branch, whose own workflows judged it there, is
+  judged again by `main`'s guard once it targets `main`; the earlier check stays on the head beside
+  it (see same-named checks below). The job is fenced so that nothing from the head runs: a
+  `contents: read` token that is not kept in the checkout, no secret, the base checked out, and the
+  head commit fetched by its hash and read as git objects, never checked out, installed from or run.
+  It is the only workflow on `pull_request_target`. It is skipped only on a merged pull request:
+  release-please relabels a merged release pull request after its branch is deleted. A skipped job
+  reports success, which is safe only once merged, because the head is already in `main`. A label
+  change on a closed, unmerged pull request still runs the check, so its head commit cannot gain a
+  passing check that a later pull request with the same head would inherit.
   A pull request that changes the guard itself (`.github/workflows/key-guard.yml`,
-  `tools/ci/key-guard.mjs` or its tests) needs the same label: its own run uses the base's copy,
-  but once merged the change decides every later run. The script still exempts the pull request
-  that first adds the guard to a base branch without one, but the workflow reads the script from
-  the base and fails closed when the base has none.
+  `tools/ci/key-guard.mjs` or its tests) needs the same label: its own run uses the base's copy, but
+  once merged the change decides every later run. The script still exempts the pull request that
+  first adds the guard to a base branch without one, but the workflow reads the script from the base
+  and fails closed when the base has none.
   What the check guarantees is narrower than "a key change cannot merge without the label". The
-  `main` ruleset requires the check by its name, and every workflow reports through the same
-  GitHub Actions app, so a pull request that adds a job of the same name to another workflow
-  reports a second check of that name, one it controls and can time to finish after the guard.
-  This is a working way around the check: for a fork it waits only on a maintainer approving the
-  fork's workflow run, and for a branch of this repository only on review. While the required
-  check names no source app, a commit status of the same name, which anyone who can write to the
-  repository can post on the head, stands in for it too. The ruleset requires no approving
-  review, so the label binds people without triage access, and binds agents by rule (they never
-  add it), not by a GitHub setting. A pull request that adds or changes a workflow is therefore reviewed for a job that
-  borrows a required check's name (`docs/review-checklist.md`). Its scope is the key, the
-  fingerprint and the guard: it does not see a change that weakens `verify-sha512.py` elsewhere
-  (its call sites or its status checks); review of `tools/upstream/` covers that.
+  `main` ruleset requires the check by its name, and every workflow reports through the same GitHub
+  Actions app, so a pull request that adds a job of the same name to another workflow reports a
+  second check of that name, one it controls and can time to finish after the guard. This is a
+  working way around the check: for a fork it waits only on a maintainer approving the fork's
+  workflow run, and for a branch of this repository only on review. While the required check names
+  no source app, a commit status of the same name, which anyone who can write to the repository can
+  post on the head, stands in for it too. The ruleset requires no approving review, so the label
+  binds people without triage access, and binds agents by rule (they never add it), not by a GitHub
+  setting. A pull request that adds or changes a workflow is therefore reviewed for a job that
+  borrows a required check's name (`docs/review-checklist.md`). The check's scope is the key, the
+  fingerprint and the guard: it does not see a change that weakens `verify-sha512.py` elsewhere (its
+  call sites or its status checks); review of `tools/upstream/` covers that.
   [`test_good_signature_from_mozillas_current_subkey_passes`](../../tools/upstream/test_verify_sha512.py),
   [`test_signature_by_the_revoked_compromised_subkey_fails`](../../tools/upstream/test_verify_sha512.py),
   [`test_signature_by_another_key_fails`](../../tools/upstream/test_verify_sha512.py),
