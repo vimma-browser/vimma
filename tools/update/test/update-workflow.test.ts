@@ -114,6 +114,7 @@ describe("update-publish.yml", () => {
       "nightly-prepare",
       "nightly-sign",
       "nightly-publish",
+      "announce",
       "failure",
     ]);
   });
@@ -221,6 +222,7 @@ describe("update-publish.yml", () => {
     expect(permissionsOf(job("nightly-prepare"))).toEqual(["contents: read"]);
     expect(permissionsOf(job("nightly-sign"))).toEqual(["id-token: write"]);
     expect(permissionsOf(job("nightly-publish"))).toEqual(["contents: read"]);
+    expect(permissionsOf(job("announce"))).toEqual(["contents: read"]);
     expect(permissionsOf(job("failure"))).toEqual(["issues: write"]);
   });
 
@@ -464,8 +466,9 @@ describe("update-publish.yml", () => {
           GUARD.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
       ),
     );
+    // announce: the release's Discord announcement, after publish.
     expect(job("failure")).toMatch(
-      /^ {4}needs: \[start, prepare, sign, repo-prepare, repo-sign, publish\]$/m,
+      /^ {4}needs: \[start, prepare, sign, repo-prepare, repo-sign, publish, announce\]$/m,
     );
   });
 
@@ -984,7 +987,13 @@ describe("update-publish.yml", () => {
     expect(call).toMatch(
       /^ {4}secrets:\n {6}UPDATES_DEPLOY_KEY:\n(?: {8}description: .*\n)? {8}required: false\n/m,
     );
-    expect(call.match(/^ {6}[A-Z_]+:$/gm)).toEqual(["      UPDATES_DEPLOY_KEY:"]);
+    // DISCORD_WEBHOOK_URL is listed only so actionlint accepts announce's use of it; no caller
+    // passes it (below), and announce never runs in a call.
+    expect(call.match(/^ {6}[A-Z_]+:$/gm)).toEqual([
+      "      UPDATES_DEPLOY_KEY:",
+      "      DISCORD_WEBHOOK_URL:",
+    ]);
+    expect(call).toMatch(/^ {6}DISCORD_WEBHOOK_URL:\n {8}description: .*\n {8}required: false\n/m);
     const callers = readdirSync(new URL("../../../.github/workflows/", import.meta.url))
       .filter((f) => f !== "update-publish.yml")
       .map((f) => readFileSync(new URL(`../../../.github/workflows/${f}`, import.meta.url), "utf8"))
@@ -992,6 +1001,7 @@ describe("update-publish.yml", () => {
     expect(callers).not.toMatch(/secrets: inherit/);
     expect(callers.match(/UPDATES_DEPLOY_KEY:/g)).toEqual(["UPDATES_DEPLOY_KEY:"]);
     expect(callers).toContain("UPDATES_DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}");
+    expect(callers).not.toContain("DISCORD_WEBHOOK_URL");
   });
 
   it("the deploy key lives in its own environment and reaches only the push steps", () => {
@@ -1049,8 +1059,8 @@ describe("update-publish.yml", () => {
     expect(text).not.toMatch(/npm (?:ci|install)|npx /);
     const checkouts = text.split("uses: actions/checkout@").slice(1);
     // prepare and publish, repo-prepare and repo-sign's signer, nightly-prepare and
-    // nightly-publish, and package-sign's signer.
-    expect(checkouts.length).toBe(7);
+    // nightly-publish, package-sign's signer, and announce.
+    expect(checkouts.length).toBe(8);
     for (const c of checkouts) {
       expect(c).toMatch(
         /^\S+ # v[\d.]+\n {8}with:\n(?: {10}.*\n)*? {10}persist-credentials: false\n/,
@@ -1440,6 +1450,101 @@ describe("update-publish.yml", () => {
       "macos manifest|t|t",
       "seed|t|t",
     ]);
+  });
+
+  // docs/security/16-update-check.md UP15 and docs/runbook/ci-releases.md, "Release
+  // announcements on Discord": one post per stable release, after its update is live.
+  it("announce posts only after the Linux release's manifest is pushed and served, never in a dry run", () => {
+    const announce = job("announce");
+    expect(announce).toMatch(/^ {4}needs: \[prepare, publish\]$/m);
+    expect(condition(announce)).toBe(
+      "!cancelled() && needs.publish.result == 'success' && needs.prepare.outputs.offered == 'false' && " +
+        "inputs.target != 'macos' && inputs.offer != 'nothing' && !inputs.dry_run && " +
+        `vars.UPDATES_ENABLED == 'true' && ${GUARD} && !inputs.mar && ` +
+        "startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')",
+    );
+    // publish succeeds without pushing only in a dry run or without UPDATES_ENABLED, which the
+    // condition above excludes; enabled without the deploy key, it fails.
+    expect(stepOf(job("publish"), "Wait until the update host serves it")).toContain(
+      "if: env.UPDATES_DEPLOY_KEY_SET == 'true' && vars.UPDATES_ENABLED == 'true' && !inputs.dry_run",
+    );
+  });
+
+  it("prepare records whether the published manifest already offered the tag, so a re-run posts nothing", () => {
+    const prepare = job("prepare");
+    expect(prepare).toMatch(
+      /^ {4}outputs:\n {6}offered: \$\{\{ steps\.offered\.outputs\.offered \}\}$/m,
+    );
+    const step = stepOf(prepare, "Was the release offered before");
+    expect(step).toContain("id: offered");
+    expect(step).toContain("if: env.OFFER == 'release'");
+    expect(step).toContain(
+      'node tools/release/discord-announce.ts offered --tag "$TAG" --published served.xml --published repo.xml >> "$GITHUB_OUTPUT"',
+    );
+    // After the manifest is built from the same files, whose errors come first.
+    expect(prepare.indexOf("- name: Was the release offered before")).toBeGreaterThan(
+      prepare.indexOf("- name: Build the manifest"),
+    );
+  });
+
+  it("the webhook secret reaches only announce's post step, and no environment or OIDC token", () => {
+    expect(text.split("secrets.DISCORD_WEBHOOK_URL").length - 1).toBe(1);
+    const announce = job("announce");
+    expect(stepOf(announce, "Post it to the Discord announcement channel")).toContain(
+      "DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}",
+    );
+    expect(announce).not.toMatch(/environment:|id-token|GCP_|UPDATES_DEPLOY_KEY/);
+    expect(announce.split("secrets.").length - 1).toBe(1);
+  });
+
+  it("announce reads the release's name and notes as data, through gh and env, never an expression", () => {
+    const announce = job("announce");
+    expect(announce).not.toContain("github.event.");
+    const run = runOf(announce, "Read the release");
+    expect(run).not.toContain("${{");
+    expect(run).toContain(
+      `release=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,body,url,isDraft,isPrerelease --jq '.body |= .[0:15000]')`,
+    );
+    // Linux takes at most 128 KiB in one environment string: 15000 characters stay under it
+    // as JSON (a control character escapes to six bytes) and then as base64 (4/3 of that), and
+    // still hold far more of the notes than Discord's 4096-character embed shows.
+    expect(15000 * 6 * (4 / 3)).toBeLessThan(131072);
+    // The dry run shows the payload in the log; base64 keeps the notes on one output line, so
+    // no text in them can end the output early or add another.
+    expect(run).toContain(
+      'RELEASE_JSON="$release" node tools/release/discord-announce.ts post --dry-run',
+    );
+    expect(run).toContain(`echo "json=$(printf '%s' "$release" | base64 -w0)" >> "$GITHUB_OUTPUT"`);
+    // The post step builds the payload in memory from the release JSON, reading no file
+    // (CodeQL js/file-access-to-http); a draft or a pre-release gets a notice and no post.
+    const post = stepOf(announce, "Post it to the Discord announcement channel");
+    expect(post).toContain("RELEASE_BASE64: ${{ steps.release.outputs.json }}");
+    // With -eo pipefail (shell: bash), a failed decode stops the step before node runs.
+    expect(announce).toMatch(/^ {4}defaults:\n {6}run:\n {8}shell: bash$/m);
+    expect(post).toContain(
+      "run: |\n" +
+        `          release=$(printf '%s' "$RELEASE_BASE64" | base64 -d)\n` +
+        '          RELEASE_JSON="$release" node tools/release/discord-announce.ts post\n',
+    );
+    expect(announce).not.toMatch(/payload\.json|release\.json|hashFiles/);
+    expect(stepOf(announce, "Read the release")).not.toContain("secrets.");
+    expect(post).not.toContain("GH_TOKEN");
+  });
+
+  it("a failed announcement opens the release-failure issue, saying the update is live", () => {
+    const failure = job("failure");
+    expect(failure).toMatch(
+      /^ {4}needs: \[start, prepare, sign, repo-prepare, repo-sign, publish, announce\]$/m,
+    );
+    expect(failure).toContain("ANNOUNCE: ${{ needs.announce.result }}");
+    expect(failure).toContain("PUBLISH: ${{ needs.publish.result }}");
+    const run = runOf(failure, "Open or update the failure issue");
+    expect(run).toContain('title="Discord announcement for $TAG failed"');
+    expect(run).toContain("gh run rerun $GITHUB_RUN_ID --failed");
+    expect(run).toContain(
+      'if [ "$PUBLISH" = failure ] && [ "$OFFER" = release ] && [ "$TARGET_OS" = linux ]; then',
+    );
+    expect(run).toContain("was not announced on Discord, and no later run will announce it");
   });
 
   it("the failure issue says how to re-run", () => {

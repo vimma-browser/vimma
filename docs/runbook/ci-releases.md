@@ -190,3 +190,66 @@ Turning on security releases (`AUTO_SECURITY_RELEASE`), once, while releases are
    its tag (`gh release delete v0.1.x --cleanup-tag`); the version moves on.
 4. To stop the chain: `gh variable delete AUTO_SECURITY_RELEASE`, or for one release PR
    `gh pr merge --disable-auto <n>`.
+
+#### Release announcements on Discord
+
+Each published stable release is posted once to Vimma's Discord announcement channel, so people who
+follow the server hear about it without watching GitHub. The post comes from `update-publish.yml`'s
+`announce` job, after its `publish` job has pushed the Linux update manifest and `updates.vimma.dev`
+serves it: the message never goes out before installs can update. It runs in the Linux run only,
+because that is the one run every published release starts (the macOS run waits for the `.dmg`,
+which can come hours later). `prepare` notes whether either published copy of the manifest already
+offered the tag before the run, and `announce` posts only when neither did, so re-running a finished
+run, or publishing the same tag's manifest again by hand, posts nothing a second time. The one
+exception: after a manifest that offers nothing (`-f offer=nothing`), publishing the same tag again
+posts it again. A dry run (`-f dry_run=true`), a draft, a pre-release, `-f offer=nothing` and the
+macOS manifest post nothing.
+
+The message is built by `tools/release/discord-announce.ts` from the GitHub release: the title
+`Vimma X.Y.Z · Firefox N` linking to the release, the lines of the version's Security, breaking
+changes, Added, Changed, Deprecated, Removed and Fixed sections (without the pull request and commit
+links), and links to the full release notes and to [vimma.dev/install](https://vimma.dev/install/).
+It stays within Discord's 4096-character embed description, cutting at a whole line and ending with
+how many lines the notes have beyond it. The payload sets `allowed_mentions` to parse nothing, so no
+text in a release can ping `@everyone`, `@here`, a role or a user (docs/security/16-update-check.md,
+UP15). The post step builds the payload in memory from the release JSON and posts it in the same
+process; no file is read on the way to the request. The release body is cut at 15,000 characters
+before it is passed on, because Linux takes at most 128 KiB in one environment variable; the embed
+shows 4096 characters, so only a giant release's "N more" count can come out low.
+
+See the message a release would get, without posting it:
+
+```sh
+RELEASE_JSON=$(gh release view vX.Y.Z --json tagName,name,body,url,isDraft,isPrerelease) \
+  node tools/release/discord-announce.ts post --dry-run
+```
+
+Setting it up, once:
+
+1. In Discord, make the channel an announcement channel: the channel's settings → Overview →
+   Announcement Channel (the server needs Community enabled).
+2. In the same channel's settings: Integrations → Create Webhook (or Webhooks → New Webhook). A
+   webhook made there posts to that channel. Name it `Vimma releases`, give it Vimma's icon, and
+   copy its URL (Copy Webhook URL).
+3. Store the URL as the repository secret `DISCORD_WEBHOOK_URL`: Settings → Secrets and
+   variables → Actions → New repository secret, or `gh secret set DISCORD_WEBHOOK_URL` and paste
+   it at the prompt (never on the command line, which keeps it in the shell's history). Without
+   the secret, `announce` logs a notice and exits 0; it never fails a release.
+
+On each release: a webhook cannot crosspost, so the post stays in Vimma's own server until it is
+published. Open the message in the announcement channel and click **Publish** to send it to
+every server that follows the channel. Crossposting from CI would need a bot token with the
+Manage Messages permission, which this workflow does not hold.
+
+If the post failed (Discord down, a deleted webhook), the run opens or comments on the
+`release-failure` issue, saying that the update is live. Fix the webhook or the secret, then
+re-run the failed job of that run: `gh run rerun <run id> --failed`. A new manifest run posts
+nothing, since the manifest already offers the version. If `publish` itself failed after its
+push (the host did not serve the manifest within 10 minutes), `announce` never ran, and no
+later run will post either: the issue says so. Then post by hand: build the message as above and
+paste its `content` and `description` into the channel, then click Publish.
+
+Rotating the webhook: anyone who has its URL can post to the channel as the webhook, with any
+name and avatar, until it is deleted. If the URL leaked (a log, a screenshot, a paste):
+delete the webhook in the channel's Integrations → Webhooks, create a new one, and
+replace the secret with `gh secret set DISCORD_WEBHOOK_URL`. Nothing else holds the URL.

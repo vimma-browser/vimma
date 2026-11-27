@@ -217,7 +217,7 @@ they test.
 | `tools/import/`             | Helpers for `npm run import`: restoring patched files, linking the update certificates.                     |
 | `tools/lanes/`              | Parallel browser lanes: a worktree with its own copy of `engine/`.                                          |
 | `tools/upstream/`           | The upstream autopilot and Beta canary: detecting Firefox releases, verifying source, bumping, patch audit. |
-| `tools/release/`            | Release notes, the version line, build ids, and the self-releasing security bump.                           |
+| `tools/release/`            | Release notes, the version line, build ids, the self-releasing security bump, and the Discord announcement. |
 | `tools/package/`            | Release packages (tarball, AppImage, `.deb`, `.rpm`, PKGBUILD, Flatpak, dmg, SBOM), repositories.           |
 | `tools/update/`             | The update manifest, MAR files and signing certificates.                                                    |
 | `tools/version-files/`      | The app version files the build reads.                                                                      |
@@ -390,7 +390,7 @@ hold secrets are in security.md §10 and §14.
 | `upstream-merge.yml`       | After the bump's checks     | Sets a green Firefox bump to merge itself ([ADR-022](docs/adr/022-green-bump-merges-itself.md)).                                      |
 | `release-please.yml`       | `main`                      | Keeps the release pull request; on merge, tags and starts the release; auto-merges it after a security bump.                          |
 | `release.yml`              | Started by release-please   | Full builds for Linux and macOS, packages, signatures, SBOM, upload to the draft release.                                             |
-| `update-publish.yml`       | A published release         | Signs the update manifest and the package repositories' metadata and publishes them to updates.vimma.dev.                             |
+| `update-publish.yml`       | A published release         | Signs the update manifest and the package repositories' metadata, publishes them to updates.vimma.dev, then announces it on Discord.  |
 | `update-rehearsal.yml`     | Daily                       | Installs the previous release and checks it takes the release updates.vimma.dev offers.                                               |
 | `aur.yml`                  | A published release         | Pushes `vimma-bin` to the AUR; skipped until the `AUR_SSH_KEY` secret exists.                                                         |
 | `homebrew.yml`             | A published release         | Pushes the cask to the Homebrew tap.                                                                                                  |
