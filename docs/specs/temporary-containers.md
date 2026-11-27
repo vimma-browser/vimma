@@ -1,12 +1,13 @@
 # Spec: temporary-containers
 
-Status: draft · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`, `config.mjs`,
+Status: accepted · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
 `cmdline.mjs`, a new `packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`,
 `ui/tabline.mjs`, `ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,
 `workspaces/WindowWorkspaces.sys.mjs`, `workspaces/WorkspaceRouter.sys.mjs`, `host/tab-ops.mjs`,
 `host/pane-ops.mjs`, `host/close-last-ops.mjs`, `ui/statusbar.mjs`, `ui/tabline.mjs`,
-`ui/side-panel.mjs`, `ctl/VimmaControl.sys.mjs`) · Upstream patches: none, unless open question
-1 is answered with option C (one more hunk in `Tabbrowser-sys-mjs.patch`) · ADR: none
+`ui/side-panel.mjs`, `ctl/VimmaControl.sys.mjs`) · Upstream patches: one more hunk in
+`Tabbrowser-sys-mjs.patch` (decision 12); its line in ADR-003's patch register comes with the
+pull request that adds it · ADR: none
 
 Issue: [#1602](https://github.com/vimma-browser/vimma/issues/1602)
 
@@ -25,7 +26,8 @@ workspace and the same split, without opening the private workspace or making a 
 it. It is optional: a user who never opens one sees nothing new.
 
 The feature is named "temporary container", not "private", because it is not private browsing:
-its history, cache and session entries reach disk like any tab's (Research), and the
+its visits stay out of history, but its cache, session entries, form history and downloads reach
+disk like any tab's (Research, decision 12), and the
 [private-workspace](private-workspace.md) spec reserves the word "private" for Firefox's private
 browsing (its decision 11).
 
@@ -51,37 +53,40 @@ Containers. Its tabs belong to no workspace and join the current one as `foreign
 
 ## Behaviour
 
-Keys and names below are proposals where an open question says so; every key is rebindable in
-`config.toml`, like the prefix and the leader.
+Every key below is rebindable in `config.toml`, like the prefix and the leader.
 
 1. As a Vimma user, `:tmp` (long form `:temporary`) opens a new tab in a new temporary container
-   in the current workspace and selects it. `:tmp <url or search>` opens that page in it. A
-   default key is open question 3.
+   in the current workspace and selects it. `:tmp <url or search>` opens that page in it.
+   `ctrl+b t` (action `temporary_tab`) does the same as `:tmp`.
 2. As a Vimma user, `:tmp vsplit` / `:tmp split` (`:tmp vs` / `:tmp sp`) split the current pane
    right / down, as `:vsplit` / `:split` do, with the new pane in a new temporary container.
    This puts a temporary session beside a signed-in tab of the same workspace in one split.
 3. As a Vimma user, a page in a temporary container that opens a tab or a pop-up (a link with
    `target=_blank`, `window.open`, `F`, a middle click) opens it in the same temporary container,
-   so a sign-in pop-up and the page that opened it share their cookies. Which other opens join
-   it is open question 2.
+   so a sign-in pop-up and the page that opened it share their cookies. A tab I open myself from
+   a temporary tab (`ctrl+t`, `ctrl+b c`, `t`, `:tabnew`, `P`) opens in the workspace's container.
 4. As a Vimma user, the tab line, the side panel, the workspace picker and the status bar mark a
    tab in a temporary container, in text that does not depend on colour, and tabs of different
-   temporary containers can be told apart (open question 5).
+   temporary containers can be told apart: `tmp1`, `tmp2` in the tab line and side panel,
+   `◇ tmp1` in the status bar when the current tab is temporary, and `2 temporary` in the
+   picker's count.
 5. As a Vimma user, when the last tab of a temporary container closes, its cookies, storage and
-   cache are deleted at once (open question 7). The workspace stays as it was.
+   cache are deleted at once, and undo-close-tab cannot bring its tabs back. The workspace stays
+   as it was.
 6. As a Vimma user, a temporary container is not restored at the next start, and anything a crash
-   left behind is deleted then (open question 7).
+   left behind is deleted then.
 7. As a Vimma user, a temporary tab stays in the workspace it was opened in: `:wsmove`, the
    picker's `m` and the side panel's move refuse it with
    `a temporary tab stays in its workspace: open it again with :tmp there`.
 8. As a Vimma user, `:tmp` in the agent workspace and in the private workspace is refused, with
    `no temporary containers in the agent workspace` / `the private workspace is discarded when
 it closes already`.
-9. As a Vimma user who turns on the automatic mode (open question 4), every new tab I open
-   (`ctrl+t`, `ctrl+b c`, `t`, `:tabnew`, `P`) opens in a new temporary container instead of the
-   workspace's container.
-10. As a Vimma user, links from other apps never open in a temporary container; they open in a
-    workspace's container as today ([workspace-routing](workspace-routing.md)).
+9. As a Vimma user, links from other apps never open in a temporary container; they open in a
+   workspace's container as today ([workspace-routing](workspace-routing.md)).
+10. As a Vimma user, the pages I visit in a temporary container do not appear in history, in the
+    address bar's suggestions or in history search.
+11. As a script using `vimma-ctl` (the user's full role), `vimma-ctl state` lists temporary tabs
+    with `"temporary": true`. Agents never see or open one.
 
 ## Research
 
@@ -184,10 +189,10 @@ userContextId })` before dropping the identity (same file, 552-575), so the cont
    uses (`docs/security/03-workspace-deletion-and-containers.md`, W1 to W3), and need no upstream
    patch. Rejected: private browsing per tab, because private-workspace option C showed it needs
    a C++ patch and a review of about 220 call sites on every Firefox release.
-2. **It is called a temporary container, never private**, because it keeps history, cache on
-   disk and session entries that private browsing would not, and calling it private would
-   promise a guarantee it does not give, which the private-workspace spec counts as a security
-   problem (its option B verdict and decision 11).
+2. **It is called a temporary container, never private**, because it keeps cache on disk,
+   session entries, form history and downloads that private browsing would not, and calling it
+   private would promise a guarantee it does not give, which the private-workspace spec counts
+   as a security problem (its option B verdict and decision 11).
 3. **It belongs to the workspace it was opened in.** Vimma keeps a map of temporary
    `userContextId` to workspace id, and `openTab` puts a tab of such a container in that
    workspace, not the active one, and not as `foreign`, so that the picker and the side panel
@@ -202,13 +207,12 @@ userContextId })` before dropping the identity (same file, 552-575), so the cont
    recorded id is deleted only when its identity still has the name Vimma gave it, so that a
    container reused or renamed outside Vimma keeps its data, as W4 asks for workspaces.
 6. **Optional and out of the way**, because Vimma lets each user choose how to work: with no
-   temporary container open, no marker, notice, setting or Firefox surface changes, and the
-   automatic mode is off by default (open question 4).
+   temporary container open, no marker, notice, setting or Firefox surface changes (decision 15).
 7. **No temporary containers in the agent workspace or the private workspace** (behaviour 8).
    The agent workspace confines agents by its container (M2), so a second container inside it
    would be a tab agents cannot see in the workspace made for them. The private workspace is
    discarded on close already, so a temporary container would add nothing there.
-8. **Links from other apps never take a temporary container** (behaviour 10), because a link from
+8. **Links from other apps never take a temporary container** (behaviour 9), because a link from
    outside was not opened by the throwaway session and should land with the user's normal
    sign-ins. `WorkspaceRouter.externalUserContextId` filters temporary containers out of
    Firefox's guess as it filters the agent container (`notAgent`).
@@ -226,6 +230,52 @@ close_last` decides, and its container is deleted as the tab closes, so that no 
     `move-temporary`), the startup cleanup plan from the recorded ids and the live identities, and
     the marker text, so that each rule is tested in Vitest; the host owns
     `ContextualIdentityService`, tabs and the file.
+12. **Visits stay out of history.** Each tab of a temporary container gets the
+    `disableglobalhistory` attribute on its `<browser>`, so that a throwaway sign-in leaves no
+    visits in history, address-bar suggestions or history search. A hunk in
+    `Tabbrowser-sys-mjs.patch` sets it in `createBrowser` when the tab's `userContextId` is one of
+    Vimma's temporary containers (asked of the host's container map), because `UseGlobalHistory`
+    is read from the attribute when the browsing context attaches (Research, "History") and
+    cannot be changed afterwards; asking by container also covers tabs and pop-ups the page
+    opens, which take its container (decision 13). The hunk changes an upstream file, so its
+    pull request is verified in a full build (ADR-010) and adds its line to ADR-003's patch
+    register. Rejected: recording history like any tab, because it needs no patch but leaves a
+    record of a session meant to be thrown away; and private browsing per tab, because it needs a
+    C++ patch to `nsFrameLoader` (private-workspace option C and its decided question 7).
+13. **A group, by the opener rule.** Tabs and pop-ups a temporary tab's page opens join its
+    container, because that is Firefox's and Vimma's opener rule (Research), so it needs no new
+    code, and sign-in flows that use a pop-up work. A tab the user opens (`ctrl+t`, `ctrl+b c`,
+    `t`, `:tabnew`, `P`) takes the workspace's container, so that a new tab is predictably the
+    workspace's; Vimma's new-tab actions pass that container explicitly so that they never
+    inherit a temporary one. Rejected: one tab only, because pop-ups must share their opener's
+    origin attributes, so sign-in pop-ups would break; and new tabs joining too, because the
+    container a new tab lands in would then depend on which tab was selected.
+14. **Default key `ctrl+b t`**, bound to `temporary_tab`, because it was free, `t` stands for
+    temporary, and it sits with the other tab keys under the prefix. `:tmp vsplit` / `:tmp split`
+    have no default key, so that the prefix table grows by one key only. The keymap change
+    regenerates the bindings docs and the help snapshot in its own pull request.
+15. **No automatic mode** (no setting that makes every new tab temporary), so that the feature
+    stays out of the way of a user who does not open one, and every temporary container is one
+    the user opened on purpose. It can be added later as a setting if it is needed.
+16. **Numbered text markers.** `tmp1`, `tmp2` in the tab line and the side panel, `◇ tmp1` in the
+    status bar after the workspace segment when the current tab is temporary, and `2 temporary`
+    in the picker's count, in a theme colour no workspace marker uses, because text works without
+    colour, the number tells two temporary sessions in one split apart, and `◇` echoes the
+    private workspace's `◆` without claiming to be it. Numbers count up from 1 within a window
+    and are not reused while a container with that number is open, so that a marker never
+    changes under a tab.
+17. **Agents, MCP and `vimma-ctl`.** Agents cannot open or see a temporary tab, and
+    `vimma-ctl state` (the user's full role) lists temporary tabs with `"temporary": true`; no
+    command or agent tool is added, because the agent workspace's confinement is its container
+    (M2) and a second container there would weaken it, while scripts can tell what is temporary
+    without a new command to secure.
+18. **Gone when closed.** The container is deleted as its last tab closes, it is never restored,
+    and leftovers of a crash are deleted at the next start (decision 5), because "temporary"
+    should mean gone when closed, it is the easiest rule to explain, and data never waits on a
+    timer. Undo-close-tab cannot bring its tabs back, because `remove` makes SessionStore forget
+    them (Research). Rejected: keeping it a few minutes for undo, because data would wait on a
+    timer; and restoring its tabs at the next start in an empty container, because those pages no
+    longer work signed out.
 
 ### Alternatives
 
@@ -252,18 +302,22 @@ close_last` decides, and its container is deleted as the tab closes, so that no 
   sessionStorage, IndexedDB, service workers, HTTP and image cache, and site permissions of that
   container, through `remove`. Until then they are on disk like any container's, and after a
   crash until the next start (decision 5).
-- **What is kept.** History and form history (unless open question 1 is answered with C), saved
-  logins the user chooses to save, bookmarks the user adds (written to `bookmarks.toml` like any
-  other, because a temporary tab is not in a private window and F7 does not apply), downloads and
-  their list entries, HSTS entries, and session-restore entries until the container is deleted
-  (`clear-origin-attributes-data` then forgets its closed tabs). The guide must say this in its
-  first lines about the feature, so that no one takes it for private browsing.
+- **What is kept.** Form history, saved logins the user chooses to save, bookmarks the user adds
+  (written to `bookmarks.toml` like any other, because a temporary tab is not in a private window
+  and F7 does not apply), downloads and their list entries, HSTS entries, and session-restore
+  entries until the container is deleted (`clear-origin-attributes-data` then forgets its closed
+  tabs). The guide must say this in its first lines about the feature, so that no one takes it
+  for private browsing. Visits are not kept (decision 12), but a download is: Firefox records
+  each finished download in history outside private browsing
+  (`toolkit/components/downloads/DownloadHistory.sys.mjs:89-90`), so a downloaded file's address
+  appears in history and the downloads list.
 - **Add-ons** see temporary tabs as they see any tab, and the container is listed by
   `contextualIdentities.query`, because it is a public identity. An add-on can remove it; Vimma
   then treats its tabs as `foreign`.
 - **Agents and MCP.** Agents never see a temporary tab, because they see only the agent
-  container's tabs (M2), and none can be opened in the agent workspace (decision 7). Whether an
-  agent tool or `vimma-ctl` gets more is open question 6.
+  container's tabs (M2), and none can be opened in the agent workspace (decision 7). No agent
+  tool or `vimma-ctl` command opens one; `vimma-ctl state` in the full role marks them
+  (decision 17).
 - **Implementation is security-sensitive**, because it creates and deletes containers and their
   data: the implementing pull requests update
   `docs/security/03-workspace-deletion-and-containers.md` with invariants (only Vimma's own
@@ -277,102 +331,51 @@ Written first and seen to fail.
 - **Vitest** `tempcontainers.test.ts`: a temporary container's tab belongs to the workspace it was
   opened in; the refusals in the agent and private workspaces; moving a temporary tab is refused;
   the startup plan deletes only recorded ids whose identity has Vimma's name, and keeps a renamed
-  or reused one; the marker text. `cmdline.test.ts`: `:tmp`, `:temporary`, `:tmp <url>`,
-  `:tmp vsplit`, `:tmp split`.
+  or reused one; the marker text and numbering. `cmdline.test.ts`: `:tmp`, `:temporary`,
+  `:tmp <url>`, `:tmp vsplit`, `:tmp split`.
 - **Mochitest** `browser_vimma_temporary_containers.js`:
   `tmp_opens_a_tab_in_a_new_container_in_the_current_workspace`;
   `a_cookie_set_in_a_temporary_tab_is_not_seen_by_the_workspace_and_back`;
   `a_popup_from_a_temporary_tab_shares_its_container`;
   `closing_the_last_temporary_tab_removes_the_container_and_its_cookies`;
   `tmp_vsplit_puts_a_temporary_pane_beside_a_workspace_pane`;
+  `a_visit_in_a_temporary_tab_or_its_popup_is_not_in_history`;
+  `a_new_tab_from_a_temporary_tab_takes_the_workspace_container`;
+  `prefix_t_opens_a_temporary_tab`;
   `a_temporary_tab_cannot_move_workspace`; `tmp_is_refused_in_the_agent_workspace`;
   `an_external_link_never_lands_in_a_temporary_container`;
   `a_recorded_container_left_by_a_crash_is_removed_at_startup`;
   `a_renamed_recorded_container_is_kept`;
-  `agent_tabs_list_no_temporary_tab`.
+  `agent_tabs_list_no_temporary_tab`;
+  `ctl_state_marks_temporary_tabs`.
 - **e2e** `temporary-container`: open one with `:tmp`, split with `:tmp vsplit`, a status-bar and
   tab-line baseline with the marker in a stock theme, and in the Omarchy theme by hand.
 
 ## Docs and changelog
 
 - `docs/guide.md`: a "Temporary containers" section under Workspaces that starts with what it is
-  and is not (not private browsing; what is kept), then the command, the key if one is chosen, the
-  automatic mode, the markers and what closing does. "Add-ons that clash with Vimma" says Vimma
+  and is not (not private browsing; what is kept, and that visits are not), then the command,
+  `ctrl+b t`, the markers and what closing does. "Add-ons that clash with Vimma" says Vimma
   has temporary containers of its own. "Features at a glance" gains a line.
-- `docs/limits.md`: history, HSTS and downloads are shared; data stays on disk until the last tab
-  closes or, after a crash, until the next start.
+- `docs/limits.md`: form history, HSTS and downloads are shared; data stays on disk until the
+  last tab closes or, after a crash, until the next start.
 - `docs/security/03-workspace-deletion-and-containers.md`: the invariants above.
+- `docs/bindings.md`, `docs/bindings.json` and `defaults.toml`, regenerated for `ctrl+b t`.
+- ADR-003's patch register: the new `Tabbrowser-sys-mjs.patch` hunk.
 - `CHANGELOG.md` comes from the commits.
 
 ## Delivery
 
 1. Core module, the container map, `:tmp` and its refusals, deletion on last close and the
-   startup cleanup, behind `vimma.feature.temporary_containers` (default `false`), so `main`
-   stays releasable.
+   startup cleanup, `"temporary": true` in `vimma-ctl state`, behind
+   `vimma.feature.temporary_containers` (default `false`), so `main` stays releasable.
 2. Markers in the status bar, tab line, side panel and picker, with screenshots in both themes.
 3. `:tmp vsplit` / `:tmp split`.
-4. The automatic mode and the default key, if chosen; the guide; the flag removed.
+4. The `disableglobalhistory` hunk in `Tabbrowser-sys-mjs.patch` with its register line,
+   verified in a full build (ADR-010).
+5. The default key `ctrl+b t` with the regenerated bindings docs and help snapshot; the guide;
+   the flag removed.
 
 ## Open questions
 
-1. **What kind of isolation?**
-   - A. Private browsing per tab: rejected already (private-workspace option C), listed for
-     completeness.
-   - B. A temporary container that records history like any tab. No upstream patch; the guide
-     says plainly that history is kept.
-   - C. A temporary container whose tabs get `disableglobalhistory`, so no visit reaches history.
-     Needs a hunk in `Tabbrowser-sys-mjs.patch` and a full build (ADR-010), and the attribute
-     has to be set before the browser attaches, also for tabs a page opens.
-   - Session restore is the same under B and C: the tabs are written until the container is
-     deleted (question 7).
-   - Recommendation: B, because the use cases are separate sign-ins rather than secrecy, the
-     private workspace already covers secrecy, and B needs no upstream patch; C can follow if
-     history turns out to matter.
-2. **Scope: one tab or a group?**
-   - A. One tab: tabs it opens go to the workspace's container. Not possible for pop-ups, which
-     must share their opener's origin attributes, so sign-in pop-ups would break.
-   - B. A group: tabs and pop-ups a temporary tab's page opens join its container (Firefox's and
-     Vimma's opener rule, no new code); `ctrl+t` from it opens a normal workspace tab.
-   - C. As B, and `ctrl+t`, `t` and `:tabnew` from a temporary tab also join its container.
-   - Recommendation: B, because it is what Firefox does already, sign-in flows work, and a new
-     tab the user opens is predictably the workspace's.
-3. **Default key.** `:tmp` exists either way.
-   - A. `ctrl+b t` (free; `t` for temporary).
-   - B. `ctrl+b o` (free).
-   - C. No default key; users bind `temporary_tab` in `config.toml`.
-   - Recommendation: A, because it is free, easy to remember, and sits with the other tab keys
-     under the prefix. The split variants stay unbound.
-4. **Automatic mode** (every new tab temporary, like the add-on's "Automatic Mode").
-   - A. A setting, `[tabs] new_tab_container = "workspace" | "temporary"`, default
-     `"workspace"`.
-   - B. A per-workspace setting in `[workspaces]`, so one workspace can be all temporary.
-   - C. No automatic mode.
-   - Recommendation: A, off by default, because it covers the add-on's main mode with one line
-     and keeps the feature out of the way; B can follow if one workspace needs it.
-5. **How is it shown?**
-   - A. A text marker with a number per container (`tmp1`, `tmp2`) in the tab line and side
-     panel, `◇ tmp1` in the status bar after the workspace segment when the current tab is
-     temporary, and `2 temporary` in the picker's count, in a theme colour that no workspace
-     marker uses.
-   - B. Colour only.
-   - C. One shared `tmp` marker with no number.
-   - Recommendation: A, because text works without colour, the number tells two temporary
-     sessions in one split apart, and `◇` echoes the private workspace's `◆` without claiming
-     to be it.
-6. **Agents, MCP and `vimma-ctl`.**
-   - A. Agents cannot open or see temporary tabs; `vimma-ctl state` (the user's full role)
-     lists them with `"temporary": true`; no new command.
-   - B. As A, and `vimma-ctl open --temporary`.
-   - C. An agent tool that opens temporary containers in the agent workspace.
-   - Recommendation: A, because the agent workspace's confinement is its container and a second
-     one there would weaken what M2 tests, and scripts can see what is temporary without a new
-     command to secure.
-7. **Last tab closed, and restore.**
-   - A. Delete the container as its last tab closes; never restore it; delete leftovers at the
-     next start. Undo-close-tab cannot bring its tabs back.
-   - B. Delete it a few minutes after its last tab closes, so `ctrl+shift+t` can undo a mistaken
-     close.
-   - C. Restore its tabs at the next start into a new, empty temporary container (signed out).
-   - Recommendation: A, because "temporary" should mean gone when closed, it is the easiest rule
-     to explain, and data never waits on a timer; C restores pages that no longer work signed
-     out.
+None.
