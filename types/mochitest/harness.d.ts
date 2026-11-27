@@ -303,6 +303,20 @@ declare const EventUtils: {
     event: { type: string; data?: string; key?: { key: string } },
     win?: Window,
   ): boolean;
+  /** A drag session on `win`'s widget; throws without a drag service (headless). */
+  startDragSession(win: Window, dropEffect: "move" | "copy" | "link"): void;
+  /** A drag event's fields for `type` at the centre of `target`, with a copy of `data`. */
+  createDragEventObject(
+    type: string,
+    target: Element,
+    win: Window,
+    data: DataTransfer | null,
+    event: object,
+  ): object;
+  /** Dispatches the drag event through the pres shell; false when it was cancelled. */
+  sendDragEvent(event: object, target: Element, win?: Window): boolean;
+  /** The nsIDOMWindowUtils modifier bits of the event's modifier fields. */
+  _parseModifiers(event: KeyEventOptions): number;
   /** A wheel event at the offset in `target`, through the widget, so APZ scrolls with it. */
   synthesizeWheel(
     target: Element,

@@ -1303,3 +1303,15 @@ declare var FileUtils: { File: new (path: string) => nsIFile };
 // engine/toolkit/content/contentAreaUtils.js, loaded in the browser window: Save Page As for the
 // page in `browser`.
 declare function saveBrowser(browser: MozBrowser, skipPrompt?: boolean): void;
+
+// engine/widget/nsIDragSession.idl: what a test sets on a drag session it started.
+interface nsIDragSession {
+  sourceWindowContext: WindowGlobalParent | null;
+  triggeringPrincipal: nsIPrincipal | null;
+  endDragSession(doneDrag: boolean, keyModifiers?: number): void;
+}
+
+// engine/dom/webidl/DataTransfer.webidl (chrome-only part).
+interface DataTransfer {
+  mozSetDataAt(format: string, data: unknown, index: number): void;
+}

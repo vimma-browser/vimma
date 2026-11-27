@@ -21,6 +21,11 @@
 //   (ClickHandlerChild sends it, ClickHandlerParent.contentAreaClick calls openLinkIn), outside
 //   the sandbox flags, and a page with the user's activation can script that click. The method
 //   is wrapped, so such a click in an agent tab opens nothing.
+// - Dragged links (issue #1592): a link dragged out of an agent tab and dropped on the tab strip,
+//   the new-tab button or anywhere else in the window's interface would open (or load) what the
+//   page put in the drag data; each window refuses such a drop, and an agent tab's own content
+//   area loads only the first of several dropped links (handleDroppedLink would open the rest in
+//   new tabs).
 // - Downloads (decision 31): every agent tab's top browsing context downloads into the
 //   quarantine folder (`downloadFolderOverride`), and AgentDownloads asks and checks each.
 // The agent container is WorkspaceStore.agent's, read at each check.
@@ -335,7 +340,82 @@ function guardModifiedClicks() {
   };
 }
 
+/**
+ * The top browsing context of the page a drag in `win` started in, null for a drag from the
+ * window's interface or from outside the app. A drag a content process starts reaches the parent
+ * with its page's window context (nsBaseDragSession::InvokeDragSessionWithRemoteImage).
+ * @param {ChromeWindow} win
+ */
+function dragSource(win) {
+  if (AgentPages._dragSourceForTests) return AgentPages._dragSourceForTests;
+  let session;
+  try {
+    session = win.windowUtils.dragSession;
+  } catch {
+    return null;
+  }
+  return session?.sourceTopWindowContext?.browsingContext ?? null;
+}
+
+/**
+ * Dragged links (security.md M10, issue #1592): a drop on the tab strip, the new-tab or
+ * new-window button, the address bar or another part of the window's interface opens or loads
+ * the drag's links (drag-and-drop.js handle_drop, ToolbarDropHandler, UrlbarInput), in a new
+ * tab outside both agent rates of M3, and a page chooses its drag data, so it can name a link
+ * other than the one shown. When the drag started in an agent tab (its top browsing context,
+ * so a frame's drag too), the drop is refused there: the window's own listeners never see the
+ * dragover, which stays uncancelled, so no drop happens, and a drop sent anyway is stopped. A
+ * drop on a content area (a <browser>) goes to its page as before.
+ * @param {DragEvent} event
+ */
+function refuseAgentDrop(event) {
+  const target = /** @type {Element | null} */ (event.originalTarget);
+  if (target?.localName === "browser") return;
+  const win = /** @type {ChromeWindow} */ (event.currentTarget);
+  if (!isAgentContainer(dragSource(win)?.originAttributes?.userContextId)) return;
+  event.stopPropagation();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+  if (event.type === "drop") {
+    event.preventDefault();
+    console.warn("vimma: a link dragged from an agent tab opens nothing here");
+  }
+}
+
+/**
+ * Several links dropped on an agent tab's own page (a page may drag from one of its frames to
+ * its document, which Firefox allows): the content process hands them to the parent
+ * (BrowserParent::RecvDropLinks, MozBrowser.dropLinks), and handleDroppedLink loads the first in
+ * the tab and opens the others in new agent tabs, uncounted. The tab keeps the first, a load
+ * the page could make itself. Each window has its own MozBrowser class (browser-custom-element.mjs
+ * is loaded with global "current").
+ * @param {BrowserWindow} win
+ */
+function guardContentDrops(win) {
+  const proto = /** @type {MozBrowser} */ (win.customElements.get("browser")?.prototype);
+  const original = proto?.dropLinks;
+  if (typeof original !== "function") throw new Error("no MozBrowser.dropLinks");
+  /** @this {MozBrowser} @param {string[]} links @param {nsIPrincipal} principal */
+  proto.dropLinks = function (links, principal) {
+    // Three strings per link: its URL, name and type.
+    if (
+      isAgentContainer(this.browsingContext?.originAttributes?.userContextId) &&
+      links.length > 3
+    ) {
+      console.warn("vimma: an agent tab loads only the first of the links dropped on it");
+      return original.call(this, links.slice(0, 3), principal);
+    }
+    return original.call(this, links, principal);
+  };
+}
+
 export const AgentPages = {
+  /**
+   * Test-only: the top browsing context a drag is taken to start in. Headless Firefox has no
+   * drag service (nsDragService::GetInstance), so a browser test cannot start a drag session.
+   * @type {BrowsingContext | null}
+   */
+  _dragSourceForTests: null,
+
   /**
    * Test-only: the chooser agent-free loads go to, in place of Firefox's.
    * @type {({ QueryInterface?: unknown } & ContentDispatchChooser) | null}
@@ -364,5 +444,21 @@ export const AgentPages = {
     for (const topic of RESPONSE_TOPICS) Services.obs.addObserver(observe, topic);
     Services.obs.addObserver(observe, "vimma-mcp-changed");
     sweep();
+  },
+
+  /**
+   * Once per browser window (vimma.js): dragged links from agent tabs (issue #1592). The
+   * listeners go with the window.
+   * @param {BrowserWindow} win
+   */
+  watchWindow(win) {
+    for (const type of ["dragover", "drop"]) {
+      win.addEventListener(type, /** @type {EventListener} */ (refuseAgentDrop), true);
+    }
+    // MozBrowser is defined with the window's first tab, after this runs; no drop comes before
+    // the window has started up.
+    win.delayedStartupPromise
+      .then(() => guardContentDrops(win))
+      .catch((e) => console.error("vimma agent pages: links dropped on agent tabs not guarded", e));
   },
 };

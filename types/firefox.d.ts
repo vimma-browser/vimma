@@ -473,6 +473,8 @@ interface Window {
   readonly windowUtils: nsIDOMWindowUtils;
 }
 interface nsIDOMWindowUtils {
+  /** The current drag session on this window's widget, null when none (and with no drag service). */
+  readonly dragSession: nsIDragSession | null;
   readonly AGENT_SHEET: number;
   readonly AUTHOR_SHEET: number;
   loadSheetUsingURIString(sheetURI: string, type: number): void;
@@ -891,6 +893,11 @@ interface ChromeWindow extends Window {
 
 // engine/toolkit/content/widgets/browser-custom-element.mjs (MozBrowser): a <browser>.
 interface MozBrowser extends Element {
+  /**
+   * Links a content process dropped on its page, three strings each (URL, name, type), for the
+   * browser's droppedLinkHandler (browser-custom-element.mjs; BrowserParent::RecvDropLinks).
+   */
+  dropLinks(links: string[], triggeringPrincipal: nsIPrincipal): boolean;
   /** Null without a frame loader (browser-custom-element.mjs, `get browsingContext`). */
   readonly browsingContext: CanonicalBrowsingContext | null;
   /** Null while the browser has no docshell or remote navigation yet. */
@@ -927,6 +934,12 @@ interface MozBrowser extends Element {
   ): void;
   /** The page's full zoom, 1 at 100 % (the fullZoom getter and setter). */
   fullZoom: number;
+}
+
+// engine/widget/nsIDragSession.idl: the member Vimma reads (a writable attribute). Null for a
+// drag from outside the app; a drag a content process starts names its page's top window.
+interface nsIDragSession {
+  sourceTopWindowContext: WindowGlobalParent | null;
 }
 
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowGlobalParent): the parts Vimma uses
