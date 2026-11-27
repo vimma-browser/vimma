@@ -1008,6 +1008,11 @@ at risk, and the number could not be changed.
     user's click from a page's scripted one; counting the tab against the agent's rate instead
     would charge the agent for a tab the page chose. Issue #1568; described now in
     docs/security/12-agents-mcp.md M10.)
+    (Since changed: a link dragged out of an agent tab drops nowhere in the window's interface
+    (the tab strip, a tab, the new-tab button, the address bar) and loads nothing in another
+    workspace's page, and several links dropped on an agent tab's own page load only the first, because the page chooses the drag data and Firefox
+    would open the links in new tabs that neither rate counts; counting them would again charge
+    the agent for tabs the page chose. Issue #1592; docs/security/12-agents-mcp.md M10.)
     The two count apart, in a window of 60 s, with
     grants and Vimma's own agent (`ctrl+b i`, which runs the same agent commands) included.
     - **Why two.** The limit exists because a grant runs these unasked: without it, a looping or

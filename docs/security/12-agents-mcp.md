@@ -424,10 +424,22 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   both rates of M3, and accepts a page's scripted click while the page holds the user's
   activation, so `contentAreaClick` is wrapped and drops every such click whose tab (its top
   browsing context, so a frame's click too) is in the agent container, the user's own included
-  (issue #1568). This covers what a page can start; the user's own deliberate actions in Firefox's
-  interface (`gF`, the context menu's "Open Link in New Tab", dragging a link onto the tab strip)
-  still open a tab in the agent workspace, uncounted. Their downloads follow M11-M13. A tab of another workspace
-  still asks, opens pop-ups and downloads as before.
+  (issue #1568). A link dragged out of an agent tab (its top browsing context, a frame's drag
+  too, read from the drag session's source window context) drops nowhere in the window's
+  interface: the tab strip, a tab, the new-tab and new-window buttons and the address bar refuse
+  it, because a page chooses its drag data and can name a link other than the one it shows, and
+  Firefox would open it in a new tab outside both rates (issue #1592). A capturing listener on each
+  window stops the dragover and drop before Firefox's own listeners. A drop on a page reaches that
+  page, which may read the link as data, because a chrome listener cannot keep a drop from a remote
+  page. Firefox loads nothing for it on another workspace's page, in any window, because it would
+  load the link in the user's tab with the user's cookies and open the rest in new tabs there.
+  Several links dropped on an agent tab's own page load only the first in that tab; Firefox would
+  open the others in new agent tabs (`MozBrowser.dropLinks` is wrapped in each window). A page
+  shown in the parent process takes no dragged link at all (the capturing listener sees the
+  page's own nodes, not a `<browser>`). The user's own deliberate picks from Vimma's or Firefox's interface (`gF`, the
+  context menu's "Open Link in New Tab") still open a tab in the agent workspace, uncounted. Their
+  downloads follow M11-M13. A tab of another workspace still asks, opens pop-ups, takes links
+  dragged from its own workspace and downloads as before.
   [`test_the_agent_container_asks_for_nothing`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_another_workspace_still_asks`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_agent_tabs_open_no_popups`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
@@ -436,6 +448,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_a_sweep_reloads_agent_tabs_that_loaded_unsandboxed`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_agent_pages_launch_no_app`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_agent_tabs_open_nothing_on_modified_clicks`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
+  [`test_links_dragged_from_agent_tabs_open_no_tab`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_builtin_agent_opens_coop_pages`](../../tests/browser/browser_vimma_agent_coop.js),
   [`test_mcp_agent_opens_coop_pages`](../../tests/browser/browser_vimma_agent_coop.js)
 - M11. A download from the agent workspace (by its container, its tab's container, or being written
@@ -446,8 +459,11 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   asks as "a page in the agent workspace" (no grant, `x` a plain no). Only `https:` is downloaded,
   nothing over `[mcp] download_max_mb` (refused when the size is known, stopped and deleted once it
   grows past it), and a refused download leaves no file. The user's own Save Page, Save Link As and
-  Save Image As are the user's (an agent cannot press them) and ask nothing. Another workspace's
-  downloads are untouched.
+  Save Image As are the user's (an agent cannot press them) and ask nothing, and so is a link the
+  user drags out of an agent tab into a window without browser tabs, such as the Library's
+  Downloads view, which starts an ordinary download outside the quarantine: only the user can
+  make that drag, and M10's guard watches only browser windows. Another workspace's downloads are
+  untouched.
   [`test_the_question_then_yes_saves_to_the_quarantine_0600_unopened`](../../tests/browser/browser_vimma_mcp_downloads.js),
   [`test_no_saves_nothing`](../../tests/browser/browser_vimma_mcp_downloads.js),
   [`test_http_is_refused`](../../tests/browser/browser_vimma_mcp_downloads.js),

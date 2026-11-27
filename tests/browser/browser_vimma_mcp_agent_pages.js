@@ -22,6 +22,9 @@ const { BrowserWindowTracker } = ChromeUtils.importESModule(
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
+const { AgentPages } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentPages.sys.mjs",
+);
 
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -496,4 +499,112 @@ add_task(async function test_agent_tabs_open_nothing_on_modified_clicks() {
   await scripted(mine.linkedBrowser, accel);
   BrowserTestUtils.removeTab(await opened);
   BrowserTestUtils.removeTab(mine);
+});
+
+/**
+ * A link dragged out of `source`'s page and dropped on `target` in this window's interface, as
+ * the parent sees a drag that started in a content process: the drag session names the page's
+ * window context (nsBaseDragSession::InvokeDragSessionWithRemoteImage), and the data is the
+ * page's. Headless Firefox has no drag service, so there the source goes through AgentPages'
+ * test hook instead; a headed run (`npm run mochitest -- --headed`) takes the real session.
+ * Returns whether the dragover was cancelled, that is whether the target takes the drop.
+ * @param {MozBrowser} source @param {Element} target @param {string} url
+ */
+function dragLink(source, target, url) {
+  const context = /** @type {WindowGlobalParent} */ (source.browsingContext?.currentWindowGlobal);
+  /** @type {nsIDragSession | null} */
+  let session = null;
+  // The production read (AgentPages' dragSource) needs this attribute, headless or not: without
+  // it the guard would fail open while the hook below kept this test green.
+  Assert.ok("dragSession" in window.windowUtils, "sanity: windowUtils has dragSession");
+  try {
+    EventUtils.startDragSession(window, "link");
+    session = window.windowUtils.dragSession;
+  } catch {
+    // No drag service (headless).
+  }
+  info(session ? "the drag's source: a drag session" : "the drag's source: AgentPages' hook");
+  if (session) {
+    session.sourceWindowContext = context;
+    session.sourceTopWindowContext = context;
+    session.triggeringPrincipal = context.documentPrincipal;
+  } else {
+    AgentPages._dragSourceForTests = context.browsingContext;
+  }
+  const data = new DataTransfer();
+  data.mozSetDataAt("text/uri-list", url, 0);
+  data.dropEffect = "link";
+  let accepted = false;
+  try {
+    for (const type of ["dragover", "drop"]) {
+      const event = EventUtils.createDragEventObject(type, target, window, data, {});
+      const notCancelled = EventUtils.sendDragEvent(event, target, window);
+      if (type === "dragover") accepted = !notCancelled;
+    }
+  } finally {
+    session?.endDragSession(true, EventUtils._parseModifiers({}));
+    AgentPages._dragSourceForTests = null;
+  }
+  return accepted;
+}
+
+add_task(async function test_links_dragged_from_agent_tabs_open_no_tab() {
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
+  const previous = gBrowser.selectedTab;
+  const tab = await tabIn(agent.userContextId);
+  const mine = await tabIn(previous.userContextId);
+  gBrowser.selectedTab = tab;
+  const strip = gBrowser.tabContainer;
+  const newTabButton = /** @type {Element} */ (
+    [document.getElementById("tabs-newtab-button"), document.getElementById("new-tab-button")]
+      .filter((b) => b && b.getBoundingClientRect().width > 0)
+      .at(0)
+  );
+  Assert.ok(newTabButton, "sanity: a new-tab button is shown");
+  const before = gBrowser.tabs.length;
+  const url = "https://example.org/browser/?dragged";
+  for (const [name, target] of /** @type {const} */ ([
+    ["the tab strip", strip],
+    ["the new-tab button", newTabButton],
+    ["another tab", mine],
+  ])) {
+    Assert.ok(!dragLink(tab.linkedBrowser, target, url), `${name} refuses an agent tab's link`);
+  }
+  // Dropped on another workspace's page, the link reaches that page as data, but Firefox loads
+  // nothing for it: the content process hands the drop back (MozBrowser.dropLinks), refused.
+  dragLink(tab.linkedBrowser, mine.linkedBrowser, url);
+  Assert.ok(
+    !mine.linkedBrowser.dropLinks(
+      [`${url}3`, "", "", `${url}4`, "", ""],
+      Services.scriptSecurityManager.getSystemPrincipal(),
+    ),
+    "another workspace's page loads nothing an agent tab's drag carries",
+  );
+  // Several links dropped on an agent tab's own page (from one of its frames, which Firefox
+  // allows): the tab loads the first, as a link the page follows; no tab opens for the others.
+  const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, `${url}1`);
+  tab.linkedBrowser.dropLinks(
+    [`${url}1`, "", "", `${url}2`, "", ""],
+    Services.scriptSecurityManager.getSystemPrincipal(),
+  );
+  await loaded;
+
+  // The same drops from a main tab open a tab each; once they have, the agent tab's would have.
+  gBrowser.selectedTab = mine;
+  for (const target of [strip, newTabButton]) {
+    const opened = BrowserTestUtils.waitForNewTab(gBrowser, url);
+    Assert.ok(dragLink(mine.linkedBrowser, target, url), "a main tab's link drops");
+    BrowserTestUtils.removeTab(await opened);
+  }
+  const both = BrowserTestUtils.waitForNewTab(gBrowser, `${url}2`);
+  mine.linkedBrowser.dropLinks(
+    [`${url}1`, "", "", `${url}2`, "", ""],
+    Services.scriptSecurityManager.getSystemPrincipal(),
+  );
+  BrowserTestUtils.removeTab(await both);
+  Assert.equal(gBrowser.tabs.length, before, "no drag from the agent tab opened a tab");
+  Assert.equal(tab.linkedBrowser.currentURI.spec, `${url}1`, "and it loaded only its first link");
+  gBrowser.selectedTab = previous;
+  BrowserTestUtils.removeTab(mine);
+  BrowserTestUtils.removeTab(tab);
 });

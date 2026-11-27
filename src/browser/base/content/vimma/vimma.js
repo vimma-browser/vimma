@@ -194,6 +194,7 @@
     "chrome://browser/content/vimma/ctl/AgentPages.sys.mjs",
   );
   AgentPages.init();
+  AgentPages.watchWindow(win);
 
   // docs/specs/mcp-forms.md F22: the agent workspace's failed requests, for vimma_console.
   const { AgentConsole } = ChromeUtils.importESModule(
