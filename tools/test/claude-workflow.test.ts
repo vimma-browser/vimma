@@ -51,6 +51,7 @@ describe("claude.yml spec", () => {
 
   it("runs only on the maintainer's own issue", () => {
     expect(spec.if).toContain(MAINTAINER_GATE);
+    expect(spec.if).not.toMatch(/\|\||!/);
   });
 
   // From the event that started the run, so Claude reads the text as it stood when the
