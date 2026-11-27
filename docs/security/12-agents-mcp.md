@@ -424,8 +424,13 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   both rates of M3, and accepts a page's scripted click while the page holds the user's
   activation, so `contentAreaClick` is wrapped and drops every such click whose tab (its top
   browsing context, so a frame's click too) is in the agent container, the user's own included
-  (issue #1568). A link dragged out of an agent tab (its top browsing context, a frame's drag
-  too, read from the drag session's source window context) drops nowhere in the window's
+  (issue #1568). A dropped click shows a status-bar notice in the tab's window that it opened
+  nothing and that `gF` (the key read from the keymap) or the context menu opens the link in a new
+  tab. Its text is fixed and carries no page text, title or URL, so a page cannot write to the
+  status bar through it, and it comes at most once per tab every five seconds, so a page that
+  scripts a burst of such clicks shows one notice and cannot silence another tab's (issue #1591).
+  A link dragged out of an agent tab (its top browsing context, a frame's drag too, read from the
+  drag session's source window context) drops nowhere in the window's
   interface: the tab strip, a tab, the new-tab and new-window buttons and the address bar refuse
   it, because a page chooses its drag data and can name a link other than the one it shows, and
   Firefox would open it in a new tab outside both rates (issue #1592). A capturing listener on each
@@ -448,6 +453,9 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_a_sweep_reloads_agent_tabs_that_loaded_unsandboxed`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_agent_pages_launch_no_app`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_agent_tabs_open_nothing_on_modified_clicks`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
+  [`test_a_dropped_modified_click_shows_one_notice_per_tab`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
+  [`a burst inside the interval is not`](../../packages/vimma-core/test/agent-pages.test.ts),
+  [`names only the context menu when the action has no key`](../../packages/vimma-core/test/agent-pages.test.ts),
   [`test_links_dragged_from_agent_tabs_open_no_tab`](../../tests/browser/browser_vimma_mcp_agent_pages.js),
   [`test_builtin_agent_opens_coop_pages`](../../tests/browser/browser_vimma_agent_coop.js),
   [`test_mcp_agent_opens_coop_pages`](../../tests/browser/browser_vimma_agent_coop.js)

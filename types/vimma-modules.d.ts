@@ -45,6 +45,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/agent-keys.mjs": typeof import("../src/browser/base/content/vimma/core/agent-keys.mjs");
   "chrome://browser/content/vimma/core/agent-loop.mjs": typeof import("../src/browser/base/content/vimma/core/agent-loop.mjs");
   "chrome://browser/content/vimma/core/agent-owners.mjs": typeof import("../src/browser/base/content/vimma/core/agent-owners.mjs");
+  "chrome://browser/content/vimma/core/agent-pages.mjs": typeof import("../src/browser/base/content/vimma/core/agent-pages.mjs");
   "chrome://browser/content/vimma/core/agent-prompt.mjs": typeof import("../src/browser/base/content/vimma/core/agent-prompt.mjs");
   "chrome://browser/content/vimma/core/agent-providers.mjs": typeof import("../src/browser/base/content/vimma/core/agent-providers.mjs");
   "chrome://browser/content/vimma/core/agent-results.mjs": typeof import("../src/browser/base/content/vimma/core/agent-results.mjs");

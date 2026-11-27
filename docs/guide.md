@@ -2429,8 +2429,9 @@ you, and `a` lets it work without asking until it quits, except where
   bar, a bookmark) stays there.
 - **Its pages open no tabs or windows of their own.** Pop-ups are blocked there, and a link you
   ctrl-click (cmd-click on macOS), shift-click or middle-click in an agent tab opens nothing,
-  because a page can script those clicks while you are using it. To open a link in a new tab
-  there, use `gF` (follow a link in a new tab) or the link's context menu, which only you reach.
+  because a page can script those clicks while you are using it; the status bar says so, at most
+  once every few seconds per tab. To open a link in a new tab there, use `gF` (follow a link in a
+  new tab) or the link's context menu, which only you reach.
   A link dragged out of an agent tab onto the tab strip, the new-tab button, the address bar or a
   page of another workspace opens nothing either, because the page decides which link a drag
   carries.

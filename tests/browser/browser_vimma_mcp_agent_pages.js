@@ -395,12 +395,15 @@ add_task(async function test_agent_pages_launch_no_app() {
   BrowserTestUtils.removeTab(agentTab);
 });
 
-// security.md M10, issue #1568: a modified click (ctrl or cmd, shift, middle) on a link in an
-// agent tab opens no tab or window. Firefox's ClickHandlerChild sends it to ClickHandlerParent,
-// which opens it with openLinkIn, outside the pop-up sandbox, so without the guard a page
-// holding the user's activation could open one uncounted tab per gesture. The same click in a
-// main tab still opens a tab.
-add_task(async function test_agent_tabs_open_nothing_on_modified_clicks() {
+const accel = AppConstants.platform === "macosx" ? { metaKey: true } : { ctrlKey: true };
+
+/**
+ * Resolves once ClickHandlerParent handled the next click in a browser. It tells its listeners
+ * right after contentAreaClick, which opens the tab synchronously: once a listener heard the
+ * click, any tab it opens is in gBrowser.tabs.
+ * @returns {(browser: MozBrowser) => Promise<void>}
+ */
+function clickWatcher() {
   const { ClickHandlerParent } = ChromeUtils.importESModule(
     "resource:///actors/ClickHandlerParent.sys.mjs",
   );
@@ -409,31 +412,38 @@ add_task(async function test_agent_tabs_open_nothing_on_modified_clicks() {
   const listener = { onContentClick: (/** @type {MozBrowser} */ b) => seen.push(b) };
   ClickHandlerParent.addContentClickListener(listener);
   registerCleanupFunction(() => ClickHandlerParent.removeContentClickListener(listener));
-  // ClickHandlerParent tells its listeners right after contentAreaClick, which opens the tab
-  // synchronously: once a listener heard the click, any tab it opens is in gBrowser.tabs.
-  /** @param {MozBrowser} browser */
-  const handled = async (browser) => {
+  return async (browser) => {
     const count = seen.filter((b) => b === browser).length;
     await TestUtils.waitForCondition(
       () => seen.filter((b) => b === browser).length > count,
       "ClickHandlerParent handled the click",
     );
   };
-  const accel = AppConstants.platform === "macosx" ? { metaKey: true } : { ctrlKey: true };
-  /** A link the page's (or a frame's) script clicks, with the user's activation. */
-  const scripted = (
-    /** @type {MozBrowser | BrowsingContext} */ target,
-    /** @type {MouseEventInit} */ init,
-  ) =>
-    SpecialPowers.spawn(target, [init], (opts) => {
-      const a = content.document.createElement("a");
-      a.href = "https://example.org/browser/?scripted";
-      a.textContent = "link";
-      content.document.body.append(a);
-      content.document.notifyUserGestureActivation();
-      const type = opts.button === 1 ? "auxclick" : "click";
-      a.dispatchEvent(new content.MouseEvent(type, { bubbles: true, cancelable: true, ...opts }));
-    });
+}
+
+/**
+ * A link the page's (or a frame's) script clicks, with the user's activation.
+ * @param {MozBrowser | BrowsingContext} target @param {MouseEventInit} init
+ */
+function scripted(target, init) {
+  return SpecialPowers.spawn(target, [init], (opts) => {
+    const a = content.document.createElement("a");
+    a.href = "https://example.org/browser/?scripted";
+    a.textContent = "link";
+    content.document.body.append(a);
+    content.document.notifyUserGestureActivation();
+    const type = opts.button === 1 ? "auxclick" : "click";
+    a.dispatchEvent(new content.MouseEvent(type, { bubbles: true, cancelable: true, ...opts }));
+  });
+}
+
+// security.md M10, issue #1568: a modified click (ctrl or cmd, shift, middle) on a link in an
+// agent tab opens no tab or window. Firefox's ClickHandlerChild sends it to ClickHandlerParent,
+// which opens it with openLinkIn, outside the pop-up sandbox, so without the guard a page
+// holding the user's activation could open one uncounted tab per gesture. The same click in a
+// main tab still opens a tab.
+add_task(async function test_agent_tabs_open_nothing_on_modified_clicks() {
+  const handled = clickWatcher();
 
   const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const tab = await tabIn(agent.userContextId);
@@ -499,6 +509,65 @@ add_task(async function test_agent_tabs_open_nothing_on_modified_clicks() {
   await scripted(mine.linkedBrowser, accel);
   BrowserTestUtils.removeTab(await opened);
   BrowserTestUtils.removeTab(mine);
+});
+
+// security.md M10, issue #1591: a dropped modified click says so in the status bar, with the
+// fixed text that names gF (from the keymap) and the context menu. At most one notice per tab
+// every CLICK_NOTICE_MS, so a page that scripts a burst of such clicks shows one; another agent
+// tab has its own; a tab of another workspace, whose click opens a tab, shows none.
+add_task(async function test_a_dropped_modified_click_shows_one_notice_per_tab() {
+  const { VimmaHost } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+  );
+  const { droppedClickNotice } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/core/agent-pages.mjs",
+  );
+  const text = droppedClickNotice(VimmaHost.baseKeymap().keysFor("follow_link_new_tab"));
+  Assert.ok(text.includes("gF"), "sanity: the default key is named");
+  /** @type {{ win: ChromeWindow, text: string }[]} */
+  const said = [];
+  const say = VimmaHost.say;
+  VimmaHost.say = function (win, t, options) {
+    said.push({ win, text: t });
+    return say.call(this, win, t, options);
+  };
+  registerCleanupFunction(() => (VimmaHost.say = say));
+  const notices = () => said.filter((s) => s.text === text);
+  const handled = clickWatcher();
+
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
+  const previous = gBrowser.selectedTab;
+  const tab = await tabIn(agent.userContextId);
+  gBrowser.selectedTab = tab;
+  for (const init of [accel, { button: 1 }, { shiftKey: true }, accel, accel]) {
+    const done = handled(tab.linkedBrowser);
+    await scripted(tab.linkedBrowser, init);
+    await done;
+  }
+  Assert.equal(notices().length, 1, "a burst of five dropped clicks shows one notice");
+  Assert.equal(notices()[0].win, window, "in the tab's window");
+  Assert.equal(
+    document.getElementById("vimma-notice")?.textContent,
+    text,
+    "the status bar shows it",
+  );
+
+  const other = await tabIn(agent.userContextId);
+  gBrowser.selectedTab = other;
+  const done = handled(other.linkedBrowser);
+  await scripted(other.linkedBrowser, accel);
+  await done;
+  Assert.equal(notices().length, 2, "another agent tab shows its own notice");
+
+  const mine = await tabIn(previous.userContextId);
+  gBrowser.selectedTab = mine;
+  const opened = BrowserTestUtils.waitForNewTab(gBrowser, "https://example.org/browser/?scripted");
+  await scripted(mine.linkedBrowser, accel);
+  BrowserTestUtils.removeTab(await opened);
+  Assert.equal(notices().length, 2, "a tab of another workspace shows none");
+
+  gBrowser.selectedTab = previous;
+  for (const t of [tab, other, mine]) BrowserTestUtils.removeTab(t);
 });
 
 /**
