@@ -1037,8 +1037,8 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
         process.execPath,
         "--scenarios",
         scenarios,
-        // Any free port: the fixed one may be held by cli.test.ts, run in parallel, or by an
-        // e2e run on the machine, and the CLI then exits 2 before it starts Xvfb (#1593).
+        // Any free port: the fixed one may be held by an e2e run on the machine, and the CLI
+        // then exits 2 before it starts Xvfb (#1593).
         "--port",
         "0",
       ],
