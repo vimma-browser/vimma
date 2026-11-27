@@ -1,22 +1,28 @@
 # ADR-021, docs/security.md B1: a pull request that changes Mozilla's pinned release key
 # (tools/upstream/mozilla-release-key.asc), the fingerprint pinned in verify-sha512.py, or this
-# guard's own files (tools/ci/key-guard.mjs GUARD_PATHS) fails this check until a maintainer adds the `key-rotation-approved` label (docs/runbook.md,
-# "Mozilla's release key"). The ruleset on main requires the job below by its name.
+# guard's own files (tools/ci/key-guard.mjs GUARD_PATHS) fails this check until a maintainer adds
+# the `key-rotation-approved` label (docs/runbook.md, "Mozilla's release key"). The ruleset on
+# main requires the job below by its name.
 #
-# pull_request, never pull_request_target: nothing here needs a token that can write, and the
-# label is in the event payload for fork pull requests too. labeled and unlabeled re-run the
-# check when the label is added or removed; the newest run for the head commit is the one the
-# ruleset reads. The job is skipped only on a merged pull request: release-please relabels a
-# merged release pull request (`autorelease: pending` to `autorelease: tagged`) after its head
-# branch is deleted, and a run started then cannot find the head commit (#357). A skipped job
-# reports success, which is safe only once merged, because the head is already in main. A closed,
-# unmerged pull request still runs on a label change, so its head commit cannot gain a passing
-# check that a later pull request with the same head would inherit. The detection runs from the
-# base branch's copy of tools/ci/key-guard.mjs; the pull request's own copy runs only while the base has none.
+# pull_request_target, never pull_request: under pull_request GitHub runs the pull request's own
+# copy of this file, so a pull request could rewrite the step to pass. Under pull_request_target
+# this file and the script come from the base branch, which a pull request cannot change before
+# it merges. This is the one workflow on pull_request_target (upstream-workflow.test.ts), and it
+# is fenced so that nothing from the head runs: a contents: read token that is not kept in the
+# checkout, no secret, the base checked out (no `ref:`), and the head fetched by its hash and read
+# by the script as git objects; nothing checks it out, installs from it or runs it.
+#
+# labeled and unlabeled re-run the check when the label is added or removed; the newest run for
+# the head commit is the one the ruleset reads. The job is skipped only on a merged pull request:
+# release-please relabels a merged release pull request (`autorelease: pending` to
+# `autorelease: tagged`) after its head branch is deleted (#357). A skipped job reports success,
+# which is safe only once merged, because the head is already in main. A closed, unmerged pull
+# request still runs on a label change, so its head commit cannot gain a passing check that a
+# later pull request with the same head would inherit.
 name: key-guard
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
@@ -33,12 +39,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # The base branch: pull_request_target's default ref.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the merge base of base and head
           persist-credentials: false
 
-      # Event values reach the script through env, never through `${{ }}` in the script text.
+      # Event values reach the script through env, never through `${{ }}` in the script text. The
+      # guard is read from the base commit, like every guard from the base (docs/security B18);
+      # under pull_request_target the checkout is the base too. The head commit is fetched by its
+      # hash into the object store only: the repository is public, so no token is needed, and a
+      # head force-pushed away since the event fails this run while the newer event's run judges
+      # the new head.
       - name: Key unchanged, or changed with the key-rotation-approved label
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -47,10 +59,7 @@ jobs:
         run: |
           guard="$RUNNER_TEMP/key-guard.mjs"
           git cat-file -e "$BASE^{commit}" || exit 2
-          if git cat-file -e "$BASE:tools/ci/key-guard.mjs"; then
-            git show "$BASE:tools/ci/key-guard.mjs" > "$guard"
-          else
-            echo "No key guard on the base: running the pull request's copy"
-            cp tools/ci/key-guard.mjs "$guard"
-          fi
+          git show "$BASE:tools/ci/key-guard.mjs" > "$guard"
+          git fetch --no-tags origin "$HEAD"
+          git cat-file -e "$HEAD^{commit}" || exit 2
           node "$guard" --base "$BASE" --head "$HEAD"

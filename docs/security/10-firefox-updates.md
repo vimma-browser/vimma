@@ -55,7 +55,7 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`detect finds the canary's issues for the release's major, open and closed`](../../tools/test/upstream-workflow.test.ts),
   [`reads the issue list from upstream.yml and keeps only issue numbers and states`](../../tools/upstream/test/autopilot.test.ts),
   [`no secret reaches detection, the patch check or the suites`](../../tools/test/upstream-workflow.test.ts),
-  [`no workflow runs on pull_request_target`](../../tools/test/upstream-workflow.test.ts),
+  [`no workflow but the key guard runs on pull_request_target`](../../tools/test/upstream-workflow.test.ts),
   [`every action it uses is pinned by a full commit SHA`](../../tools/test/upstream-workflow.test.ts)
 - G7. The prefs we copy from upstream (the cfr provider, the Safe Browsing lists) **must** match
   the release under test, or the suites fail with the line to paste. The autopilot refreshes a

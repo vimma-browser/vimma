@@ -16,9 +16,9 @@
 //       exit 0: no key change, or one with the label; 1: a key change without the label;
 //       2: the check could not run (bad arguments, labels or git)
 //
-// key-guard.yml runs this file as the base branch has it (`git show "$BASE:..."`), so a pull
-// request cannot weaken the check by editing it. Node built-ins only: the copy runs from outside
-// the checkout.
+// key-guard.yml runs on pull_request_target, so this file and the workflow come from the base
+// branch and a pull request cannot weaken the check by editing them; the head is read as git
+// objects only. Node built-ins only: nothing is installed in that job.
 
 import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
@@ -30,9 +30,9 @@ export const APPROVAL_LABEL = "key-rotation-approved";
 export const GUARD_SCRIPT = "tools/ci/key-guard.mjs";
 
 /**
- * The guard's own files. Under pull_request a pull request runs its own copy of the workflow, so
- * one that rewrites the guard could pass; requiring the label for these files is what makes such
- * a change visible to a maintainer (docs/security.md B1).
+ * The guard's own files. A change to them is judged by the base's copy, not its own, but once
+ * merged it decides every later run; requiring the label for these files keeps such a change from
+ * merging unseen (docs/security.md B1).
  */
 export const GUARD_PATHS = [
   ".github/workflows/key-guard.yml",

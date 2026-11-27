@@ -5,6 +5,8 @@
 #
 # Runs each time one of those workflows completes (workflow_run, so main's copy of this file runs,
 # never the branch's) and reads the head's runs and checks again; the last one to finish decides.
+# key-guard is not among them: it runs on pull_request_target, finishes in seconds, and is a
+# required check, which `--auto` waits for.
 # A red, cancelled or unapproved run leaves the bump for a person; re-running it green starts this
 # again. upstream.yml marks in the PR body the head commit its allowlist checked; only that head,
 # opened by the upstream App, is merged, and `--auto` keeps the ruleset's required checks and code
@@ -14,7 +16,7 @@ name: upstream merge
 
 on:
   workflow_run:
-    workflows: [CI, CodeQL, e2e, flatpak, key-guard, macos, pkgbuild, Semgrep]
+    workflows: [CI, CodeQL, e2e, flatpak, macos, pkgbuild, Semgrep]
     types: [completed]
 
 permissions: {}
