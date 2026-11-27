@@ -143,10 +143,11 @@ the branch as pushed", "rebuild disables auto-merge before the push").
 
 The pull request runs every workflow an ordinary one does. Each time one of `CI`, `CodeQL`, `e2e`,
 `flatpak`, `macos`, `pkgbuild` or `Semgrep` completes, `workflow_run` starts
-`upstream-merge.yml` from `main`'s copy, never the branch's. `key-guard` is not among them: it runs
-on `pull_request_target`, finishes in seconds, and is a required check, which `--auto` waits for. Its job runs only for a pull-request
-run from this repository on an `upstream/firefox-*` branch with the App set up, and hands the
-pull request, every run on the head and every check to `tools/upstream/merge-ready.ts`.
+`upstream-merge.yml` from `main`'s copy, never the branch's. `key-guard` is not among them: it
+runs on `pull_request_target`, finishes in seconds, and is a required check, which `--auto` waits
+for. upstream-merge's job runs only for a pull-request run from this repository on an
+`upstream/firefox-*` branch with the App set up, and hands the pull request, every run on the
+head and every check to `tools/upstream/merge-ready.ts`.
 `mergeReady` answers no, with the first reason, unless:
 
 - the pull request was opened by `vimma-upstream-autopilot[bot]` and is not a draft;

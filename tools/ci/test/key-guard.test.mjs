@@ -389,12 +389,20 @@ describe("the command line", () => {
 describe("workflow wiring", () => {
   const text = readFileSync(join(ROOT, ".github", "workflows", "key-guard.yml"), "utf8");
 
-  it("runs on pull_request_target, never pull_request, for every label change and push", () => {
+  it("runs on pull_request_target, never pull_request, for every label change, push and edit", () => {
     // pull_request runs the pull request's own copy of this file, which could replace the step
     // with one that passes; pull_request_target runs the base branch's copy (docs/security B1).
     expect(text).toMatch(/^ {2}pull_request_target:\n {4}types: \[(.*)\]$/m);
     const types = /^ {4}types: \[(.*)\]$/m.exec(text)?.[1].split(/,\s*/) ?? [];
-    expect(types.sort()).toEqual(["labeled", "opened", "reopened", "synchronize", "unlabeled"]);
+    // edited: a change of base branch fires only edited, and must not keep another branch's verdict.
+    expect(types.sort()).toEqual([
+      "edited",
+      "labeled",
+      "opened",
+      "reopened",
+      "synchronize",
+      "unlabeled",
+    ]);
     expect(text).not.toMatch(/^\s*pull_request:/m);
   });
 

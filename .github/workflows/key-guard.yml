@@ -12,8 +12,11 @@
 # checkout, no secret, the base checked out (no `ref:`), and the head fetched by its hash and read
 # by the script as git objects; nothing checks it out, installs from it or runs it.
 #
-# labeled and unlabeled re-run the check when the label is added or removed; the newest run for
-# the head commit is the one the ruleset reads. The job is skipped only on a merged pull request:
+# labeled and unlabeled re-run the check when the label is added or removed. edited re-runs it
+# when the pull request's base branch changes: a pull request first opened against another branch
+# runs that branch's workflows, and its later move to main would otherwise leave their verdict on
+# the head. Which of two same-named checks the ruleset reads is not documented (docs/security B1).
+# The job is skipped only on a merged pull request:
 # release-please relabels a merged release pull request (`autorelease: pending` to
 # `autorelease: tagged`) after its head branch is deleted (#357). A skipped job reports success,
 # which is safe only once merged, because the head is already in main. A closed, unmerged pull
@@ -23,7 +26,7 @@ name: key-guard
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
