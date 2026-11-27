@@ -1470,6 +1470,64 @@ add_task(async function a_bookmark_put_back_three_times_pauses_its_table() {
   await reset();
 });
 
+add_task(async function a_put_back_by_the_closing_compare_counts_for_the_loop_guard() {
+  // #1595: a Sync change that lands between a put-back's apply and its closing compare is put
+  // back by the same run. That is a second put-back, and the third Sync change pauses the table.
+  const own = PathUtils.join(dir, "loop");
+  await IOUtils.makeDirectory(own);
+  const base = PathUtils.join(own, "base.json");
+  /** @type {string[]} */
+  const said = [];
+  const loop = new BookmarksFileImpl({
+    configPath: () => PathUtils.join(own, "config.toml"),
+    basePath: base,
+    initComplete: () => Promise.resolve(),
+    say: (/** @type {string} */ text) => said.push(text),
+    mirrored: () => {},
+  });
+  await writeFile(
+    '[bookmarks.loop]\n"a" = "https://example.com/a"',
+    PathUtils.join(own, "bookmarks.toml"),
+  );
+  /** @type {string | null} */
+  let a = null;
+  const apply = loop.apply.bind(loop);
+  let armed = false;
+  loop.apply = async (/** @type {Parameters<typeof apply>[0]} */ ops) => {
+    await apply(ops);
+    if (armed && a) {
+      armed = false;
+      const S = PlacesUtils.bookmarks.SOURCES;
+      await PlacesUtils.bookmarks.update({ guid: a, title: "sync 2", source: S.SYNC });
+    }
+  };
+  loop.start();
+  loop.configRead(null, "none", "vimma");
+  await until(() => loop.ready, "started");
+  await loop.settledRuns();
+  await untilFolder("loop", ["a https://example.com/a"], "loaded");
+  a = /** @type {string} */ (
+    (await PlacesUtils.bookmarks.fetch({ url: "https://example.com/a" }))?.guid
+  );
+  armed = true;
+  const sync = PlacesUtils.bookmarks.SOURCES.SYNC;
+  await PlacesUtils.bookmarks.update({ guid: a, title: "sync 1", source: sync });
+  await until(() => !armed, "the second change landed during the put-back's run");
+  await untilFolder("loop", ["a https://example.com/a"], "both put back");
+  // The second change's own burst finds nothing left to put back.
+  await new Promise((r) => setTimeout(r, 400));
+  await loop.settledRuns();
+  await PlacesUtils.bookmarks.update({ guid: a, title: "sync 3", source: sync });
+  await untilFolder("loop", ["a https://example.com/a"], "put back, time 3");
+  await until(
+    () => said.some((s) => s.includes('"loop" put back 3 times in 10 minutes; paused both ways')),
+    "the third put-back pauses the table",
+  );
+  loop.stop();
+  await IOUtils.remove(base, { ignoreAbsent: true });
+  await reset();
+});
+
 add_task(async function a_private_window_does_not_write_the_file() {
   const text = '[bookmarks.work]\n"a" = "https://example.com/a"\n';
   await IOUtils.writeUTF8(bookmarksFile, text);
