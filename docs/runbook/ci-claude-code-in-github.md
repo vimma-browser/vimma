@@ -23,8 +23,13 @@ token Claude gets (without it the action would use the Claude app's installation
 contents, pull-requests and issues write). `mention`: contents read, pull-requests and issues
 write, actions read. `spec` (Claude): contents and issues read; tools limited to file edits,
 `npm test`/`lint`/`typecheck`/`coverage`/`format`/`gen-docs`/`test:py`, `git add/commit/diff/
-log/status` and `gh issue view`. Tests Claude writes still run as code on that runner, which is
-why its token is read-only. `spec-pr` (no Claude): contents and pull-requests write;
+log/status`, with no `gh` tool. Claude reads the issue's title and body from a file the job saves
+from the label event, never its comments: read the comments before adding `claude:go`, and put
+everything Claude should follow in the body. Tests Claude writes still run as code on that
+runner, which is why its token is read-only; `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` keeps the Claude
+credential out of their environment, under bubblewrap, and setup-node saves no npm cache
+(docs/security/14-build-and-release-supply-chain.md, B23). `spec-pr` (no Claude): contents and pull-requests write;
 GITHUB_TOKEN cannot change `.github/workflows`. No other secret is passed.
-Both Claude jobs pass `--permission-mode acceptEdits`: since action 1.0.273 a session otherwise
-starts in auto mode, where a safety review can allow a tool call no allow rule covers.
+Both Claude jobs name a permission mode (`mention` acceptEdits, `spec` default, which the scrub
+requires): since action 1.0.273 a session otherwise starts in auto mode, where a safety review
+can allow a tool call no allow rule covers.

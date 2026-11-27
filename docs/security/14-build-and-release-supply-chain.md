@@ -984,3 +984,26 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`%s runs cargo, and the reason names it`](../../tools/ci/test/docs-only.test.ts),
   [`e2e.yml: the mochitest job runs unless the change cannot reach the browser`](../../tools/ci/test/docs-only.test.ts),
   [`ci.yml: Markdown checks run on every change, the rest unless docs-only`](../../tools/ci/test/docs-only.test.ts)
+- B23. claude.yml `spec` runs Claude Code with the Claude credential on a runner where Claude
+  edits files and runs the tests it writes, so what reaches the model and what those commands
+  see **must** stay narrow. Claude gets the issue's title and body from the label event, saved
+  to a file outside the checkout, and no `gh` tool: anyone can comment on a public issue, and
+  `gh issue view --comments` would hand those comments to the model. The maintainer reads the
+  issue's comments before adding `claude:go` and puts everything Claude should follow in the
+  body. The job sets `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`, which claude-code-action turns on by
+  itself only for `allowed_non_write_users`: Claude Code then removes the Anthropic, cloud and
+  Actions secrets from its tools' environments, runs them under bubblewrap in their own PID
+  namespace (so `/proc/<pid>/environ` of the Claude process is out of reach) and keeps to the
+  default permission mode, where only the allowlist decides. The job's setup-node saves no npm
+  cache: an `issues` run uses `main`'s cache scope, which every pull request restores, and the
+  commands Claude runs can write `~/.npm`.
+  **⚠ limit:** the scrub is best-effort, as the action's documentation says. Claude's own process
+  still holds the credential, and a file Claude writes is read later by `spec-pr` only as a
+  patch, never run. The job's token stays read-only (contents and issues), so a run steered by
+  the issue text can at most produce a patch that the maintainer reviews in the draft pull
+  request.
+  [`gives Claude no gh tool`](../../tools/test/claude-workflow.test.ts),
+  [`saves only the issue's title and body before Claude, and the prompt names that file`](../../tools/test/claude-workflow.test.ts),
+  [`keeps the Claude credential from the commands Claude runs`](../../tools/test/claude-workflow.test.ts),
+  [`the header asks the maintainer to read the issue's comments before claude:go`](../../tools/test/claude-workflow.test.ts),
+  [`a setup-node before a guard or a token-holding tool never caches by itself`](../../tools/test/runner-node.test.ts)

@@ -9,6 +9,13 @@
 #   answers, reviews and comments, but cannot push.
 # - `spec`: only when the repository owner adds `claude:go` to a `spec` issue. Claude edits and
 #   commits with a read-only token and a short tool allowlist; the commits leave as a patch.
+#   Claude gets the issue's title and body as they stood at the label event, saved to a file, and
+#   no gh tool: anyone can comment on an issue, so the maintainer reads the issue's comments
+#   before adding `claude:go` and edits the body to hold everything Claude should follow.
+#   The commands Claude runs (its own tests among them) do not see the Claude credential:
+#   CLAUDE_CODE_SUBPROCESS_ENV_SCRUB removes it from their environment and bubblewrap runs them
+#   in their own PID namespace. setup-node saves no npm cache, so a run cannot seed one that
+#   `main`'s other jobs restore (docs/security/14-build-and-release-supply-chain.md, B23).
 # - `spec-pr`: no Claude. Applies the patch, pushes `claude/spec-*` and opens a draft PR (`bot`).
 #   GITHUB_TOKEN cannot push workflow changes, and PRs it opens do not trigger CI: mark the PR
 #   ready for review (or `gh workflow run ci.yml --ref <branch>`) to run CI.
@@ -86,6 +93,10 @@ jobs:
     env:
       HAS_CLAUDE_AUTH: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
       ISSUE: ${{ github.event.issue.number }}
+      # Claude Code strips Anthropic, cloud and Actions secrets from its tools' environments and
+      # runs them under bubblewrap; it also forces the default permission mode, so only the
+      # allowlist below decides. The action turns this on only for allowed_non_write_users.
+      CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
     outputs:
       ran: ${{ steps.patch.outputs.ran }}
     steps:
@@ -105,7 +116,29 @@ jobs:
         if: env.HAS_CLAUDE_AUTH == 'true'
         with:
           node-version-file: .nvmrc # exact Node pin (docs/runbook/ci-bench-baseline.md, "Bench baseline")
-          cache: npm
+          # No cache: this job runs on main's cache scope, and Claude's commands can write ~/.npm.
+          package-manager-cache: false
+        env:
+          YARN_IGNORE_PATH: "1"
+
+      - name: Install bubblewrap
+        if: env.HAS_CLAUDE_AUTH == 'true'
+        # Claude Code refuses to start without it while CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is set.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -q --no-install-recommends bubblewrap socat
+          # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor; bwrap needs them.
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Save the issue's title and body
+        if: env.HAS_CLAUDE_AUTH == 'true'
+        # From the label event, not the API: the text the maintainer saw, without the comments.
+        run: |
+          mkdir -p "$RUNNER_TEMP/spec-issue"
+          jq '{title: .issue.title, body: .issue.body}' "$GITHUB_EVENT_PATH" \
+            > "$RUNNER_TEMP/spec-issue/issue.json"
 
       - name: Install and branch
         if: env.HAS_CLAUDE_AUTH == 'true'
@@ -120,18 +153,19 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Implement the spec in issue #${{ github.event.issue.number }} of ${{ github.repository }}
-            (read it with `gh issue view ${{ github.event.issue.number }}`). You are on a fresh
-            branch from main. Follow CLAUDE.md exactly: read the spec under docs/specs/, write the
-            failing tests first, then the code; `npm test`, `npm run typecheck` and `npm run lint`
-            must pass. Commit with `git add` and `git commit`, Conventional Commits whose body is
-            the changelog line. Do not push and do not open a PR: the workflow does both from
-            your commits. Never edit .github/, lint config, screenshot baselines or surfer.json
-            pins to get green.
+            Implement the spec in issue #${{ github.event.issue.number }} of ${{ github.repository }}.
+            The issue's title and body are in ${{ runner.temp }}/spec-issue/issue.json; that file
+            is the whole request. You are on a fresh branch from main. Follow CLAUDE.md exactly:
+            read the spec under docs/specs/, write the failing tests first, then the code;
+            `npm test`, `npm run typecheck` and `npm run lint` must pass. Commit with `git add` and
+            `git commit`, Conventional Commits whose body is the changelog line. Do not push and
+            do not open a PR: the workflow does both from your commits. Never edit .github/, lint
+            config, screenshot baselines or surfer.json pins to get green.
           claude_args: >-
             --max-turns 100
-            --permission-mode acceptEdits
-            --allowedTools "Read,Glob,Grep,LS,Edit,MultiEdit,Write,Bash(npm test),Bash(npm run lint),Bash(npm run typecheck),Bash(npm run coverage),Bash(npm run format),Bash(npm run gen-docs),Bash(npm run test:py),Bash(git status),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*),Bash(gh issue view:*)"
+            --permission-mode default
+            --add-dir ${{ runner.temp }}/spec-issue
+            --allowedTools "Read,Glob,Grep,LS,Edit,MultiEdit,Write,Bash(npm test),Bash(npm run lint),Bash(npm run typecheck),Bash(npm run coverage),Bash(npm run format),Bash(npm run gen-docs),Bash(npm run test:py),Bash(git status),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*)"
 
       - name: Export commits as a patch
         id: patch
