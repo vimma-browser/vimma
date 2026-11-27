@@ -13,6 +13,7 @@ import { addonRowText } from "../core/addons.mjs";
 import { AGENT_GLYPH } from "../core/agent.mjs";
 import { itemId, openPicker, pickerKey, sectionOf, setPickerItems } from "../core/picker.mjs";
 import { accessibleName, countText, rowRange, sectionHeading } from "../core/tabsearch.mjs";
+import { LAST_TAB_TITLE } from "../core/closelast.mjs";
 
 /** @import { AnyItem, AddonOp, PickerItem, PickerState, WorkspaceItem } from "../core/picker.mjs" */
 /** @import { AddonItem } from "../core/addons.mjs" */
@@ -140,6 +141,9 @@ const WORKSPACES = {
     return [String(item.workspaceIndex), `${tabs}${foreign}${item.active ? " · current" : ""}`];
   },
 };
+
+/** The hint of the picker opened after the window's last tab closed (close-last-tab, 3). */
+const LAST_TAB_HINT = "j/k move · / search · Enter go · Esc keep the new tab";
 
 /** @type {PickerLook} docs/specs/addon-manager.md */
 const ADDONS = {
@@ -278,8 +282,8 @@ export class GotoPicker {
     this.opener = Services.focus.focusedElement;
     const dialog = this.dialog ?? this.build();
     this.counted = null;
-    this.state = openPicker(this.host.items(), {
-      activeId: this.host.activeId(),
+    this.state = openPicker(this.openingItems(), {
+      activeId: this.openingId(),
       ...(this.look.tabs || this.look.typeFirst ? { typeFirst: true, query } : {}),
     });
     this.render();
@@ -302,8 +306,9 @@ export class GotoPicker {
     }
     if (effect?.type === "close") this.close();
     if (effect?.type === "select") {
+      const selecting = this.selecting();
       this.close();
-      this.host.select(effect.id);
+      selecting(effect.id);
     }
     if (effect?.type === "reopen") {
       this.close();
@@ -356,6 +361,24 @@ export class GotoPicker {
    */
   moving() {
     return (id) => this.host.move?.(id);
+  }
+
+  /**
+   * What Enter on a row runs, taken before close() resets the picker.
+   * @returns {(id: string) => void}
+   */
+  selecting() {
+    return (id) => this.host.select(id);
+  }
+
+  /** The items to open with. @returns {AnyItem[]} */
+  openingItems() {
+    return this.host.items();
+  }
+
+  /** The item selected at first. @returns {string | null} */
+  openingId() {
+    return this.host.activeId();
   }
 
   /** Close and remove the dialog (VimmaHost.uninit). */
@@ -585,6 +608,37 @@ export class WorkspacePicker extends GotoPicker {
     super(win, host, WORKSPACES);
     /** @type {Element | null} the side-panel row's tab while opened for one */
     this.row = null;
+    /**
+     * Its rows and Enter while opened after the window's last tab closed.
+     * @type {{ rows: WorkspaceItem[], choose: (id: string) => void } | null}
+     */
+    this.lastTab = null;
+  }
+
+  /**
+   * `[tabs] close_last = "picker"` (docs/specs/close-last-tab.md, behaviour 3): the window's last
+   * tab has closed; `rows` are where to go on, the first one selected. Esc leaves the new tab.
+   * @param {WorkspaceItem[]} rows
+   * @param {(id: string) => void} choose  Enter on a row; the picker has closed already
+   */
+  openLastTab(rows, choose) {
+    if (this.isOpen) this.close();
+    this.lastTab = { rows, choose };
+    this.open();
+    this.#heading(LAST_TAB_TITLE, LAST_TAB_HINT);
+  }
+
+  openingItems() {
+    return this.lastTab?.rows ?? super.openingItems();
+  }
+
+  openingId() {
+    return this.lastTab ? null : super.openingId();
+  }
+
+  /** @returns {(id: string) => void} */
+  selecting() {
+    return this.lastTab?.choose ?? super.selecting();
   }
 
   /**
@@ -603,6 +657,8 @@ export class WorkspacePicker extends GotoPicker {
    * @param {string} key
    */
   key(key) {
+    // After the last tab closed, `m` has no tab to move but the new one (behaviour 3).
+    if (this.lastTab && key === "m") return;
     super.key(this.row && key === "enter" ? "m" : key);
   }
 
@@ -616,8 +672,9 @@ export class WorkspacePicker extends GotoPicker {
 
   /** @param {{ tabChanged?: boolean }} [options] */
   close(options) {
-    if (this.row) {
+    if (this.row || this.lastTab) {
       this.row = null;
+      this.lastTab = null;
       this.#heading(WORKSPACES.title, WORKSPACES.hint);
     }
     super.close(options);

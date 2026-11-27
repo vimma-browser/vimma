@@ -436,6 +436,7 @@ tab = true    # false drops the status bar's tab number and title while the tab 
 [tabs]
 sleep_after = 120             # minutes unseen before a tab sleeps (5–10080); 0: never
 sleep_on_low_memory = true    # false: Firefox never unloads tabs when memory runs low
+close_last = "picker"         # closing the last tab: "picker", "new_tab", "ask", "quit" or "keep"
 
 # Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update
 # channel and the platform.

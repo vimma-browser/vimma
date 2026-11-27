@@ -1151,6 +1151,10 @@ interface BrowserWindow extends ChromeWindow {
   ): void;
   // toolkit globalOverlay.js and contentAreaUtils.js
   goQuitApplication(event?: { ctrlKey?: boolean; metaKey?: boolean }): boolean;
+  closeWindow(close: boolean, promptFunction?: () => boolean, source?: string): boolean;
+  // browser.js: every tab's beforeunload, as WindowIsClosing (ctrl+shift+w) asks it
+  CanCloseWindow(): boolean;
+  skipNextCanClose: boolean;
   DownloadURL(url: string, fileName: string | null, initiatingDocument: Document): void;
   // browser-addons.js: the extensions button's code.
   readonly gUnifiedExtensions: UnifiedExtensions;

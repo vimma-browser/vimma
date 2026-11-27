@@ -13,6 +13,7 @@ import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
 import { xulElementById } from "./browser-ops.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
+/** @import { LastTabRule } from "./close-last-ops.mjs" */
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
 /**
@@ -67,11 +68,12 @@ export function newTab(win) {
 /**
  * tab.close: what Firefox's ctrl+w does (BrowserCommands.closeTabOrWindow with a modifier
  * event, browser-commands.js): on a pinned tab it selects the first unpinned tab instead of
- * closing; otherwise it closes the selected tab, and the last tab closes the window unless
- * `browser.tabs.closeWindowWithLastTab` is false (M3 sets it false). Metrics as for ctrl+w.
+ * closing; otherwise it closes the selected tab. The window's last tab follows `[tabs]
+ * close_last` through `lastTab` (docs/specs/close-last-tab.md). Metrics as for ctrl+w.
  * @param {BrowserWindow} win
+ * @param {LastTabRule | null} [lastTab]  a user close's rule (close-last-ops.mjs)
  */
-export function closeTab(win) {
+export function closeTab(win, lastTab = null) {
   const gBrowser = gBrowserOf(win);
   if (gBrowser.selectedTab.pinned) {
     if (gBrowser.visibleTabs.length > gBrowser.pinnedTabCount) {
@@ -79,7 +81,7 @@ export function closeTab(win) {
     }
     return;
   }
-  removeTab(win, gBrowser.selectedTab);
+  removeTab(win, gBrowser.selectedTab, lastTab);
 }
 
 /**
@@ -87,10 +89,11 @@ export function closeTab(win) {
  * strip's close button would, selected or not. A pinned tab stays (core refuses it first).
  * @param {BrowserWindow} win
  * @param {MozTabbrowserTab} tab
+ * @param {LastTabRule | null} [lastTab]  a user close's rule (close-last-ops.mjs)
  */
-export function closeTabById(win, tab) {
+export function closeTabById(win, tab, lastTab = null) {
   if (tab.pinned) return;
-  removeTab(win, tab);
+  removeTab(win, tab, lastTab);
 }
 
 /**
@@ -99,10 +102,20 @@ export function closeTabById(win, tab) {
  * tab in a pane"; issue #1426): Firefox would select the next tab in the strip, which may be a
  * lone tab beside the split. A successor is read when the tab starts closing
  * (`_beginRemoveTab`), before any TabClose a listener could act on.
+ *
+ * When `lastTab` has something to do after the close, the window never closes with its last tab
+ * (`closeWindowWithLastTab: false`): Firefox's close path would leave every other workspace's
+ * hidden tabs out of the next session (docs/specs/close-last-tab.md, Research). It decides before
+ * the close and acts after it, so that the tab is in the recently closed tabs and the next start
+ * leaves it out. Otherwise Firefox decides as before: Vimma's pref keeps a browser window open,
+ * and a pop-up without a toolbar closes with its last tab.
  * @param {BrowserWindow} win
  * @param {MozTabbrowserTab} tab
+ * @param {LastTabRule | null} lastTab
  */
-function removeTab(win, tab) {
+function removeTab(win, tab, lastTab) {
+  const last = lastTab?.before(tab) ?? null;
+  if (last && "keep" in last) return;
   const gBrowser = gBrowserOf(win);
   const { TabMetrics } = gBrowser;
   const next = PaneViews.get(win)?.successorOf(tab);
@@ -110,10 +123,15 @@ function removeTab(win, tab) {
   if (next) gBrowser.setSuccessor(tab, next);
   gBrowser.removeTab(tab, {
     animate: true,
+    // The rule acts once the tab has closed, so the window must not close with it.
+    ...(last ? { closeWindowWithLastTab: false } : {}),
     metricsContext: TabMetrics.userTriggeredContext(TabMetrics.METRIC_SOURCE.KEYBOARD),
   });
   // A beforeunload prompt answered "stay" keeps the tab: its successor goes back as it was.
   if (next && !tab.closing) gBrowser.setSuccessor(tab, before);
+  // Firefox closes a window's last tab at once, without the animation, and its new tab is
+  // selected by now; a "stay" leaves nothing to do.
+  if (last && tab.closing) last.after();
 }
 
 /**

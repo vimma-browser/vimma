@@ -250,14 +250,16 @@ export function zoomPane(win, action) {
 
 /**
  * pane.close (`prefix+x`, `:q`): closes the focused pane, whose tab stays open; the last pane
- * closes the tab, with tab.close's rules (a pinned tab selects the first unpinned one).
+ * closes the tab, with tab.close's rules (a pinned tab selects the first unpinned one, the
+ * window's last tab follows `lastTab`).
  * @param {BrowserWindow} win
  * @param {Action} action
+ * @param {import("./close-last-ops.mjs").LastTabRule | null} [lastTab]
  */
-export function closePane(win, action) {
+export function closePane(win, action, lastTab = null) {
   const view = shownPanes(win);
   if (!view?.panes) {
-    closeTab(win);
+    closeTab(win, lastTab);
     return null;
   }
   const result = view.close();

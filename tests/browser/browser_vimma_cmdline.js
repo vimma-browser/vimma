@@ -280,21 +280,41 @@ add_task(async function q_closes_the_tab_but_not_a_pinned_one() {
   closeTabs(tabs);
 });
 
-add_task(async function q_on_the_last_tab_follows_close_window_with_last_tab() {
-  await SpecialPowers.pushPrefEnv({ set: [["browser.tabs.closeWindowWithLastTab", false]] });
-  const win = await BrowserTestUtils.openNewBrowserWindow();
-  const browser = win.gBrowser.selectedBrowser;
-  BrowserTestUtils.startLoadingURIString(browser, PAGE);
-  await BrowserTestUtils.browserLoaded(browser, false, PAGE);
-  await SimpleTest.promiseFocus(win);
-  await SimpleTest.promiseFocus(browser);
-  const first = win.gBrowser.selectedTab;
-  runCommand("q", win);
-  await TestUtils.waitForCondition(() => !first.isConnected, "the tab is closed");
-  Assert.ok(!win.closed, "the window stays (closeWindowWithLastTab = false)");
-  Assert.equal(win.gBrowser.tabs.length, 1, "with a fresh tab");
-  await BrowserTestUtils.closeWindow(win);
-  await SpecialPowers.popPrefEnv();
+// docs/specs/close-last-tab.md: `:q` on a window's last tab follows `[tabs] close_last`. In a
+// window that is not the last, the default ("picker") with nothing else open closes it;
+// "new_tab" keeps it with a fresh tab, as Firefox with closeWindowWithLastTab off.
+add_task(async function q_on_the_last_tab_follows_close_last() {
+  const { CloseLastTab } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/close-last-ops.mjs",
+  );
+  /** @param {"picker" | "new_tab"} value */
+  const qInNewWindow = async (value) => {
+    CloseLastTab.configure(value);
+    const win = await BrowserTestUtils.openNewBrowserWindow();
+    const browser = win.gBrowser.selectedBrowser;
+    BrowserTestUtils.startLoadingURIString(browser, PAGE);
+    await BrowserTestUtils.browserLoaded(browser, false, PAGE);
+    await SimpleTest.promiseFocus(win);
+    await SimpleTest.promiseFocus(browser);
+    const first = win.gBrowser.selectedTab;
+    const gone = value === "picker" ? BrowserTestUtils.domWindowClosed(win) : null;
+    runCommand("q", win);
+    await TestUtils.waitForCondition(() => !first.isConnected, "the tab is closed");
+    return { win, gone };
+  };
+  try {
+    const kept = await qInNewWindow("new_tab");
+    Assert.ok(!kept.win.closed, 'the window stays (close_last = "new_tab")');
+    Assert.equal(kept.win.gBrowser.tabs.length, 1, "with a fresh tab");
+    await BrowserTestUtils.closeWindow(kept.win);
+
+    const closing = await qInNewWindow("picker");
+    await closing.gone;
+    Assert.ok(closing.win.closed, "by default the window closes: nothing else was open in it");
+    Assert.ok(!window.closed, "and the first window stays");
+  } finally {
+    CloseLastTab.configure("picker");
+  }
 });
 
 add_task(async function tab_completes_and_cycles() {
