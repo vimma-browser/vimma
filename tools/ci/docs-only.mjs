@@ -3,14 +3,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Is this pull request docs-only? (Issue #245, docs/runbook/ci-docs-only-pull-requests.md
-// "Docs-only pull requests".)
-// ci.yml and e2e.yml skip their heavy steps and jobs on a docs-only pull request
-// with `if:`, not with a workflow `paths` filter: a required check whose workflow never runs
-// blocks the merge, while a job or step skipped by `if:` reports success.
+// Which of CI's heavy work can this pull request's change reach? (Issue #245,
+// docs/runbook/ci-docs-only-pull-requests.md, "Docs-only pull requests" and "Pull requests the
+// browser jobs skip".) Three answers:
+//   docs-only      only prose Markdown changed: ci.yml skips what Markdown cannot affect;
+//   browser-tests  e2e.yml's mochitest jobs (the build, mochitests, e2e) can be affected;
+//   rust           vimma-ctl's cargo steps in ci.yml can be affected.
+// The workflows skip with `if:`, not with a workflow `paths` filter: a required check whose
+// workflow never runs blocks the merge, while a job or step skipped by `if:` reports success.
 //
 //   node tools/ci/docs-only.mjs --event <event> --base <sha> --head <sha>
-//       prints why, and appends docs-only=true|false to $GITHUB_OUTPUT when it is set
+//       prints why, and appends docs-only=, browser-tests= and rust=true|false to
+//       $GITHUB_OUTPUT when it is set
 //   node tools/ci/docs-only.mjs --markdown-tests
 //       prints the Vitest files that read the repo's Markdown, which still run on a docs-only PR
 //
@@ -49,30 +53,192 @@ export const MARKDOWN_TESTS = Object.freeze([
 ]);
 
 /**
+ * Why `file` is not prose Markdown, or "" when it is.
+ * @param {string} file
+ */
+function notProse(file) {
+  if (!file.endsWith(".md")) return `${file} is not Markdown`;
+  if (GENERATED_MARKDOWN.includes(file)) return `${file} is generated (npm run gen-docs)`;
+  const dir = CODE_DIRS.find((d) => file.startsWith(d));
+  return dir ? `${file} is Markdown under ${dir}` : "";
+}
+
+/**
  * @param {readonly string[]} files  the changed paths, repo-relative
  * @returns {{ docsOnly: boolean, reason: string }}
  */
 export function isDocsOnly(files) {
   if (files.length === 0) return { docsOnly: false, reason: "no changed files: run everything" };
   for (const file of files) {
-    if (!file.endsWith(".md")) return { docsOnly: false, reason: `${file} is not Markdown` };
-    if (GENERATED_MARKDOWN.includes(file))
-      return { docsOnly: false, reason: `${file} is generated (npm run gen-docs)` };
-    const dir = CODE_DIRS.find((d) => file.startsWith(d));
-    if (dir) return { docsOnly: false, reason: `${file} is Markdown under ${dir}` };
+    const reason = notProse(file);
+    if (reason) return { docsOnly: false, reason };
   }
   return { docsOnly: true, reason: `${files.length} Markdown file(s), all prose` };
 }
 
 /**
- * Only a pull request can be docs-only; a push, schedule, manual run or workflow_call runs
+ * Paths that no job of e2e.yml reads: e2e.yml checks out the repository, runs npm ci, builds
+ * vimma-ctl, imports src/ and packages/ into the engine with tools/import, tools/sync-core.ts and
+ * tools/version-files, builds with tools/artifact-build, and runs tools/mochitest.ts, tools/e2e,
+ * tools/sites, tools/agent-bench, tools/branding and tools/upstream on tests/. An allowlist, so
+ * that a path not named here, a new folder or file included, runs the browser jobs. The test of
+ * this file fails when a file that runs them imports one of these. Besides these, prose Markdown,
+ * every workflow but e2e.yml, and the Vitest files under tools/ that e2e.yml does not run
+ * (BROWSER_TESTS) skip them.
+ */
+export const BROWSER_SKIP = Object.freeze({
+  dirs: Object.freeze([
+    ".claude-plugin/",
+    ".gemini/",
+    ".github/ISSUE_TEMPLATE/",
+    ".github/codeql/",
+    "tools/arch-lint/",
+    "tools/bench/",
+    // e2e.yml runs the base branch's docs-only.mjs, never the pull request's.
+    "tools/ci/",
+    "tools/claude-plugin/",
+    "tools/commitlint/",
+    "tools/config-reference/",
+    "tools/deps/",
+    "tools/diagrams/",
+    "tools/layering/",
+    "tools/license-check/",
+    "tools/md-wording/",
+    "tools/mutation/",
+    "tools/omarchy/",
+    "tools/release/",
+    "tools/security/",
+    "tools/spec-lint/",
+    "tools/stats/",
+    "tools/unicode/",
+    // Type declarations for tsc; nothing loads them at run time.
+    "types/",
+  ]),
+  files: Object.freeze([
+    ".github/FUNDING.yml",
+    ".github/actionlint.yaml",
+    ".github/copilot-instructions.md",
+    ".github/dependabot.yml",
+    ".github/pull_request_template.md",
+    ".prettierignore",
+    ".prettierrc.json",
+    ".semgrepignore",
+    "commitlint.config.ts",
+    "eslint.config.mjs",
+    "release-please-config.json",
+    "stryker.config.mjs",
+    // Generators: what they write is a changed path of its own, and judged as one.
+    "tools/gen-agent-tools.ts",
+    "tools/gen-docs.ts",
+    "tools/gen-mochitest-head.ts",
+    "tools/gen-vimma-modules.ts",
+    "tools/sjs-typecheck.ts",
+    "tools/tsconfig.json",
+  ]),
+});
+
+/** The folders whose Vitest files e2e.yml runs (`vitest run tools/e2e/`, `tools/branding/`). */
+export const BROWSER_TESTS = Object.freeze(["tools/e2e/", "tools/branding/"]);
+
+/**
+ * Is `file` the path `p`, or under it when `p` is a folder (ends in "/")?
+ * @param {string} p
+ * @param {string} file
+ */
+const names = (p, file) => (p.endsWith("/") ? file.startsWith(p) : file === p);
+
+/** @param {string} file */
+function skipsBrowser(file) {
+  if (!notProse(file)) return true;
+  if (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(file)) return file !== ".github/workflows/e2e.yml";
+  if (BROWSER_SKIP.files.includes(file) || BROWSER_SKIP.dirs.some((d) => file.startsWith(d)))
+    return true;
+  return (
+    /^tools\/.+\.test\.[cm]?[jt]s$/.test(file) && !BROWSER_TESTS.some((d) => file.startsWith(d))
+  );
+}
+
+/**
+ * Do e2e.yml's mochitest jobs (the artifact build, the mochitests, the e2e scenarios) need to
+ * run for these changed paths?
+ * @param {readonly string[]} files  the changed paths, repo-relative
+ * @returns {{ run: boolean, reason: string }}
+ */
+export function needsBrowser(files) {
+  if (files.length === 0) return { run: true, reason: "no changed files: run everything" };
+  const file = files.find((f) => !skipsBrowser(f));
+  if (file !== undefined)
+    return { run: true, reason: `${file} can reach the browser build or its tests` };
+  return { run: false, reason: `${files.length} file(s), none read by the browser jobs` };
+}
+
+/**
+ * What vimma-ctl's build and tests read outside tools/vimma-ctl, among paths the browser jobs
+ * skip: tests/guide_snippets.rs reads docs/guide.md, ci.yml holds the cargo steps, and
+ * tools/license-check judges the crates' licences.
+ */
+export const RUST_INPUTS = Object.freeze([
+  ".github/workflows/ci.yml",
+  "docs/guide.md",
+  "tools/license-check/",
+]);
+
+/**
+ * Paths that the browser jobs read but vimma-ctl's cargo steps do not (a folder ends in "/").
+ * vimma-ctl reads surfer.json, tests/contract/ and packages/vimma-core/src/, which stay inputs.
+ */
+export const RUST_SKIP = Object.freeze([
+  ".github/workflows/e2e.yml",
+  "src/",
+  "tests/browser/",
+  "tests/e2e/",
+  "tools/e2e/",
+]);
+
+/**
+ * Do the cargo steps of ci.yml (fmt, clippy, tests, the crates' licences) need to run?
+ * @param {readonly string[]} files  the changed paths, repo-relative
+ * @returns {{ run: boolean, reason: string }}
+ */
+export function needsRust(files) {
+  if (files.length === 0) return { run: true, reason: "no changed files: run everything" };
+  for (const file of files) {
+    if (RUST_INPUTS.some((p) => names(p, file)))
+      return { run: true, reason: `${file} is an input of vimma-ctl's cargo steps` };
+    if (!skipsBrowser(file) && !RUST_SKIP.some((p) => names(p, file)))
+      return { run: true, reason: `${file} can reach vimma-ctl's build or tests` };
+  }
+  return { run: false, reason: `${files.length} file(s), none read by vimma-ctl's cargo steps` };
+}
+
+/**
+ * Only a pull request can skip anything; a push, schedule, manual run or workflow_call runs
  * everything.
  * @param {{ event: string, files: readonly string[] }} change
  */
 export function classify({ event, files }) {
-  if (event !== "pull_request")
-    return { docsOnly: false, reason: `a ${event || "(no event)"} run, not pull_request` };
-  return isDocsOnly(files);
+  if (event !== "pull_request") {
+    const reason = `a ${event || "(no event)"} run, not pull_request`;
+    return {
+      docsOnly: false,
+      reason,
+      browser: true,
+      browserReason: reason,
+      rust: true,
+      rustReason: reason,
+    };
+  }
+  const { docsOnly, reason } = isDocsOnly(files);
+  const browser = needsBrowser(files);
+  const rust = needsRust(files);
+  return {
+    docsOnly,
+    reason,
+    browser: browser.run,
+    browserReason: browser.reason,
+    rust: rust.run,
+    rustReason: rust.reason,
+  };
 }
 
 /**
@@ -106,10 +272,15 @@ function main(argv) {
   };
   const event = arg("--event");
   const files = event === "pull_request" ? changedFiles(arg("--base"), arg("--head")) : [];
-  const { docsOnly, reason } = classify({ event, files });
-  console.log(`docs-only=${docsOnly}: ${reason}`);
+  const c = classify({ event, files });
+  console.log(`docs-only=${c.docsOnly}: ${c.reason}`);
+  console.log(`browser-tests=${c.browser}: ${c.browserReason}`);
+  console.log(`rust=${c.rust}: ${c.rustReason}`);
   if (process.env.GITHUB_OUTPUT)
-    appendFileSync(process.env.GITHUB_OUTPUT, `docs-only=${docsOnly}\n`);
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      `docs-only=${c.docsOnly}\nbrowser-tests=${c.browser}\nrust=${c.rust}\n`,
+    );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

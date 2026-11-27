@@ -730,7 +730,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`fails when an SVG was edited after the render`](../../tools/diagrams/test/render.test.ts),
   [`the committed SVGs hold none of them`](../../tools/diagrams/test/render.test.ts)
 - B18. A guard that a workflow runs from the base branch (`git show "$BASE:tools/…"`: the
-  docs-only classifier in ci.yml and e2e.yml, the release key guard in key-guard.yml) judges the
+  docs-only and browser-tests classifier in ci.yml and e2e.yml (B22), the release key guard in key-guard.yml) judges the
   pull request whose checkout it runs in, so **nothing** of that checkout may run before it. In
   such a job exactly one step runs the guard, and only `actions/checkout`, pinned by its full
   commit, comes before it, with no input but `fetch-depth` and `persist-credentials`, and no
@@ -959,3 +959,24 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`writes pacman's database itself: no MD5SUM, and the same bytes from the same desc`](../../tools/package/test/repos.test.ts),
   [`talks only to Cloud KMS, or to a fake on a literal loopback address`](../../tools/package/test/openpgp-kms.test.ts),
   [`refuses a key that is not the certificate's`](../../tools/package/test/openpgp-kms.test.ts)
+- B22. A pull request **must not** be able to skip the work of a required check that its
+  changes can reach. `tools/ci/docs-only.mjs`, run from the base branch (B18), lets the mochitest
+  jobs of e2e.yml skip only when every changed path is on an allowlist of paths that no job of
+  e2e.yml reads (prose Markdown, workflows other than e2e.yml, named configs and `tools/`
+  folders, and Vitest files outside `tools/e2e/` and `tools/branding/`), and lets ci.yml's cargo
+  steps skip only when none of vimma-ctl's inputs changed. A path the allowlist does not name,
+  a new folder included, runs everything, and so do an empty answer (any event but
+  `pull_request`, a failed classifier, a base whose classifier predates the answer) and an
+  empty change. A skipped job still reports success, so the required check names stay; the
+  lint, typecheck and Vitest steps of the check job, commitlint, Semgrep, CodeQL and the release
+  key guard are never gated by these two answers. The allowlist holds only while no file that the browser jobs
+  run imports a skipped file, which a test checks over every tracked script.
+  **⚠ limit:** the test follows imports, not a path that a script the browser jobs run passes
+  to node or a shell; such a call to a skipped tool must move that tool off the allowlist. The
+  pull request that adds the call changes a file the browser jobs read, so it runs them.
+  [`#1600's files skip the browser jobs`](../../tools/ci/test/docs-only.test.ts),
+  [`%s runs the browser jobs, and the reason names it`](../../tools/ci/test/docs-only.test.ts),
+  [`no file that runs the browser jobs imports a file that skips them`](../../tools/ci/test/docs-only.test.ts),
+  [`%s runs cargo, and the reason names it`](../../tools/ci/test/docs-only.test.ts),
+  [`e2e.yml: the mochitest job runs unless the change cannot reach the browser`](../../tools/ci/test/docs-only.test.ts),
+  [`ci.yml: Markdown checks run on every change, the rest unless docs-only`](../../tools/ci/test/docs-only.test.ts)
