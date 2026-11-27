@@ -348,6 +348,8 @@ function guardModifiedClicks() {
  */
 function dragSource(win) {
   if (AgentPages._dragSourceForTests) return AgentPages._dragSourceForTests;
+  // A drag that started in another window reads the same: the parent has one drag session
+  // whatever widget is asked (nsBaseDragService::GetCurrentSession).
   let session;
   try {
     session = win.windowUtils.dragSession;
@@ -358,6 +360,14 @@ function dragSource(win) {
 }
 
 /**
+ * Per window, the <browser> of another workspace that the window's last drop, dragged from an
+ * agent tab, landed on: its page hands the drop's links back (BrowserParent::RecvDropLinks) after
+ * the drop event, and they load nothing. Every drop in the window replaces it.
+ * @type {WeakMap<ChromeWindow, MozBrowser | null>}
+ */
+const refusedDrop = new WeakMap();
+
+/**
  * Dragged links (security.md M10, issue #1592): a drop on the tab strip, the new-tab or
  * new-window button, the address bar or another part of the window's interface opens or loads
  * the drag's links (drag-and-drop.js handle_drop, ToolbarDropHandler, UrlbarInput), in a new
@@ -365,14 +375,28 @@ function dragSource(win) {
  * other than the one shown. When the drag started in an agent tab (its top browsing context,
  * so a frame's drag too), the drop is refused there: the window's own listeners never see the
  * dragover, which stays uncancelled, so no drop happens, and a drop sent anyway is stopped. A
- * drop on a content area (a <browser>) goes to its page as before.
+ * drop on a content area (a <browser>) reaches its page, which may read it; on another
+ * workspace's page, Firefox's own load of its links is refused. A non-remote <browser>'s page is
+ * not a <browser> target here (its nodes are), so a drop on it is refused outright.
  * @param {DragEvent} event
  */
 function refuseAgentDrop(event) {
   const target = /** @type {Element | null} */ (event.originalTarget);
-  if (target?.localName === "browser") return;
   const win = /** @type {ChromeWindow} */ (event.currentTarget);
-  if (!isAgentContainer(dragSource(win)?.originAttributes?.userContextId)) return;
+  const fromAgent = isAgentContainer(dragSource(win)?.originAttributes?.userContextId);
+  if (target?.localName === "browser") {
+    // A chrome listener cannot keep a drop from a remote <browser>'s page (EventStateManager
+    // forwards it after dispatch), so the load the page hands back is refused instead
+    // (guardContentDrops). Only another workspace's page: an agent tab's keeps its first link.
+    if (event.type === "drop") {
+      const browser = /** @type {MozBrowser} */ (/** @type {unknown} */ (target));
+      const own = isAgentContainer(browser.browsingContext?.originAttributes?.userContextId);
+      refusedDrop.set(win, fromAgent && !own ? browser : null);
+    }
+    return;
+  }
+  if (event.type === "drop") refusedDrop.set(win, null);
+  if (!fromAgent) return;
   event.stopPropagation();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
   if (event.type === "drop") {
@@ -396,6 +420,10 @@ function guardContentDrops(win) {
   if (typeof original !== "function") throw new Error("no MozBrowser.dropLinks");
   /** @this {MozBrowser} @param {string[]} links @param {nsIPrincipal} principal */
   proto.dropLinks = function (links, principal) {
+    if (refusedDrop.get(win) === this) {
+      console.warn("vimma: a link dragged from an agent tab loads nothing in another workspace");
+      return false;
+    }
     // Three strings per link: its URL, name and type.
     if (
       isAgentContainer(this.browsingContext?.originAttributes?.userContextId) &&

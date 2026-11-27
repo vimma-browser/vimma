@@ -514,6 +514,9 @@ function dragLink(source, target, url) {
   const context = /** @type {WindowGlobalParent} */ (source.browsingContext?.currentWindowGlobal);
   /** @type {nsIDragSession | null} */
   let session = null;
+  // The production read (AgentPages' dragSource) needs this attribute, headless or not: without
+  // it the guard would fail open while the hook below kept this test green.
+  Assert.ok("dragSession" in window.windowUtils, "sanity: windowUtils has dragSession");
   try {
     EventUtils.startDragSession(window, "link");
     session = window.windowUtils.dragSession;
@@ -567,6 +570,16 @@ add_task(async function test_links_dragged_from_agent_tabs_open_no_tab() {
   ])) {
     Assert.ok(!dragLink(tab.linkedBrowser, target, url), `${name} refuses an agent tab's link`);
   }
+  // Dropped on another workspace's page, the link reaches that page as data, but Firefox loads
+  // nothing for it: the content process hands the drop back (MozBrowser.dropLinks), refused.
+  dragLink(tab.linkedBrowser, mine.linkedBrowser, url);
+  Assert.ok(
+    !mine.linkedBrowser.dropLinks(
+      [`${url}3`, "", "", `${url}4`, "", ""],
+      Services.scriptSecurityManager.getSystemPrincipal(),
+    ),
+    "another workspace's page loads nothing an agent tab's drag carries",
+  );
   // Several links dropped on an agent tab's own page (from one of its frames, which Firefox
   // allows): the tab loads the first, as a link the page follows; no tab opens for the others.
   const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, `${url}1`);
