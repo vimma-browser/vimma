@@ -8,7 +8,15 @@
 
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.ts";
@@ -309,6 +317,18 @@ describe("the command line", () => {
     expect(run(r, "[]", newMain).status).toBe(0);
   });
 
+  it("judges a head it only fetched, from a checkout of the base", () => {
+    // key-guard.yml checks out the base and fetches the head commit by its hash, as git objects:
+    // the head's files are never in the working tree, and no branch names the head.
+    const r = repo((dir) => writeFileSync(join(dir, KEY_PATH), KEY + "more\n"));
+    git(r.dir, "checkout", "-q", "main");
+    git(r.dir, "branch", "-q", "-D", "pr");
+    expect(git(r.dir, "cat-file", "-t", r.head).trim()).toBe("commit");
+    expect(readFileSync(join(r.dir, KEY_PATH), "utf8")).toBe(KEY);
+    expect(run(r).status).toBe(1);
+    expect(run(r, JSON.stringify([APPROVAL_LABEL])).status).toBe(0);
+  });
+
   it("sees a change that a later commit of the branch does not undo", () => {
     const r = repo((dir) => {
       writeFileSync(join(dir, KEY_PATH), "other\n");
@@ -369,11 +389,21 @@ describe("the command line", () => {
 describe("workflow wiring", () => {
   const text = readFileSync(join(ROOT, ".github", "workflows", "key-guard.yml"), "utf8");
 
-  it("runs on pull_request, never pull_request_target, for every label change and push", () => {
-    expect(text).toMatch(/^ {2}pull_request:\n {4}types: \[(.*)\]$/m);
+  it("runs on pull_request_target, never pull_request, for every label change, push and edit", () => {
+    // pull_request runs the pull request's own copy of this file, which could replace the step
+    // with one that passes; pull_request_target runs the base branch's copy (docs/security B1).
+    expect(text).toMatch(/^ {2}pull_request_target:\n {4}types: \[(.*)\]$/m);
     const types = /^ {4}types: \[(.*)\]$/m.exec(text)?.[1].split(/,\s*/) ?? [];
-    expect(types.sort()).toEqual(["labeled", "opened", "reopened", "synchronize", "unlabeled"]);
-    expect(text).not.toMatch(/^\s*pull_request_target:/m);
+    // edited: a change of base branch fires only edited, and must not keep another branch's verdict.
+    expect(types.sort()).toEqual([
+      "edited",
+      "labeled",
+      "opened",
+      "reopened",
+      "synchronize",
+      "unlabeled",
+    ]);
+    expect(text).not.toMatch(/^\s*pull_request:/m);
   });
 
   it("holds contents: read and nothing else", () => {
@@ -405,13 +435,52 @@ describe("workflow wiring", () => {
     for (const block of runs) expect(block.split(/^ {6}- /m)[0]).not.toContain("${{");
   });
 
-  it("runs the guard as the base branch has it, falling back to the pull request's only when the base has none", () => {
-    expect(text).toContain('git show "$BASE:tools/ci/key-guard.mjs"');
-    // A base that is not there is an error, not a reason to run the pull request's copy, and the
-    // fallback is taken only when the base commit lacks the file.
-    expect(text).toContain('git cat-file -e "$BASE^{commit}" || exit 2');
-    expect(text).toMatch(/if git cat-file -e "\$BASE:tools\/ci\/key-guard\.mjs"/);
-    expect(text).not.toContain("2>/dev/null");
+  it("checks out only the base and reads the head as git objects, never running it", () => {
+    // Under pull_request_target the default checkout is the base branch; a `ref:` could name the
+    // head. The head is fetched into the object store only: nothing checks it out, installs from
+    // it or runs it, and no secret is named, so its content is data to the base's script.
+    const uses = [...text.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
+    expect(uses).toHaveLength(1);
+    expect(uses[0]).toMatch(/^actions\/checkout@/);
+    expect(text).not.toMatch(/^ +ref:/m);
+    expect(text).not.toMatch(/secrets\./);
+    expect(text).toContain('git show "$BASE:tools/ci/key-guard.mjs" > "$guard"');
+    expect(text).toContain('git fetch --no-tags origin "$HEAD"');
+    expect(text).toContain('git cat-file -e "$HEAD^{commit}" || exit 2');
+    expect(text).toContain('node "$guard" --base "$BASE" --head "$HEAD"');
+    expect(text).not.toMatch(/^ +NUMBER:/m);
+    const run = text
+      .split(/^ {8}run: /m)
+      .slice(1)
+      .join("\n");
+    for (const banned of [
+      "git checkout",
+      "git switch",
+      "git worktree",
+      "git restore",
+      "git reset",
+      "git merge",
+      "npm",
+      "npx",
+      "$GITHUB_ENV",
+      "$GITHUB_PATH",
+      "$GITHUB_OUTPUT",
+    ])
+      expect(run, banned).not.toContain(banned);
+    expect(run).not.toMatch(/\bsource\b|\bbash\b|\bsh\b|eval/);
+    // One node call, on the base's copy of the guard.
+    expect([...run.matchAll(/\bnode\b/g)]).toHaveLength(1);
+  });
+
+  it("is the only workflow with a job of that name", () => {
+    // The ruleset matches checks by name, so a same-named job elsewhere could stand in for this
+    // one (docs/security B1). A pull request can edit this test too; it catches the accident, and
+    // makes the deliberate case a visible edit for review.
+    const dir = join(ROOT, ".github", "workflows");
+    const others = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f) && f !== "key-guard.yml");
+    expect(others.length).toBeGreaterThan(0);
+    for (const f of others)
+      expect(readFileSync(join(dir, f), "utf8"), f).not.toMatch(/release key unchanged/i);
   });
 
   it("pins every action by commit", () => {

@@ -87,10 +87,14 @@ describe("upstream autopilot workflow", () => {
     expect(key).toContain("--label security");
   });
 
-  it("no workflow runs on pull_request_target", () => {
+  it("no workflow but the key guard runs on pull_request_target", () => {
+    // key-guard.yml is the one exception, fenced by its own tests: a read-only token, no secret,
+    // the base checked out and the head read as git objects (docs/security 14, B1).
     for (const name of readdirSync(dir).filter((f) => f.endsWith(".yml"))) {
+      if (name === "key-guard.yml") continue;
       expect(workflow(name), name).not.toMatch(/^\s*pull_request_target\s*:/m);
     }
+    expect(workflow("key-guard.yml")).toMatch(/^ {2}pull_request_target:$/m);
   });
 
   it("every action it uses is pinned by a full commit SHA", () => {

@@ -123,8 +123,9 @@ const WORKFLOW_KEYS = ["name", "run-name", "on", "permissions", "concurrency", "
 
 // The guard steps' exact text. The tests of docs-only.mjs and key-guard.mjs check that each step
 // contains its `git show "$BASE:…"` line, which a command appended after it would still pass.
-// key-guard.yml cannot change without the key-rotation-approved label anyway (B1); its text is
-// pinned here too, so that every guard is held to the same rule.
+// key-guard.yml runs on pull_request_target, so its checkout is the base already, and it cannot
+// change without the key-rotation-approved label (B1); its text is pinned here too, so that every
+// guard is held to the same rule.
 const DOCS_ONLY_GUARD = `if git show "$BASE:tools/ci/docs-only.mjs" > "$RUNNER_TEMP/docs-only.mjs"; then
   node "$RUNNER_TEMP/docs-only.mjs" --event pull_request --base "$BASE" --head "$HEAD"
 else
@@ -133,12 +134,9 @@ fi
 `;
 const KEY_GUARD = `guard="$RUNNER_TEMP/key-guard.mjs"
 git cat-file -e "$BASE^{commit}" || exit 2
-if git cat-file -e "$BASE:tools/ci/key-guard.mjs"; then
-  git show "$BASE:tools/ci/key-guard.mjs" > "$guard"
-else
-  echo "No key guard on the base: running the pull request's copy"
-  cp tools/ci/key-guard.mjs "$guard"
-fi
+git show "$BASE:tools/ci/key-guard.mjs" > "$guard"
+git fetch --no-tags origin "$HEAD"
+git cat-file -e "$HEAD^{commit}" || exit 2
 node "$guard" --base "$BASE" --head "$HEAD"
 `;
 const GUARD_RUNS = [DOCS_ONLY_GUARD, KEY_GUARD];

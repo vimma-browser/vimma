@@ -26,5 +26,9 @@ maintainer). Each item is ticked, or answered "n/a" with a reason.
       `tools/upstream/verify-sha512.py` cites Mozilla's announcement and keeps every revocation
       (ADR-021; `docs/runbook/ci-mozillas-release-key.md`, "Mozilla's release key"), and gets the
       `key-rotation-approved` label only after that check.
+- [ ] A new or changed workflow names no job after a check the `main` ruleset requires (such as
+      "Mozilla release key unchanged or approved"): the ruleset matches checks by name only, so
+      such a job could stand in for the real one (docs/security/14-build-and-release-supply-chain.md
+      B1).
 - [ ] Every commit is a Conventional Commit with a body. The subject is the changelog line; the body
       explains why.
