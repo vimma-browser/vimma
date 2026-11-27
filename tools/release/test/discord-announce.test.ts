@@ -224,7 +224,7 @@ describe("announcement", () => {
     expect(payload.allowed_mentions).toEqual({ parse: [] });
     const all = JSON.stringify(payload);
     expect(all).not.toMatch(/@everyone|@here|<@\d|<@&/);
-    expect(embed.description).toContain("@​everyone and @​here");
+    expect(embed.description).toContain("@\u200beveryone and @\u200bhere");
   });
 
   it("skips a draft and a pre-release", () => {
@@ -260,6 +260,12 @@ describe("announcement", () => {
     const line = embed.description.split("\n").find((l) => l.startsWith("- ")) ?? "";
     expect(line.length).toBeLessThanOrEqual(302);
     expect(line).toMatch(/longword…$/);
+  });
+
+  it("never cuts a line inside an emoji's surrogate pair", () => {
+    const body = entry("### Added", "", `- ${"a".repeat(298)}${"\u{1F600}".repeat(5)}`, "");
+    const { embed } = embedOf(release(body));
+    expect(embed.description).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
   });
 
   it("names the release by its tag when the name has no Firefox version", () => {
@@ -337,6 +343,29 @@ describe("postAnnouncement", () => {
         : new Response('{"id": "7"}', { status: 200 });
     expect(await postAnnouncement(payload, url, fake as typeof fetch)).toBe("7");
     expect(n).toBe(2);
+  });
+
+  it("fails a network error without naming the webhook's token", async () => {
+    const fake = async () => {
+      throw new TypeError("fetch failed");
+    };
+    const err = await postAnnouncement(payload, url, fake as typeof fetch).catch((e) => e);
+    expect(String(err)).toMatch(/fetch failed/);
+    expect(String(err)).not.toContain("secret-token");
+  });
+
+  it("counts a 2xx whose body is not JSON as posted, so a re-run never posts twice", async () => {
+    const fake = async () => new Response("<html>ok</html>", { status: 200 });
+    expect(await postAnnouncement(payload, url, fake as typeof fetch)).toBe("");
+  });
+
+  it("tries once more after a 429 whose body is not JSON", async () => {
+    let n = 0;
+    const fake = async () =>
+      ++n === 1
+        ? new Response("<html>slow down</html>", { status: 429, headers: { "retry-after": "0" } })
+        : new Response('{"id": "8"}', { status: 200 });
+    expect(await postAnnouncement(payload, url, fake as typeof fetch)).toBe("8");
   });
 
   it("never tries again after a server error, which may have posted already", async () => {

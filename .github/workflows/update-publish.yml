@@ -363,7 +363,8 @@ jobs:
           cat out/update.xml.body
 
       # announce posts only a release that neither published copy offered before this run, so a
-      # re-run, or the same tag published again by hand, announces nothing a second time.
+      # re-run, or the same tag published again by hand, announces nothing a second time (unless
+      # a manifest that offers nothing was published in between).
       - name: Was the release offered before
         id: offered
         if: env.OFFER == 'release'
@@ -1698,6 +1699,11 @@ jobs:
           body="Update manifest ($TARGET_OS) for ${TAG:-offer=nothing} failed: $RUN_URL. Fix, then re-run: \`gh workflow run update-publish.yml -f tag=$TAG -f target=$TARGET_OS\` (or \`-f offer=nothing\`)."
           # The update is live; only the post failed. A new manifest run would find the version
           # offered and post nothing, so the fix is to re-run the failed job of this run.
+          # A publish that pushed and then failed (the host did not serve it in time) leaves the
+          # version offered, so no later run announces it: say so.
+          if [ "$PUBLISH" = failure ] && [ "$OFFER" = release ] && [ "$TARGET_OS" = linux ]; then
+            body="$body If the push to vimma-updates went through, $TAG was not announced on Discord, and no later run will announce it: post it by hand (docs/runbook/ci-releases.md, Release announcements on Discord)."
+          fi
           if [ "$PUBLISH" = success ] && [ "$ANNOUNCE" = failure ]; then
             title="Discord announcement for $TAG failed"
             body="The update for $TAG is live, but its Discord announcement failed: $RUN_URL. Fix (docs/runbook/ci-releases.md, Release announcements on Discord), then re-run it: \`gh run rerun $GITHUB_RUN_ID --failed\`."

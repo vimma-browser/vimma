@@ -1527,6 +1527,10 @@ describe("update-publish.yml", () => {
     const run = runOf(failure, "Open or update the failure issue");
     expect(run).toContain('title="Discord announcement for $TAG failed"');
     expect(run).toContain("gh run rerun $GITHUB_RUN_ID --failed");
+    expect(run).toContain(
+      'if [ "$PUBLISH" = failure ] && [ "$OFFER" = release ] && [ "$TARGET_OS" = linux ]; then',
+    );
+    expect(run).toContain("was not announced on Discord, and no later run will announce it");
   });
 
   it("the failure issue says how to re-run", () => {

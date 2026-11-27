@@ -628,8 +628,9 @@ _Pages_ and _extensions_ cannot reach it.
   [`checkSigned refuses a <patch> at any URL but the release's MAR`](../../tools/update/test/manifest.test.ts)
 - UP15. A release is announced on Discord **only** by `update-publish.yml`'s `announce` job on
   `main`, **only** after `publish` pushed the Linux release's manifest and `updates.vimma.dev`
-  serves it, and **at most once** per version: a run whose `prepare` found the version already
-  offered by a published copy of the manifest posts nothing, nor does a dry run, a draft, a
+  serves it, and **at most once** per version while that version stays offered: a run whose
+  `prepare` found the version already offered by a published copy of the manifest posts nothing
+  (after a manifest that offers nothing, publishing the same tag again posts again), nor does a dry run, a draft, a
   pre-release, a manifest that offers nothing or the macOS manifest. The channel webhook is the
   repository secret `DISCORD_WEBHOOK_URL`, which **only** the post step receives; the job has no
   environment, no OIDC token and `contents: read` alone, and runs `main`'s
@@ -639,8 +640,9 @@ _Pages_ and _extensions_ cannot reach it.
   file, never through an expression in a `run:` script, and the payload **never** mentions
   anyone, since it sets `allowed_mentions` to parse nothing and breaks up `@everyone`, `@here` and
   `<@` besides. The release link is built from the tag, never taken from the release's JSON, and
-  the tool posts **only** to a `discord.com` webhook URL, without following a redirect or printing
-  the URL. Nothing a pull request runs reaches the job: it runs only by a `workflow_dispatch` on
+  the tool posts **only** to a Discord webhook URL (on `discord.com`, `discordapp.com`, or their
+  `ptb.` and `canary.` hosts), without following a redirect or printing the URL. Links inside
+  changelog lines are kept as written: they come from the same people who can edit a release. Nothing a pull request runs reaches the job: it runs only by a `workflow_dispatch` on
   `main`, and a fork's pull request gets no repository secret. **⚠ limit:** anyone who holds the
   webhook URL can post to the announcement channel as the webhook, under any name and avatar,
   until it is deleted; so can a workflow on any branch pushed by someone with write access, which
@@ -660,6 +662,8 @@ _Pages_ and _extensions_ cannot reach it.
   [`builds the release link from the tag, whatever url the release JSON gives`](../../tools/release/test/discord-announce.test.ts),
   [`refuses any other host, scheme or path, without echoing the value`](../../tools/release/test/discord-announce.test.ts),
   [`fails on an error answer without naming the webhook's token`](../../tools/release/test/discord-announce.test.ts),
+  [`fails a network error without naming the webhook's token`](../../tools/release/test/discord-announce.test.ts),
+  [`counts a 2xx whose body is not JSON as posted, so a re-run never posts twice`](../../tools/release/test/discord-announce.test.ts),
   [`post exits 0 with a notice while DISCORD_WEBHOOK_URL is unset`](../../tools/release/test/discord-announce.test.ts)
 
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable

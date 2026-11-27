@@ -201,7 +201,8 @@ update. It runs in the Linux run only, because that is the one run every publish
 starts (the macOS run waits for the `.dmg`, which can come hours later). `prepare` notes whether
 either published copy of the manifest already offered the tag before the run, and `announce`
 posts only when neither did, so re-running a finished run, or publishing the same tag's
-manifest again by hand, posts nothing a second time. A dry run (`-f dry_run=true`), a draft, a
+manifest again by hand, posts nothing a second time. The one exception: after a manifest that
+offers nothing (`-f offer=nothing`), publishing the same tag again posts it again. A dry run (`-f dry_run=true`), a draft, a
 pre-release, `-f offer=nothing` and the macOS manifest post nothing.
 
 The message is built by `tools/release/discord-announce.ts` from the GitHub release: the title
@@ -224,8 +225,9 @@ Setting it up, once:
 
 1. In Discord, make the channel an announcement channel: the channel's settings → Overview →
    Announcement Channel (the server needs Community enabled).
-2. In the same settings: Integrations → Webhooks → New Webhook. Name it `Vimma releases`, choose
-   the announcement channel, give it Vimma's icon, and copy its URL.
+2. In the same channel's settings: Integrations → Create Webhook (or Webhooks → New Webhook). A
+   webhook made there posts to that channel. Name it `Vimma releases`, give it Vimma's icon, and
+   copy its URL (Copy Webhook URL).
 3. Store the URL as the repository secret `DISCORD_WEBHOOK_URL`: Settings → Secrets and
    variables → Actions → New repository secret, or `gh secret set DISCORD_WEBHOOK_URL` and paste
    it at the prompt (never on the command line, which keeps it in the shell's history). Without
@@ -239,8 +241,10 @@ Manage Messages permission, which this workflow does not hold.
 If the post failed (Discord down, a deleted webhook), the run opens or comments on the
 `release-failure` issue, saying that the update is live. Fix the webhook or the secret, then
 re-run the failed job of that run: `gh run rerun <run id> --failed`. A new manifest run posts
-nothing, since the manifest already offers the version. To post by hand instead, build the
-message as above and paste its `content` and `description` into the channel.
+nothing, since the manifest already offers the version. If `publish` itself failed after its
+push (the host did not serve the manifest within 10 minutes), `announce` never ran, and no
+later run will post either: the issue says so. Then post by hand: build the message as above and
+paste its `content` and `description` into the channel, then click Publish.
 
 Rotating the webhook: anyone who has its URL can post to the channel as the webhook, with any
 name and avatar, until it is deleted. If the URL leaked (a log, a screenshot, a paste):

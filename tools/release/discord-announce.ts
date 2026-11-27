@@ -135,12 +135,13 @@ export function changelogSections(body: string): { name: string; items: string[]
 
 /** Text that cannot mention anyone, even if Discord's allowed_mentions were ignored. */
 function noMentions(text: string): string {
-  return text.replace(/@(everyone|here)/gi, "@​$1").replace(/<@/g, "<​@");
+  return text.replace(/@(everyone|here)/gi, "@\u200b$1").replace(/<@/g, "<\u200b@");
 }
 
 function shorten(line: string): string {
   if (line.length <= ITEM_LIMIT) return line;
-  const cut = line.slice(0, ITEM_LIMIT - 1);
+  // By code point, so an emoji at the cut is never split into a lone surrogate.
+  const cut = Array.from(line.slice(0, ITEM_LIMIT)).slice(0, -1).join("");
   const space = cut.lastIndexOf(" ");
   return `${(space > ITEM_LIMIT / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
@@ -205,6 +206,16 @@ export function webhookUrl(value: string): URL {
   return new URL(value);
 }
 
+/** A reply's JSON fields, or none for a body that is not a JSON object (a proxy's page). */
+function jsonOf(text: string): { id?: unknown; retry_after?: unknown } {
+  try {
+    const v: unknown = JSON.parse(text);
+    return v && typeof v === "object" ? (v as { id?: unknown; retry_after?: unknown }) : {};
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Posts `payload` and returns the message's ID. Tries once more after a 429, which Discord sends
  * before it posts anything; never after another error, which may have posted already.
@@ -226,14 +237,15 @@ export async function postAnnouncement(
     });
     const text = await res.text();
     if (res.status === 429 && attempt === 1) {
-      const wait = Number((JSON.parse(text || "{}") as { retry_after?: number }).retry_after);
+      const wait = Number(jsonOf(text).retry_after ?? res.headers.get("retry-after"));
       await new Promise((r) =>
         setTimeout(r, Math.min(Number.isFinite(wait) ? wait : 1, 30) * 1000),
       );
       continue;
     }
     if (!res.ok) throw new Error(`Discord answered ${res.status}: ${text.slice(0, 200)}`);
-    return String((JSON.parse(text || "{}") as { id?: string }).id ?? "");
+    // Posted, whatever the body: failing here would invite a re-run that posts twice.
+    return String(jsonOf(text).id ?? "");
   }
 }
 
