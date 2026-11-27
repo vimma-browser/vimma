@@ -1,4 +1,4 @@
-## 16. Update check (`updates/VimmaUpdates.sys.mjs`, `update-publish.yml`, the MAR in `release.yml` and `nightly.yml`)
+## 16. Update check (`updates/VimmaUpdates.sys.mjs`, `update-publish.yml`, the MAR in `release.yml` and `nightly.yml`, the release announcement)
 
 Spec: [m6a-updater](../specs/m6a-updater.md) (delivery 1) and [update-notices](../specs/update-notices.md).
 Vimma fetches one signed manifest from `updates.vimma.dev` every 12 hours, at startup when a check
@@ -626,6 +626,41 @@ _Pages_ and _extensions_ cannot reach it.
   [`prepareRelease offers the MAR SHA256SUMS lists, with its size and SHA-512`](../../tools/update/test/manifest.test.ts),
   [`checkSigned checks the MAR the manifest offers against the downloaded file`](../../tools/update/test/manifest.test.ts),
   [`checkSigned refuses a <patch> at any URL but the release's MAR`](../../tools/update/test/manifest.test.ts)
+- UP15. A release is announced on Discord **only** by `update-publish.yml`'s `announce` job on
+  `main`, **only** after `publish` pushed the Linux release's manifest and `updates.vimma.dev`
+  serves it, and **at most once** per version: a run whose `prepare` found the version already
+  offered by a published copy of the manifest posts nothing, nor does a dry run, a draft, a
+  pre-release, a manifest that offers nothing or the macOS manifest. The channel webhook is the
+  repository secret `DISCORD_WEBHOOK_URL`, which **only** the post step receives; the job has no
+  environment, no OIDC token and `contents: read` alone, and runs `main`'s
+  `tools/release/discord-announce.ts` with Node built-ins only. Without the secret the step exits 0
+  with a notice, so a missing webhook never fails a release. The release's name and notes are
+  text anyone who can edit a release controls: they reach the tool through `gh release view` and a
+  file, never through an expression in a `run:` script, and the payload **never** mentions
+  anyone, since it sets `allowed_mentions` to parse nothing and breaks up `@everyone`, `@here` and
+  `<@` besides. The release link is built from the tag, never taken from the release's JSON, and
+  the tool posts **only** to a `discord.com` webhook URL, without following a redirect or printing
+  the URL. Nothing a pull request runs reaches the job: it runs only by a `workflow_dispatch` on
+  `main`, and a fork's pull request gets no repository secret. **⚠ limit:** anyone who holds the
+  webhook URL can post to the announcement channel as the webhook, under any name and avatar,
+  until it is deleted; so can a workflow on any branch pushed by someone with write access, which
+  can read repository secrets. The webhook reaches only that one channel and cannot read it, so a
+  leak costs a spoofed post, not access to the server. If the URL leaks, delete the webhook in
+  Discord and store a new one (docs/runbook/ci-releases.md, "Release announcements on Discord").
+  Crossposting to following servers stays a person's click on **Publish**: no bot token is held.
+  [`announce posts only after the Linux release's manifest is pushed and served, never in a dry run`](../../tools/update/test/update-workflow.test.ts),
+  [`prepare records whether the published manifest already offered the tag, so a re-run posts nothing`](../../tools/update/test/update-workflow.test.ts),
+  [`the webhook secret reaches only announce's post step, and no environment or OIDC token`](../../tools/update/test/update-workflow.test.ts),
+  [`announce reads the release's name and notes as data, through gh and a file, never an expression`](../../tools/update/test/update-workflow.test.ts),
+  [`a failed announcement opens the release-failure issue, saying the update is live`](../../tools/update/test/update-workflow.test.ts),
+  [`is true when either published copy already offered the tag before this run`](../../tools/release/test/discord-announce.test.ts),
+  [`mentions no one: allowed_mentions parses nothing, and mention text is broken up`](../../tools/release/test/discord-announce.test.ts),
+  [`post refuses a payload that could mention someone`](../../tools/release/test/discord-announce.test.ts),
+  [`skips a draft and a pre-release`](../../tools/release/test/discord-announce.test.ts),
+  [`builds the release link from the tag, whatever url the release JSON gives`](../../tools/release/test/discord-announce.test.ts),
+  [`refuses any other host, scheme or path, without echoing the value`](../../tools/release/test/discord-announce.test.ts),
+  [`fails on an error answer without naming the webhook's token`](../../tools/release/test/discord-announce.test.ts),
+  [`post exits 0 with a notice while DISCORD_WEBHOOK_URL is unset`](../../tools/release/test/discord-announce.test.ts)
 
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing jobs on `main`, in the `update-signing` environment, can

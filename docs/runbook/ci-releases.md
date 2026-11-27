@@ -190,3 +190,59 @@ Turning on security releases (`AUTO_SECURITY_RELEASE`), once, while releases are
    its tag (`gh release delete v0.1.x --cleanup-tag`); the version moves on.
 4. To stop the chain: `gh variable delete AUTO_SECURITY_RELEASE`, or for one release PR
    `gh pr merge --disable-auto <n>`.
+
+#### Release announcements on Discord
+
+Each published stable release is posted once to Vimma's Discord announcement channel, so people
+who follow the server hear about it without watching GitHub. The post comes from
+`update-publish.yml`'s `announce` job, after its `publish` job has pushed the Linux update
+manifest and `updates.vimma.dev` serves it: the message never goes out before installs can
+update. It runs in the Linux run only, because that is the one run every published release
+starts (the macOS run waits for the `.dmg`, which can come hours later). `prepare` notes whether
+either published copy of the manifest already offered the tag before the run, and `announce`
+posts only when neither did, so re-running a finished run, or publishing the same tag's
+manifest again by hand, posts nothing a second time. A dry run (`-f dry_run=true`), a draft, a
+pre-release, `-f offer=nothing` and the macOS manifest post nothing.
+
+The message is built by `tools/release/discord-announce.ts` from the GitHub release: the title
+`Vimma X.Y.Z · Firefox N` linking to the release, the lines of the version's Security, breaking
+changes, Added, Changed, Deprecated, Removed and Fixed sections (without the pull request and
+commit links), and links to the full release notes and to
+[vimma.dev/install](https://vimma.dev/install/). It stays within Discord's 4096-character embed
+description, cutting at a whole line and ending with how many lines the notes have beyond it.
+The payload sets `allowed_mentions` to parse nothing, so no text in a release can ping
+`@everyone`, `@here`, a role or a user (docs/security/16-update-check.md, UP15).
+
+See the message a release would get, without posting it:
+
+```sh
+gh release view vX.Y.Z --json tagName,name,body,url,isDraft,isPrerelease > release.json
+node tools/release/discord-announce.ts build --release release.json
+```
+
+Setting it up, once:
+
+1. In Discord, make the channel an announcement channel: the channel's settings → Overview →
+   Announcement Channel (the server needs Community enabled).
+2. In the same settings: Integrations → Webhooks → New Webhook. Name it `Vimma releases`, choose
+   the announcement channel, give it Vimma's icon, and copy its URL.
+3. Store the URL as the repository secret `DISCORD_WEBHOOK_URL`: Settings → Secrets and
+   variables → Actions → New repository secret, or `gh secret set DISCORD_WEBHOOK_URL` and paste
+   it at the prompt (never on the command line, which keeps it in the shell's history). Without
+   the secret, `announce` logs a notice and exits 0; it never fails a release.
+
+On each release: a webhook cannot crosspost, so the post stays in Vimma's own server until it is
+published. Open the message in the announcement channel and click **Publish** to send it to
+every server that follows the channel. Crossposting from CI would need a bot token with the
+Manage Messages permission, which this workflow does not hold.
+
+If the post failed (Discord down, a deleted webhook), the run opens or comments on the
+`release-failure` issue, saying that the update is live. Fix the webhook or the secret, then
+re-run the failed job of that run: `gh run rerun <run id> --failed`. A new manifest run posts
+nothing, since the manifest already offers the version. To post by hand instead, build the
+message as above and paste its `content` and `description` into the channel.
+
+Rotating the webhook: anyone who has its URL can post to the channel as the webhook, with any
+name and avatar, until it is deleted. If the URL leaked (a log, a screenshot, a paste):
+delete the webhook in the channel's Integrations → Webhooks, create a new one, and
+replace the secret with `gh secret set DISCORD_WEBHOOK_URL`. Nothing else holds the URL.

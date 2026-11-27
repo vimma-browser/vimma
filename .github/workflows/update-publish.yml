@@ -37,6 +37,14 @@
 #   publish       checks the signed tree once more and commits it with the manifest, in one
 #                 commit, so the update check and the repositories announce a release together.
 #
+# The announcement (docs/runbook/ci-releases.md, "Release announcements on Discord"):
+#
+#   announce  no environment; after publish in the Linux release's run, once updates.vimma.dev
+#             serves the manifest: posts the release to the Discord announcement channel
+#             (tools/release/discord-announce.ts) through the repository secret
+#             DISCORD_WEBHOOK_URL, which only its post step receives. Nothing for a version a
+#             published manifest offered before the run, a dry run, or without the secret.
+#
 # One manifest per build target (spec macos-homebrew, decision 16): `target` linux (the tarball,
 # AppImage, .deb and .rpm, SHA256SUMS) or macos (the .dmg, SHA256SUMS-macos; prepare runs on macOS,
 # where hdiutil reads the build ID of the app inside it). The Linux run starts when the release
@@ -141,6 +149,11 @@ on:
       UPDATES_DEPLOY_KEY:
         description: "nightly.yml's manifest call: the update-publish environment's deploy key, by name"
         required: false
+      # Listed only because a workflow that declares call secrets may name no others (actionlint):
+      # announce, its one user, never runs in a call, and no caller passes it.
+      DISCORD_WEBHOOK_URL:
+        description: "Never passed: the announce job reads it in the manifest run alone"
+        required: false
 
 permissions: {}
 
@@ -228,6 +241,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: read # the labels of the release's pull requests (urgency)
+    outputs:
+      offered: ${{ steps.offered.outputs.offered }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -346,6 +361,13 @@ jobs:
               --target "$TARGET_OS" --published served.xml --published repo.xml --out out/update.xml.body
           fi
           cat out/update.xml.body
+
+      # announce posts only a release that neither published copy offered before this run, so a
+      # re-run, or the same tag published again by hand, announces nothing a second time.
+      - name: Was the release offered before
+        id: offered
+        if: env.OFFER == 'release'
+        run: node tools/release/discord-announce.ts offered --tag "$TAG" --published served.xml --published repo.xml >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -1605,10 +1627,56 @@ jobs:
           echo "::error::pushed, but $url does not serve serial $SERIAL after 10 minutes (Cloudflare Workers Builds)"
           exit 1
 
-  # The release manifest's failures; a failed mar-sign or nightly manifest job fails the calling
-  # release.yml or nightly.yml run, whose own failure or report job reports it.
+  # The release's Discord announcement (docs/runbook/ci-releases.md, "Release announcements on
+  # Discord"; docs/security/16-update-check.md UP15), once per stable release and only after its
+  # update is live: publish has pushed the Linux manifest and updates.vimma.dev serves it. The
+  # Linux run is the one a published release always starts (the macOS run may come hours later,
+  # or never), so the post waits for the update most installs get. A run whose prepare found the
+  # version already offered posts nothing (needs.prepare.outputs.offered must be 'false'; a run
+  # without that output posts nothing either). The webhook is the repository secret
+  # DISCORD_WEBHOOK_URL, given to the post step alone; without it the step exits 0 with a notice.
+  # The release's name and notes reach the tool through gh and a file, never through ${{ }}.
+  announce:
+    needs: [prepare, publish]
+    if: >-
+      !cancelled() && needs.publish.result == 'success' && needs.prepare.outputs.offered == 'false' &&
+      inputs.target != 'macos' && inputs.offer != 'nothing' && !inputs.dry_run &&
+      vars.UPDATES_ENABLED == 'true' &&
+      github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && !inputs.mar &&
+      startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Build the announcement
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,body,url,isDraft,isPrerelease > release.json
+          node tools/release/discord-announce.ts build --release release.json --out payload.json
+          [ ! -f payload.json ] || cat payload.json
+
+      - name: Post it to the Discord announcement channel
+        if: hashFiles('payload.json') != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: node tools/release/discord-announce.ts post --payload payload.json
+
+  # The release manifest's failures, and a failed Discord announcement; a failed mar-sign or
+  # nightly manifest job fails the calling release.yml or nightly.yml run, whose own failure or
+  # report job reports it.
   failure:
-    needs: [start, prepare, sign, repo-prepare, repo-sign, publish]
+    needs: [start, prepare, sign, repo-prepare, repo-sign, publish, announce]
     if: >-
       failure() && github.repository == 'vimma-browser/vimma' && !inputs.mar &&
       startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')
@@ -1619,17 +1687,26 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      PUBLISH: ${{ needs.publish.result }}
+      ANNOUNCE: ${{ needs.announce.result }}
     steps:
       - name: Open or update the failure issue
         run: |
           gh label create release-failure --repo "$GITHUB_REPOSITORY" --color B60205 \
             --description "release.yml, aur.yml or update-publish.yml failed" --force
+          title="Update manifest ($TARGET_OS) for ${TAG:-offer=nothing} failed"
           body="Update manifest ($TARGET_OS) for ${TAG:-offer=nothing} failed: $RUN_URL. Fix, then re-run: \`gh workflow run update-publish.yml -f tag=$TAG -f target=$TARGET_OS\` (or \`-f offer=nothing\`)."
+          # The update is live; only the post failed. A new manifest run would find the version
+          # offered and post nothing, so the fix is to re-run the failed job of this run.
+          if [ "$PUBLISH" = success ] && [ "$ANNOUNCE" = failure ]; then
+            title="Discord announcement for $TAG failed"
+            body="The update for $TAG is live, but its Discord announcement failed: $RUN_URL. Fix (docs/runbook/ci-releases.md, Release announcements on Discord), then re-run it: \`gh run rerun $GITHUB_RUN_ID --failed\`."
+          fi
           open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label release-failure --state open \
             --json number --jq '.[0].number')
           if [ -n "$open" ]; then
             gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body "$body"
           else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "Update manifest ($TARGET_OS) for ${TAG:-offer=nothing} failed" \
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
               --label release-failure --body "$body"
           fi

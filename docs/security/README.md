@@ -47,7 +47,7 @@ S9 or M62), so a citation that gives only those ("security.md M62", "§12") find
 | §13     | [Page modes](13-page-modes.md)                                                  | K1 to K16             |
 | §14     | [Build and release supply chain](14-build-and-release-supply-chain.md)          | B1 to B21             |
 | §15     | [Live grep](15-live-grep.md)                                                    | L1 to L8              |
-| §16     | [Update check](16-update-check.md)                                              | UP1 to UP14           |
+| §16     | [Update check](16-update-check.md)                                              | UP1 to UP15           |
 | §17     | [Site compatibility workflow](17-site-compatibility-workflow.md)                | SC1 to SC5            |
 | §18     | [Release download counts workflow](18-release-download-counts-workflow.md)      | DC1 to DC4            |
 | §19     | [Site permissions](19-site-permissions.md)                                      | SP1 to SP5            |
