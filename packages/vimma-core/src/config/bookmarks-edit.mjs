@@ -1105,8 +1105,12 @@ export const PUT_BACK_WINDOW_MS = 10 * 60 * 1000;
  * item the run removed). Returns the tables in which one bookmark has now been put back three
  * times within ten minutes: two devices with different files are putting each other's changes
  * back, and the host pauses those tables both ways.
+ *
+ * An item counts once per `round` (default 0): a title and a URL put back by one apply are one
+ * put-back, but the closing compare's apply puts back a change that landed after the first
+ * apply, so it is another round (#1595).
  * @param {Map<string, number[]>} history  each item's put-back times, kept by the caller
- * @param {readonly { table: string, id: string }[]} items
+ * @param {readonly { table: string, id: string, round?: number }[]} items
  * @param {number} now
  * @returns {string[]}
  */
@@ -1115,10 +1119,10 @@ export function notePutBacks(history, items, now) {
   const tripped = new Set();
   /** @type {Set<string>} */
   const seen = new Set();
-  for (const { table, id } of items) {
+  for (const { table, id, round = 0 } of items) {
     const key = `${table}\0${id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (seen.has(`${round}\0${key}`)) continue;
+    seen.add(`${round}\0${key}`);
     const times = (history.get(key) ?? []).filter((t) => now - t < PUT_BACK_WINDOW_MS);
     times.push(now);
     history.set(key, times);

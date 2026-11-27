@@ -721,6 +721,16 @@ describe("the put-back loop guard (open question 2, answer b)", () => {
       expect(notePutBacks(other, [{ table: "work", id }], i)).toEqual([]);
     }
   });
+
+  test("one apply's ops count once a bookmark; the closing compare's apply counts again", () => {
+    // #1595: a change that lands during a put-back's run is put back by its closing compare.
+    const history = new Map<string, number[]>();
+    const title = { table: "work", id: "bookmark\0a" };
+    expect(notePutBacks(history, [title, title], 0)).toEqual([]);
+    expect(history.get("work\0bookmark\0a")).toEqual([0]);
+    const again = { ...title, round: 1 };
+    expect(notePutBacks(history, [title, again], 1_000)).toEqual(["work"]);
+  });
 });
 
 describe("planMirror for slice 2", () => {

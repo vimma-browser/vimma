@@ -1284,7 +1284,10 @@ export class BookmarksFileImpl {
       }
     }
     const touched = new Set(rerun ? p.touched : [...p.touched, ...again.touched]);
-    const putBack = rerun ? p.ops : [...p.ops, ...again.ops];
+    // The closing compare's apply is a put-back of its own: a change that landed during the
+    // first apply counts again for the loop guard (#1595). After a failed first apply it retries
+    // the same put-back, which counts once.
+    const putBack = rerun ? [p.ops] : failed ? [[...p.ops, ...again.ops]] : [p.ops, again.ops];
     if (!rerun) p = { ...again, removed: [...p.removed, ...again.removed], skipped: p.skipped };
     this.paused = null;
     /** @type {Base | null} */
@@ -1507,7 +1510,7 @@ export class BookmarksFileImpl {
    * The put-back loop guard (open question 2, answer b): notes each bookmark a burst's run put
    * back; a table where one was put back three times in ten minutes pauses both ways, with a
    * notice and a line in the status bar, until the file changes.
-   * @param {readonly MirrorOp[]} ops  what the run did
+   * @param {readonly (readonly MirrorOp[])[]} rounds  what each of the run's applies did
    * @param {Base | null} before  the base the run started from
    * @param {Base} after  the base it saved
    * @param {BookmarksFileError[]} warnings
@@ -1515,19 +1518,21 @@ export class BookmarksFileImpl {
    * @param {ReadonlyMap<string, string>} eventTables  the table of each guid the burst named
    * @returns {string | null} what to say
    */
-  guard(ops, before, after, warnings, content, eventTables) {
-    /** @type {{ table: string, id: string }[]} */
+  guard(rounds, before, after, warnings, content, eventTables) {
+    /** @type {{ table: string, id: string, round: number }[]} */
     const items = [];
-    for (const o of ops) {
-      const guid = o.op === "reorder" ? o.parentGuid : o.guid;
-      const at = locateInBase(after, guid) ?? locateInBase(before, guid);
-      const table = at?.table ?? eventTables.get(guid);
-      if (!table) continue;
-      // A line of the file by its path; an item only Places had, by its guid (Sync keeps it).
-      const id = at
-        ? `${o.op === "reorder" ? "order" : at.kind}\0${at.path.join("\0")}`
-        : `guid\0${guid}`;
-      items.push({ table, id });
+    for (const [round, ops] of rounds.entries()) {
+      for (const o of ops) {
+        const guid = o.op === "reorder" ? o.parentGuid : o.guid;
+        const at = locateInBase(after, guid) ?? locateInBase(before, guid);
+        const table = at?.table ?? eventTables.get(guid);
+        if (!table) continue;
+        // A line of the file by its path; an item only Places had, by its guid (Sync keeps it).
+        const id = at
+          ? `${o.op === "reorder" ? "order" : at.kind}\0${at.path.join("\0")}`
+          : `guid\0${guid}`;
+        items.push({ table, id, round });
+      }
     }
     return this.guardItems(items, warnings, content);
   }
@@ -1535,7 +1540,7 @@ export class BookmarksFileImpl {
   /**
    * The loop guard's count of the bookmarks one run put back (open question 2): under
    * `write_back = "all"` those where the file won over Places' change, by guid (Sync keeps it).
-   * @param {readonly { table: string, id: string }[]} items
+   * @param {readonly { table: string, id: string, round?: number }[]} items
    * @param {BookmarksFileError[]} warnings
    * @param {string} content  the bookmarks' hash now: the pause lasts until it changes
    * @returns {string | null} what to say
