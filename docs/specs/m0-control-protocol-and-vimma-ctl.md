@@ -407,7 +407,11 @@ Spec: [vimma-mcp](vimma-mcp.md) (decisions 2-4), ADR-019. Fixtures:
   (with its `reason`) in place of the welcome. The auth may carry `"code"`: 4 characters of 2-9
   and A-Z without I and O, which `vimma-ctl` prints on stderr and the question shows, so the
   user answers for the client they ran. `vimma-ctl` sends it, and waits up to 310 s for the
-  welcome, only when the discovery file lists `agent`.
+  welcome, only when the discovery file lists `agent`. (Since changed: Vimma also asks while an
+  agent CLI's one-time ticket is live, and the discovery file then carries `"fullAsks": true`, a
+  boolean present only while a new full connection asks; `vimma-ctl` sends the code and waits
+  when the file lists `agent` or says `fullAsks`, and an older Vimma that writes no `fullAsks`
+  keeps the old rule. Fixtures: `discovery-full-asks.valid.json`, `.invalid.json`.)
 - **New error codes.** `role-off` (above) and `denied`: an agent request the user did not allow.
   A `denied` error carries `reason`: `user`, `timeout`, `busy`, `muted`, `changed` or
   `cancelled`; no other error has a `reason`. (Since changed: a `busy` denial for a used-up

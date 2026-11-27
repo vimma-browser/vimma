@@ -12,8 +12,9 @@
 //
 // The question itself (ui/agent-prompt.mjs, host/agent-ui.mjs: the line, the status bar's
 // `◇ agent 1?`, `ctrl+b shift+a`) watches the gate through `addListener` and answers through
-// `answer`. While MCP is on, a new full-control connection asks here too (`askFull`, decision
-// 29 C), as a question of its own that no grant can cover.
+// `answer`. While an agent may be running (MCP on, or an agent CLI's ticket live), a new
+// full-control connection asks here too (`askFull`, decision 29 C), as a question of its own
+// that no grant can cover.
 //
 // Every agent request that is answered, runs under a grant or is denied goes into `:mcp log`
 // (docs/specs/mcp-drive.md D14), the last 100, in memory only like the grants.

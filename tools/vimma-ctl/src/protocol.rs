@@ -187,6 +187,10 @@ pub struct Discovery {
     pub roles: Vec<Role>,
     /// Vimma's version, when the file names it (docs/specs/ship-vimma-ctl.md, behaviour 5).
     pub version: Option<String>,
+    /// A new full connection asks the user in Vimma before its welcome: MCP is on, or an agent
+    /// CLI's ticket is live (docs/specs/vimma-mcp.md decision 29). An older Vimma leaves it out
+    /// and asks only while it serves the agent role.
+    pub full_asks: bool,
     /// `token` is an agent CLI's one-time ticket, not the discovery file's token: the
     /// connection names it by its id and is the agent role only (docs/specs/builtin-agent-cli.md
     /// C3). No discovery file sets it.
@@ -205,6 +209,7 @@ impl Discovery {
             pid: 0,
             roles: vec![Role::Agent],
             version: None,
+            full_asks: false,
             ticket: true,
         }
     }
@@ -693,6 +698,11 @@ pub fn decode_discovery(value: &Value) -> Result<Discovery, DecodeError> {
         Some(Value::String(v)) if crate::version::compare(v, v).is_some() => Some(v.clone()),
         Some(_) => return Err(fail("version must be a Vimma version (X.Y.Z)")),
     };
+    let full_asks = match map.get("fullAsks") {
+        None => false,
+        Some(Value::Bool(asks)) => *asks,
+        Some(_) => return Err(fail("fullAsks must be a boolean")),
+    };
     Ok(Discovery {
         protocol,
         port,
@@ -700,6 +710,7 @@ pub fn decode_discovery(value: &Value) -> Result<Discovery, DecodeError> {
         pid,
         roles,
         version,
+        full_asks,
         ticket: false,
     })
 }
@@ -1292,6 +1303,7 @@ mod tests {
                 pid: 1,
                 roles: vec![Role::Full],
                 version: None,
+                full_asks: false,
                 ticket: false,
             })
         );
@@ -1433,6 +1445,28 @@ mod tests {
         }
         let missing = format!(r#"{{"protocol":2,"port":9,"token":"{TOKEN}","pid":3}}"#);
         assert!(file(&missing).is_err());
+    }
+
+    #[test]
+    fn decode_discovery_reads_whether_full_control_asks() {
+        let file = |extra: &str| {
+            decode_discovery(
+                &parse(&format!(
+                    r#"{{"protocol":2,"port":9,"token":"{TOKEN}","pid":3,"roles":["full"]{extra}}}"#
+                ))
+                .unwrap(),
+            )
+        };
+        assert!(!file("").unwrap().full_asks, "an older Vimma names nothing");
+        assert!(file(r#","fullAsks":true"#).unwrap().full_asks);
+        assert!(!file(r#","fullAsks":false"#).unwrap().full_asks);
+        for bad in [
+            r#","fullAsks":"yes""#,
+            r#","fullAsks":1"#,
+            r#","fullAsks":null"#,
+        ] {
+            assert!(file(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

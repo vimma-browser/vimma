@@ -411,3 +411,51 @@ addTidyTask(async function test_ticket_never_in_prefs_files_notices_or_log() {
   Assert.deepEqual(files, [], "not in a file of the profile");
   VimmaControl.revokeTicket(ticket);
 });
+
+// docs/specs/vimma-mcp.md decision 29 (since changed): an agent CLI's run has a shell even with
+// MCP off, so while its ticket is live a new full connection asks too, and the discovery file
+// says so (`fullAsks`), so vimma-ctl sends its code and waits for the answer.
+addTidyTask(async function test_full_control_asks_while_an_agent_ticket_is_live() {
+  Services.prefs.setBoolPref(ENABLED_PREF, true);
+  await VimmaControl.settled();
+  /** A full connection's handshake, up to the welcome or its refusal. */
+  const full = (auth = {}) => {
+    const client = new Client(/** @type {number} */ (VimmaControl.port));
+    return { client, reply: client.handshake({ protocol: 2, role: "full" }, auth) };
+  };
+  const fullQuestion = () => AgentGate.waiting.find((q) => q.tool === "full_control");
+  const readDiscovery = async () => JSON.parse(await IOUtils.readUTF8(DISCOVERY));
+
+  Assert.ok(!("fullAsks" in (await readDiscovery())), "no ticket, MCP off: nothing asks");
+  const quiet = full();
+  Assert.equal((await quiet.reply)?.type, "welcome", "so a full connection is welcomed");
+  Assert.equal(AgentGate.waiting.length, 0, "without a question");
+
+  const c = AgentChat.create({ provider: PROVIDER });
+  const { ticket } = await AgentChat.issueTicket(c.id, "claude-code");
+  await VimmaControl.settled();
+  Assert.equal((await readDiscovery()).fullAsks, true, "a live ticket: the file says it asks");
+  Assert.ok(!quiet.client.closed, "a full connection open before the ticket stays open");
+  quiet.client.close();
+
+  const asked = full({ code: "7F3K" });
+  await until(() => !!fullQuestion(), "a new full connection asks while the ticket is live");
+  Assert.deepEqual(found(fullQuestion()).what, { code: "7F3K" }, "with the client's code");
+  AgentGate.answer(found(fullQuestion()).id, { kind: "once" });
+  Assert.equal((await asked.reply)?.type, "welcome", "y lets it in");
+  asked.client.close();
+
+  const refused = full();
+  await until(() => !!fullQuestion(), "the next one asks again");
+  AgentGate.answer(found(fullQuestion()).id, { kind: "deny" });
+  Assert.equal((await refused.reply)?.error?.code, "denied", "n refuses it");
+  refused.client.close();
+
+  VimmaControl.revokeTicket(ticket);
+  await VimmaControl.settled();
+  Assert.ok(!("fullAsks" in (await readDiscovery())), "the ticket gone: the file says so");
+  const after = full();
+  Assert.equal((await after.reply)?.type, "welcome", "and a full connection is welcomed again");
+  Assert.equal(AgentGate.waiting.length, 0, "without a question");
+  after.client.close();
+});

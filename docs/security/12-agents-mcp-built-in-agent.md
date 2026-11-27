@@ -592,14 +592,17 @@ own process, not a process group.
   `AgentChat.send` **must** refuse a task the notice was not answered for. The header **must**
   list the tools the CLI reported as enabled for its run: every tool but Vimma's own, those of
   any other MCP server included, and each use of those is a `◆` line; for a CLI that reports
-  no tool list (Codex), it **must** say `as its configuration allows`, never a list.
+  no tool list (Codex), it **must** say `as its configuration allows`, never a list. That shell
+  can read the control socket's token, so while a CLI's ticket is live a new `full` connection
+  **must** ask the user first, MCP on or off (S13).
   [`test_first_task_notice_says_the_clis_own_tools_are_not_confined`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_header_lists_the_clis_own_tools_from_its_init`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`an agent CLI: its name, the model it reported, and that it decides where data goes`](../../packages/vimma-core/test/agent-chat.test.ts),
   [`test_another_mcp_servers_tools_are_listed_as_its_own`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`tools of another mcp server are the cli's own, listed and marked, not hidden`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`a run with no reported tool list says its configuration decides`](../../packages/vimma-core/test/agent-cli.test.ts),
-  [`test_header_and_start_line_name_codexs_configuration`](../../tests/browser/browser_vimma_agent_cli_codex.js)
+  [`test_header_and_start_line_name_codexs_configuration`](../../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`test_full_control_asks_while_an_agent_ticket_is_live`](../../tests/browser/browser_vimma_agent_cli.js)
 - M59. A CLI task's steps **must** be counted where they reach the gate, and the next one
   refused at `max_steps`, so a CLI cannot under-report them; `max_minutes` (default 30)
   **must** stop it; tokens the CLI reports (cached input included, as for a hosted provider)
