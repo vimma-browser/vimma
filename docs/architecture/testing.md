@@ -43,7 +43,9 @@ requires these checks: `lint, typecheck, test, commitlint, licences` (the `check
 needs: the ruleset also blocks one while CodeQL reports a security alert of high severity or more,
 or another alert at error level, and while a review thread is unresolved. A docs-only pull request
 (`tools/ci/docs-only.mjs`, as the base branch has it) skips the steps Markdown cannot affect and the
-mochitest job, and each still reports success. The `opened` and `synchronize` events of a draft skip
+mochitest job, and each still reports success. The same classifier skips the mochitest job for a
+pull request whose every path is one the browser jobs never read (an allowlist of workflows,
+tooling and configs), and vimma-ctl's cargo steps when none of its inputs changed. The `opened` and `synchronize` events of a draft skip
 the three slow required checks, the mochitest job with the e2e scenarios, the Semgrep scan and both
 CodeQL analyses, until the pull request is marked ready. The details are in docs/runbook/,
 "Docs-only pull requests", "Draft pull requests" and "Once per tree".

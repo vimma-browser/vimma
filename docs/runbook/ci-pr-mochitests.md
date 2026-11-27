@@ -10,7 +10,8 @@ node tools/artifact-build/artifact-build.ts     # ~25 s warm; first run download
 npm run mochitest -- --artifact tests/browser/
 ```
 
-It runs on every PR except a docs-only one (above). Before the Firefox download it builds `vimma-ctl` and
+It runs on every PR except one whose changes cannot reach the browser ("Pull requests the browser
+jobs skip" above), a docs-only one included. Before the Firefox download it builds `vimma-ctl` and
 runs the e2e harness's tests; after the mochitests, `npm run e2e -- --artifact`. For a PR opened
 with `GITHUB_TOKEN`, mark it ready for review or `gh workflow run e2e.yml --ref <branch>`.
 

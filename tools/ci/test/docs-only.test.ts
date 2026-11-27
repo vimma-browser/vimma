@@ -21,7 +21,16 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CORE_SCHEMA, load } from "js-yaml";
 import { tempDir } from "../../test/temp-dir.ts";
-import { GENERATED_MARKDOWN, MARKDOWN_TESTS, classify, isDocsOnly } from "../docs-only.mjs";
+import {
+  BROWSER_SKIP,
+  BROWSER_TESTS,
+  GENERATED_MARKDOWN,
+  MARKDOWN_TESTS,
+  classify,
+  isDocsOnly,
+  needsBrowser,
+  needsRust,
+} from "../docs-only.mjs";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const SCRIPT = fileURLToPath(new URL("../docs-only.mjs", import.meta.url));
@@ -77,6 +86,182 @@ describe("isDocsOnly", () => {
   });
 });
 
+// What #1600 changed: a workflow, a tool under tools/release, its tests and docs. Nothing of it
+// reaches the browser build or the suites the browser jobs run.
+const PR_1600 = [
+  ".github/workflows/update-publish.yml",
+  "ARCHITECTURE.md",
+  "docs/runbook/README.md",
+  "docs/runbook/ci-releases.md",
+  "docs/security/16-update-check.md",
+  "docs/security/README.md",
+  "tools/release/discord-announce.ts",
+  "tools/release/test/discord-announce.test.ts",
+  "tools/release/test/fixtures/release-v0.1.25.json",
+  "tools/release/test/fixtures/update-linux-v0.1.25.xml",
+  "tools/update/test/update-workflow.test.ts",
+];
+
+/** Paths that reach the browser build or a suite the browser jobs run, one per kind. */
+const BROWSER_INPUTS = [
+  "src/browser/base/content/vimma/host/VimmaHost.sys.mjs",
+  "src/browser/base/content/browser-js.patch",
+  "src/notes.md",
+  "tests/browser/browser_vimma_scroll.js",
+  "tests/browser/browser.toml",
+  "tests/e2e/scenarios/scroll.json",
+  "tests/contract/control/v2/hello.json",
+  "packages/vimma-core/src/keymap.mjs",
+  "packages/vimma-core/test/keymap.test.ts",
+  "configs/common/mozconfig",
+  "surfer.json",
+  "package.json",
+  "package-lock.json",
+  ".nvmrc",
+  ".npmrc",
+  "vitest.config.ts",
+  "tsconfig.json",
+  // Vite reads the nearest tsconfig when it transforms tools/e2e and tools/branding tests.
+  "tools/tsconfig.json",
+  "LICENSE",
+  ".gitattributes",
+  ".release-please-manifest.json",
+  "docs/bindings.md",
+  ".github/workflows/e2e.yml",
+  "tools/lanes/lanes.ts",
+  "tools/artifact-build/artifact-build.ts",
+  "tools/e2e/e2e.ts",
+  "tools/e2e/test/runner.test.ts",
+  "tools/branding/test/brandings.test.ts",
+  "tools/mochitest.ts",
+  "tools/mochitest-shards.ts",
+  "tools/mochitest-times.json",
+  "tools/import/check-node.ts",
+  "tools/sync-core.ts",
+  "tools/version-files/version-files.ts",
+  "tools/upstream/firefox-source.sh",
+  "tools/sites/sites.ts",
+  "tools/agent-bench/agent-bench.ts",
+  "tools/vimma-ctl/src/main.rs",
+  "tools/update/manifest.ts",
+  "tools/package/vimma-open.sh",
+  "tools/test/temp-dir.ts",
+  "tools/build.ts",
+  "tools/start.ts",
+  "tools/promo/promo.ts",
+  "tools/safebrowsing-smoke/safebrowsing-smoke.sh",
+  "tools/newtool/new.ts",
+  "newdir/file.txt",
+  "NEWFILE",
+  ".github/actions/setup/action.yml",
+];
+
+describe("needsBrowser", () => {
+  it("#1600's files skip the browser jobs", () => {
+    expect(needsBrowser(PR_1600)).toEqual({ run: false, reason: expect.any(String) });
+  });
+
+  it.each([
+    [["README.md", "docs/guide.md", "docs/specs/x.md"]],
+    [[".github/workflows/ci.yml", ".github/workflows/release.yml"]],
+    [[".github/ISSUE_TEMPLATE/bug.yml", ".github/dependabot.yml", ".github/codeql/config.yml"]],
+    [[".github/pull_request_template.md", ".github/copilot-instructions.md"]],
+    [["eslint.config.mjs", ".prettierrc.json", "commitlint.config.ts", "types/firefox.d.ts"]],
+    [["tools/claude-plugin/hooks/merge.mjs", "tools/md-wording/process-wording.ts"]],
+    [["tools/ci/docs-only.mjs", "tools/ci/test/docs-only.test.ts"]],
+    [["tools/test/nightly-workflow.test.ts", "tools/upstream/test/canary.test.ts"]],
+    [["tools/gen-docs.ts", "tools/gen-vimma-modules.ts", "tools/sjs-typecheck.ts"]],
+  ])("%j skips the browser jobs", (files) => {
+    expect(needsBrowser(files).run).toBe(false);
+  });
+
+  it.each([...BROWSER_INPUTS])("%s runs the browser jobs, and the reason names it", (file) => {
+    for (const files of [[file], [...PR_1600, file]]) {
+      const result = needsBrowser(files);
+      expect(result.run).toBe(true);
+      expect(result.reason).toContain(file);
+    }
+  });
+
+  it("an empty change runs everything", () => {
+    expect(needsBrowser([]).run).toBe(true);
+  });
+
+  it("every docs-only change skips the browser jobs too", () => {
+    for (const files of [["README.md"], ["docs/guide.md", "CHANGELOG.md"], ["docs/adr/011.md"]])
+      if (isDocsOnly(files).docsOnly) expect(needsBrowser(files).run).toBe(false);
+  });
+
+  it("names only folders and files that exist", () => {
+    const tracked = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).split("\n");
+    for (const path of [...BROWSER_SKIP.dirs, ...BROWSER_SKIP.files])
+      expect(
+        tracked.some((t) => t === path || t.startsWith(path)),
+        path,
+      ).toBe(true);
+  });
+
+  // The allowlist is safe only while nothing the browser jobs run loads a file it skips. This
+  // walks every tracked script that the browser jobs may run (any path needsBrowser runs on) and
+  // fails on a relative import of a skipped file.
+  it("no file that runs the browser jobs imports a file that skips them", () => {
+    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" })
+      .split("\0")
+      .filter((f) => /\.(?:[cm]?[jt]s)$/.test(f));
+    const skips = (f: string) => !needsBrowser([f]).run;
+    // A Vitest file outside BROWSER_TESTS runs in ci.yml's check job, and in the informational
+    // macOS job's npm test, never in the required mochitest job.
+    const runByBrowserJobs = (f: string) =>
+      !/\.test\.[cm]?[jt]s$/.test(f) || BROWSER_TESTS.some((d) => f.startsWith(d));
+    const bad: string[] = [];
+    for (const file of tracked.filter((f) => !skips(f) && runByBrowserJobs(f))) {
+      const text = readFileSync(join(ROOT, file), "utf8");
+      for (const m of text.matchAll(
+        /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)["'](\.{1,2}\/[^"']+)["']/gm,
+      )) {
+        const target = relative(ROOT, join(ROOT, file, "..", m[1] ?? ""));
+        if (skips(target)) bad.push(`${file} -> ${target}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
+describe("needsRust", () => {
+  it.each([
+    [PR_1600],
+    [["src/browser/base/content/vimma/host/VimmaHost.sys.mjs", "tests/browser/browser.toml"]],
+    [["tests/e2e/scenarios/scroll.json", "tools/e2e/e2e.ts"]],
+    [["README.md", "docs/specs/x.md"]],
+    [[".github/workflows/e2e.yml"]],
+  ])("%j skips cargo", (files) => {
+    expect(needsRust(files).run).toBe(false);
+  });
+
+  it.each([
+    "tools/vimma-ctl/src/main.rs",
+    "tools/vimma-ctl/Cargo.lock",
+    "tools/vimma-ctl/rust-toolchain.toml",
+    "surfer.json",
+    "tests/contract/control/v2/hello.json",
+    "packages/vimma-core/src/control/protocol.mjs",
+    "docs/guide.md",
+    ".github/workflows/ci.yml",
+    "tools/license-check/cargo-license-check.ts",
+    "package.json",
+    "package-lock.json",
+    "newdir/file.txt",
+  ])("%s runs cargo, and the reason names it", (file) => {
+    const result = needsRust([file]);
+    expect(result.run).toBe(true);
+    expect(result.reason).toContain(file);
+  });
+
+  it("an empty change runs everything", () => {
+    expect(needsRust([]).run).toBe(true);
+  });
+});
+
 describe("classify", () => {
   const docs = ["docs/guide.md"];
 
@@ -84,11 +269,26 @@ describe("classify", () => {
     expect(classify({ event: "pull_request", files: docs }).docsOnly).toBe(true);
   });
 
+  it("a pull request answers each question from its files", () => {
+    expect(classify({ event: "pull_request", files: PR_1600 })).toMatchObject({
+      docsOnly: false,
+      browser: false,
+      rust: false,
+    });
+    expect(classify({ event: "pull_request", files: docs })).toMatchObject({
+      docsOnly: true,
+      browser: false,
+      rust: true,
+    });
+  });
+
   it.each(["push", "schedule", "workflow_dispatch", "workflow_call", "pull_request_target", ""])(
     "a %s run runs everything, whatever changed",
     (event) => {
-      const result = classify({ event, files: docs });
+      const result = classify({ event, files: PR_1600 });
       expect(result.docsOnly).toBe(false);
+      expect(result.browser).toBe(true);
+      expect(result.rust).toBe(true);
       expect(result.reason).toContain("pull_request");
     },
   );
@@ -160,7 +360,19 @@ describe("the command line", () => {
     const r = repo((dir) => writeFileSync(join(dir, "docs", "guide.md"), "# Guide\n\nMore.\n"));
     const res = run(r);
     expect(res.status).toBe(0);
-    expect(res.written).toBe("docs-only=true\n");
+    expect(res.written).toBe("docs-only=true\nbrowser-tests=false\nrust=true\n");
+  });
+
+  it("writes browser-tests=false and rust=false for a change the browser jobs never run", () => {
+    const r = repo((dir) => {
+      mkdirSync(join(dir, "tools", "release"));
+      writeFileSync(join(dir, "tools", "release", "announce.ts"), "export {};\n");
+      writeFileSync(join(dir, "README.md"), "# Vimma\n");
+    });
+    const res = run(r);
+    expect(res.status).toBe(0);
+    expect(res.written).toBe("docs-only=false\nbrowser-tests=false\nrust=false\n");
+    expect(res.stdout).toContain("browser-tests=false");
   });
 
   it("writes docs-only=false when code changed too", () => {
@@ -170,18 +382,18 @@ describe("the command line", () => {
     });
     const res = run(r);
     expect(res.status).toBe(0);
-    expect(res.written).toBe("docs-only=false\n");
+    expect(res.written).toBe("docs-only=false\nbrowser-tests=true\nrust=true\n");
     expect(res.stdout).toContain("tools/run.mjs");
   });
 
   it("sees a file renamed to Markdown as the code file it was", () => {
     const r = repo((dir) => git(dir, "mv", "tools/run.mjs", "docs/run.md"));
-    expect(run(r).written).toBe("docs-only=false\n");
+    expect(run(r).written).toBe("docs-only=false\nbrowser-tests=true\nrust=true\n");
   });
 
   it("writes docs-only=false for a push", () => {
     const r = repo((dir) => writeFileSync(join(dir, "docs", "guide.md"), "# Guide\n\nMore.\n"));
-    expect(run(r, "push").written).toBe("docs-only=false\n");
+    expect(run(r, "push").written).toBe("docs-only=false\nbrowser-tests=true\nrust=true\n");
   });
 
   it("refuses a base or head that is not a commit hash", () => {
@@ -218,13 +430,14 @@ describe("workflow wiring", () => {
   }
 
   const jobIf = (block: string) => /^ {4}if: (.*)/m.exec(block)?.[1] ?? "";
+  const RUST = "steps.classify.outputs.rust != 'false'";
 
   /** The classifier job: least privilege, the script from the base, never from the PR. */
   function expectChangesJob(text: string) {
     const changes = job(text, "changes");
     expect(changes).toMatch(/^ {4}permissions:\n {6}contents: read\n/m);
     expect(changes).toContain("persist-credentials: false");
-    expect(changes).toContain("docs-only: ${{ steps.classify.outputs.docs-only }}");
+    expect(changes).toContain("browser-tests: ${{ steps.classify.outputs.browser-tests }}");
     expectClassifyStep(changes);
   }
 
@@ -237,9 +450,11 @@ describe("workflow wiring", () => {
     expect(step?.text).not.toMatch(/node tools\/ci\/docs-only\.mjs/);
   }
 
-  const RUNS = "needs.changes.outputs.docs-only != 'true'";
+  // != 'false', not == 'true': a base whose classifier predates the output, or a classifier that
+  // failed, leaves it empty, and the job runs.
+  const RUNS = "needs.changes.outputs.browser-tests != 'false'";
 
-  it("e2e.yml: the mochitest job runs unless the change is docs-only", () => {
+  it("e2e.yml: the mochitest job runs unless the change cannot reach the browser", () => {
     const text = workflow("e2e.yml");
     expectChangesJob(text);
     const mochitest = job(text, "mochitest");
@@ -254,37 +469,7 @@ describe("workflow wiring", () => {
 
   // Spec macos-build, sub-PR 1: the same gate, and never on a version run (the upstream
   // autopilot, the Beta canary), so macOS never blocks a Linux release (decision 13).
-  it("e2e.yml: the macOS job runs unless docs-only, and only on the pinned version", () => {
-    const text = workflow("e2e.yml");
-    const mac = job(text, "mochitest-macos");
-    expect(mac).toMatch(
-      /^ {4}name: mochitest \(artifact build, macOS, shard \$\{\{ matrix.shard \}\}\/2\)$/m,
-    );
-    expect(mac).toMatch(/^ {4}runs-on: macos-15$/m);
-    expect(mac).toMatch(/^ {4}needs: changes$/m);
-    expect(jobIf(mac)).toBe(`\${{ !cancelled() && ${RUNS} && inputs.firefox-version == '' }}`);
-    // Informational by branch protection, not by hiding a failure.
-    expect(mac).not.toContain("continue-on-error");
-    const names = steps(mac).map((s) => s.text);
-    // npm test includes tools/bench's baseline test, which needs the branch's whole history.
-    const checkout = names.find((t) => t.includes("actions/checkout@")) ?? "";
-    expect(checkout).toMatch(/^ +fetch-depth: 0\b/m);
-    const at = (s: string) => names.findIndex((t) => t.includes(s));
-    const order = [
-      "run: npm ci",
-      "run: npm test",
-      "tools/upstream/firefox-source.sh",
-      "run: npm run import",
-      "node tools/artifact-build/artifact-build.ts",
-      "npm run mochitest -- --artifact",
-    ].map(at);
-    expect(order.every((i) => i >= 0)).toBe(true);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
-  });
-
-  // Spec macos-build, sub-PR 1: the same gate, and never on a version run (the upstream
-  // autopilot, the Beta canary), so macOS never blocks a Linux release (decision 13).
-  it("e2e.yml: the macOS job runs unless docs-only, and only on the pinned version", () => {
+  it("e2e.yml: the macOS job runs on browser changes, and only on the pinned version", () => {
     const text = workflow("e2e.yml");
     const mac = job(text, "mochitest-macos");
     expect(mac).toMatch(
@@ -353,16 +538,21 @@ describe("workflow wiring", () => {
       /npm run coverage/,
       /npm run bench/,
       /npm run license-check$/m,
+      /npx --no -- surfer license-check/,
+    ])
+      expect(step(re).cond).toBe(SKIP);
+    // cargo runs when one of vimma-ctl's inputs changed (needsRust), docs/guide.md included.
+    for (const re of [
+      /rustup toolchain install/,
       /cargo fmt --check/,
       /cargo clippy --locked/,
       /cargo test --locked/,
       /npm run license-check:crates/,
-      /npx --no -- surfer license-check/,
     ])
-      expect(step(re).cond).toBe(SKIP);
+      expect(step(re).cond, String(re)).toBe(RUST);
   });
 
-  it("ci.yml: vimma-ctl's clippy and tests also run on macOS, unless docs-only", () => {
+  it("ci.yml: vimma-ctl's clippy and tests also run on macOS, when its inputs changed", () => {
     const text = workflow("ci.yml");
     const mac = job(text, "vimma-ctl-macos");
     expect(mac).toMatch(/^ {4}runs-on: macos-15$/m);
@@ -371,11 +561,10 @@ describe("workflow wiring", () => {
     expect(mac).toMatch(/^ {4}permissions:\n {6}contents: read\n(?! {6})/m);
     expect(mac).toContain("persist-credentials: false");
     expectClassifyStep(mac);
-    const SKIP = "steps.classify.outputs.docs-only != 'true'";
     const all = steps(mac);
     for (const re of [/rustup toolchain install/, /cargo clippy --locked/, /cargo test --locked/]) {
       const found = all.find((s) => re.test(s.text));
-      expect(found?.cond, String(re)).toBe(SKIP);
+      expect(found?.cond, String(re)).toBe(RUST);
       expect(found?.text).toContain("working-directory: tools/vimma-ctl");
     }
   });
@@ -474,7 +663,7 @@ describe("the classify step, run as the workflows have it", () => {
     it("runs the base's docs-only.mjs", () => {
       const res = runStep(script, { "docs-only.mjs": CLASSIFIER });
       expect(res.status).toBe(0);
-      expect(res.written).toBe("docs-only=true\n");
+      expect(res.written).toBe("docs-only=true\nbrowser-tests=false\nrust=true\n");
       expect(res.copies).toEqual(["docs-only.mjs"]);
     });
 
@@ -493,7 +682,7 @@ describe("the classify step, run as the workflows have it", () => {
       };
       const res = runStep(script, { "docs-only.mjs": CLASSIFIER }, head);
       expect(res.status).toBe(0);
-      expect(res.written).toBe("docs-only=false\n");
+      expect(res.written).toBe("docs-only=false\nbrowser-tests=true\nrust=true\n");
       const none = runStep(script, { "other.mjs": "" }, head);
       expect(none.written).toBe("");
     });

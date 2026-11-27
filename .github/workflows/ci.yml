@@ -5,7 +5,9 @@
 # Issue #245: on a docs-only pull request (tools/ci/docs-only.mjs) the steps that Markdown cannot
 # affect skip with `if:`, and the job still reports. The steps that read Markdown (prettier,
 # md-wording, spec-lint, changelog-lint, security-links, gen-docs, test:py, the Vitest files in
-# MARKDOWN_TESTS) and commitlint always run.
+# MARKDOWN_TESTS) and commitlint always run. The cargo steps run when one of vimma-ctl's inputs
+# changed (rust, needsRust in the same file), on a docs-only pull request too: its tests read
+# docs/guide.md.
 name: CI
 
 on:
@@ -213,27 +215,27 @@ jobs:
       # vimma-ctl (ADR-011). On Linux, steps of the required check: see the note at the top.
       # The runner image ships rustup; it installs the toolchain pinned in rust-toolchain.toml.
       - name: Rust toolchain (tools/vimma-ctl/rust-toolchain.toml)
-        if: steps.classify.outputs.docs-only != 'true'
+        if: steps.classify.outputs.rust != 'false'
         working-directory: tools/vimma-ctl
         run: rustup toolchain install && cargo --version && cargo clippy --version
 
       - name: cargo fmt
-        if: steps.classify.outputs.docs-only != 'true'
+        if: steps.classify.outputs.rust != 'false'
         working-directory: tools/vimma-ctl
         run: cargo fmt --check
 
       - name: cargo clippy
-        if: steps.classify.outputs.docs-only != 'true'
+        if: steps.classify.outputs.rust != 'false'
         working-directory: tools/vimma-ctl
         run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: cargo test
-        if: steps.classify.outputs.docs-only != 'true'
+        if: steps.classify.outputs.rust != 'false'
         working-directory: tools/vimma-ctl
         run: cargo test --locked
 
       - name: Licences of the Rust crates
-        if: steps.classify.outputs.docs-only != 'true'
+        if: steps.classify.outputs.rust != 'false'
         run: npm run license-check:crates
 
       - name: MPL headers in src/
@@ -296,16 +298,16 @@ jobs:
 
       # The runner image ships rustup; it installs the toolchain pinned in rust-toolchain.toml.
       - name: Rust toolchain (tools/vimma-ctl/rust-toolchain.toml)
-        if: steps.classify.outputs.docs-only != 'true'
+        if: steps.classify.outputs.rust != 'false'
         working-directory: tools/vimma-ctl
         run: rustup toolchain install && cargo --version && cargo clippy --version
 
       - name: cargo clippy
-        if: steps.classify.outputs.docs-only != 'true'
+        if: steps.classify.outputs.rust != 'false'
         working-directory: tools/vimma-ctl
         run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: cargo test
-        if: steps.classify.outputs.docs-only != 'true'
+        if: steps.classify.outputs.rust != 'false'
         working-directory: tools/vimma-ctl
         run: cargo test --locked
