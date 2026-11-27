@@ -57,10 +57,11 @@ export const MARKDOWN_TESTS = Object.freeze([
  * @param {string} file
  */
 function notProse(file) {
-  if (!file.endsWith(".md")) return `${file} is not Markdown`;
-  if (GENERATED_MARKDOWN.includes(file)) return `${file} is generated (npm run gen-docs)`;
+  const name = JSON.stringify(file);
+  if (!file.endsWith(".md")) return `${name} is not Markdown`;
+  if (GENERATED_MARKDOWN.includes(file)) return `${name} is generated (npm run gen-docs)`;
   const dir = CODE_DIRS.find((d) => file.startsWith(d));
-  return dir ? `${file} is Markdown under ${dir}` : "";
+  return dir ? `${name} is Markdown under ${dir}` : "";
 }
 
 /**
@@ -77,14 +78,15 @@ export function isDocsOnly(files) {
 }
 
 /**
- * Paths that no job of e2e.yml reads: e2e.yml checks out the repository, runs npm ci, builds
+ * Paths that no required job of e2e.yml reads: e2e.yml checks out the repository, runs npm ci, builds
  * vimma-ctl, imports src/ and packages/ into the engine with tools/import, tools/sync-core.ts and
  * tools/version-files, builds with tools/artifact-build, and runs tools/mochitest.ts, tools/e2e,
  * tools/sites, tools/agent-bench, tools/branding and tools/upstream on tests/. An allowlist, so
  * that a path not named here, a new folder or file included, runs the browser jobs. The test of
  * this file fails when a file that runs them imports one of these. Besides these, prose Markdown,
  * every workflow but e2e.yml, and the Vitest files under tools/ that e2e.yml does not run
- * (BROWSER_TESTS) skip them.
+ * (BROWSER_TESTS) skip them. The informational macOS job also runs the whole Vitest suite
+ * (`npm test`); it skips with the mochitests, so such a change gets no Vitest run on macOS.
  */
 export const BROWSER_SKIP = Object.freeze({
   dirs: Object.freeze([
@@ -133,7 +135,6 @@ export const BROWSER_SKIP = Object.freeze({
     "tools/gen-mochitest-head.ts",
     "tools/gen-vimma-modules.ts",
     "tools/sjs-typecheck.ts",
-    "tools/tsconfig.json",
   ]),
 });
 
@@ -168,7 +169,10 @@ export function needsBrowser(files) {
   if (files.length === 0) return { run: true, reason: "no changed files: run everything" };
   const file = files.find((f) => !skipsBrowser(f));
   if (file !== undefined)
-    return { run: true, reason: `${file} can reach the browser build or its tests` };
+    return {
+      run: true,
+      reason: `${JSON.stringify(file)} can reach the browser build or its tests`,
+    };
   return { run: false, reason: `${files.length} file(s), none read by the browser jobs` };
 }
 
@@ -204,9 +208,12 @@ export function needsRust(files) {
   if (files.length === 0) return { run: true, reason: "no changed files: run everything" };
   for (const file of files) {
     if (RUST_INPUTS.some((p) => names(p, file)))
-      return { run: true, reason: `${file} is an input of vimma-ctl's cargo steps` };
+      return {
+        run: true,
+        reason: `${JSON.stringify(file)} is an input of vimma-ctl's cargo steps`,
+      };
     if (!skipsBrowser(file) && !RUST_SKIP.some((p) => names(p, file)))
-      return { run: true, reason: `${file} can reach vimma-ctl's build or tests` };
+      return { run: true, reason: `${JSON.stringify(file)} can reach vimma-ctl's build or tests` };
   }
   return { run: false, reason: `${files.length} file(s), none read by vimma-ctl's cargo steps` };
 }

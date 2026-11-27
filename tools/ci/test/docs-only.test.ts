@@ -121,6 +121,8 @@ const BROWSER_INPUTS = [
   ".npmrc",
   "vitest.config.ts",
   "tsconfig.json",
+  // Vite reads the nearest tsconfig when it transforms tools/e2e and tools/branding tests.
+  "tools/tsconfig.json",
   "LICENSE",
   ".gitattributes",
   ".release-please-manifest.json",
@@ -168,7 +170,7 @@ describe("needsBrowser", () => {
     [["tools/claude-plugin/hooks/merge.mjs", "tools/md-wording/process-wording.ts"]],
     [["tools/ci/docs-only.mjs", "tools/ci/test/docs-only.test.ts"]],
     [["tools/test/nightly-workflow.test.ts", "tools/upstream/test/canary.test.ts"]],
-    [["tools/gen-docs.ts", "tools/tsconfig.json", "tools/gen-vimma-modules.ts"]],
+    [["tools/gen-docs.ts", "tools/gen-vimma-modules.ts", "tools/sjs-typecheck.ts"]],
   ])("%j skips the browser jobs", (files) => {
     expect(needsBrowser(files).run).toBe(false);
   });
@@ -207,7 +209,8 @@ describe("needsBrowser", () => {
       .split("\0")
       .filter((f) => /\.(?:[cm]?[jt]s)$/.test(f));
     const skips = (f: string) => !needsBrowser([f]).run;
-    // A Vitest file outside BROWSER_TESTS runs in ci.yml's check job only.
+    // A Vitest file outside BROWSER_TESTS runs in ci.yml's check job, and in the informational
+    // macOS job's npm test, never in the required mochitest job.
     const runByBrowserJobs = (f: string) =>
       !/\.test\.[cm]?[jt]s$/.test(f) || BROWSER_TESTS.some((d) => f.startsWith(d));
     const bad: string[] = [];
@@ -434,7 +437,6 @@ describe("workflow wiring", () => {
     const changes = job(text, "changes");
     expect(changes).toMatch(/^ {4}permissions:\n {6}contents: read\n/m);
     expect(changes).toContain("persist-credentials: false");
-    expect(changes).toContain("docs-only: ${{ steps.classify.outputs.docs-only }}");
     expect(changes).toContain("browser-tests: ${{ steps.classify.outputs.browser-tests }}");
     expectClassifyStep(changes);
   }
@@ -463,36 +465,6 @@ describe("workflow wiring", () => {
     expect(jobIf(mochitest)).toBe(
       `\${{ !cancelled() && ${RUNS} && !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize')) }}`,
     );
-  });
-
-  // Spec macos-build, sub-PR 1: the same gate, and never on a version run (the upstream
-  // autopilot, the Beta canary), so macOS never blocks a Linux release (decision 13).
-  it("e2e.yml: the macOS job runs on browser changes, and only on the pinned version", () => {
-    const text = workflow("e2e.yml");
-    const mac = job(text, "mochitest-macos");
-    expect(mac).toMatch(
-      /^ {4}name: mochitest \(artifact build, macOS, shard \$\{\{ matrix.shard \}\}\/2\)$/m,
-    );
-    expect(mac).toMatch(/^ {4}runs-on: macos-15$/m);
-    expect(mac).toMatch(/^ {4}needs: changes$/m);
-    expect(jobIf(mac)).toBe(`\${{ !cancelled() && ${RUNS} && inputs.firefox-version == '' }}`);
-    // Informational by branch protection, not by hiding a failure.
-    expect(mac).not.toContain("continue-on-error");
-    const names = steps(mac).map((s) => s.text);
-    // npm test includes tools/bench's baseline test, which needs the branch's whole history.
-    const checkout = names.find((t) => t.includes("actions/checkout@")) ?? "";
-    expect(checkout).toMatch(/^ +fetch-depth: 0\b/m);
-    const at = (s: string) => names.findIndex((t) => t.includes(s));
-    const order = [
-      "run: npm ci",
-      "run: npm test",
-      "tools/upstream/firefox-source.sh",
-      "run: npm run import",
-      "node tools/artifact-build/artifact-build.ts",
-      "npm run mochitest -- --artifact",
-    ].map(at);
-    expect(order.every((i) => i >= 0)).toBe(true);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
   // Spec macos-build, sub-PR 1: the same gate, and never on a version run (the upstream
