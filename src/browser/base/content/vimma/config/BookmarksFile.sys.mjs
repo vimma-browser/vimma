@@ -1285,8 +1285,9 @@ export class BookmarksFileImpl {
     }
     const touched = new Set(rerun ? p.touched : [...p.touched, ...again.touched]);
     // The closing compare's apply is a put-back of its own: a change that landed during the
-    // first apply counts again for the loop guard (#1595).
-    const putBack = rerun ? [p.ops] : [p.ops, again.ops];
+    // first apply counts again for the loop guard (#1595). After a failed first apply it retries
+    // the same put-back, which counts once.
+    const putBack = rerun ? [p.ops] : failed ? [[...p.ops, ...again.ops]] : [p.ops, again.ops];
     if (!rerun) p = { ...again, removed: [...p.removed, ...again.removed], skipped: p.skipped };
     this.paused = null;
     /** @type {Base | null} */

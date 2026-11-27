@@ -1524,7 +1524,63 @@ add_task(async function a_put_back_by_the_closing_compare_counts_for_the_loop_gu
     "the third put-back pauses the table",
   );
   loop.stop();
-  await IOUtils.remove(base, { ignoreAbsent: true });
+  await IOUtils.remove(own, { recursive: true, ignoreAbsent: true });
+  await reset();
+});
+
+add_task(async function a_put_back_whose_first_apply_failed_counts_once_for_the_loop_guard() {
+  // The closing compare retries a put-back whose apply failed: that is the same put-back, so one
+  // Sync change counts once, and only the third change pauses the table.
+  const own = PathUtils.join(dir, "retry");
+  await IOUtils.makeDirectory(own);
+  /** @type {string[]} */
+  const said = [];
+  const loop = new BookmarksFileImpl({
+    configPath: () => PathUtils.join(own, "config.toml"),
+    basePath: PathUtils.join(own, "base.json"),
+    initComplete: () => Promise.resolve(),
+    say: (/** @type {string} */ text) => said.push(text),
+    mirrored: () => {},
+  });
+  await writeFile(
+    '[bookmarks.retry]\n"a" = "https://example.com/a"',
+    PathUtils.join(own, "bookmarks.toml"),
+  );
+  const apply = loop.apply.bind(loop);
+  let fail = false;
+  loop.apply = async (/** @type {Parameters<typeof apply>[0]} */ ops) => {
+    if (fail) {
+      fail = false;
+      throw new Error("a Places write failed");
+    }
+    await apply(ops);
+  };
+  loop.start();
+  loop.configRead(null, "none", "vimma");
+  await until(() => loop.ready, "started");
+  await loop.settledRuns();
+  await untilFolder("retry", ["a https://example.com/a"], "loaded");
+  const a = /** @type {string} */ (
+    (await PlacesUtils.bookmarks.fetch({ url: "https://example.com/a" }))?.guid
+  );
+  const sync = PlacesUtils.bookmarks.SOURCES.SYNC;
+  fail = true;
+  await PlacesUtils.bookmarks.update({ guid: a, title: "sync 1", source: sync });
+  await until(() => !fail, "the put-back's first apply failed");
+  await untilFolder("retry", ["a https://example.com/a"], "put back by the retry");
+  await loop.settledRuns();
+  await PlacesUtils.bookmarks.update({ guid: a, title: "sync 2", source: sync });
+  await untilFolder("retry", ["a https://example.com/a"], "put back, time 2");
+  await loop.settledRuns();
+  Assert.ok(!said.some((s) => s.includes("paused")), "two put-backs do not pause the table");
+  await PlacesUtils.bookmarks.update({ guid: a, title: "sync 3", source: sync });
+  await untilFolder("retry", ["a https://example.com/a"], "put back, time 3");
+  await until(
+    () => said.some((s) => s.includes('"retry" put back 3 times in 10 minutes; paused both ways')),
+    "the third put-back pauses the table",
+  );
+  loop.stop();
+  await IOUtils.remove(own, { recursive: true, ignoreAbsent: true });
   await reset();
 });
 
