@@ -984,3 +984,37 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`%s runs cargo, and the reason names it`](../../tools/ci/test/docs-only.test.ts),
   [`e2e.yml: the mochitest job runs unless the change cannot reach the browser`](../../tools/ci/test/docs-only.test.ts),
   [`ci.yml: Markdown checks run on every change, the rest unless docs-only`](../../tools/ci/test/docs-only.test.ts)
+- B23. claude.yml `spec` runs Claude Code with the Claude credential on a runner where Claude
+  edits files and runs the tests it writes, so what reaches the model and what those commands
+  see **must** stay narrow. The job runs only on an issue the maintainer opened and labelled
+  (someone else's request is copied into a new issue). Claude gets the issue's title and body
+  from the label event, saved to a file outside the checkout, and no `gh` tool: anyone can
+  comment on a public issue, and `gh issue view --comments` would hand those comments to the
+  model. The maintainer reads the issue's comments before adding `claude:go` and puts everything
+  Claude should follow in the body. The tool list is pinned whole: edits only inside the checkout
+  and never in `.git/`, reads only inside the checkout and the issue's folder (the default
+  permission mode's reach, with no bare `Read` rule), no MCP server and no web tool. The job sets
+  `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`, which claude-code-action turns on by itself only for
+  `allowed_non_write_users`: Claude Code then removes the Anthropic, cloud and Actions secrets
+  from its tools' environments, runs them under bubblewrap in their own PID namespace (so the
+  Claude process's `/proc/<pid>/environ` is out of reach) and keeps to the default permission
+  mode, where only the allowlist decides. The job's setup-node saves no npm cache: an `issues`
+  run uses `main`'s cache scope, which every pull request restores, and the commands Claude runs
+  can write `~/.npm`. The patch is made with `/usr/bin/git` with hooks and fsmonitor off, and a
+  patch holding what looks like an Anthropic credential is neither uploaded nor pushed.
+  **⚠ limit:** the scrub is best-effort, as the action's documentation says. Claude's own process
+  still holds the credential, so a model steered by the issue text could try to write it into a
+  committed file in another form than the one the patch check matches; the artifact (7 days)
+  and the `claude/spec-*` branch are public before anyone reviews them, and GitHub's secret
+  scanning, which reports Anthropic keys to Anthropic for revocation, is the backstop. The
+  commands Claude runs have network access and can read the job's `GITHUB_TOKEN`, which the
+  action stores in the checkout's `origin` URL; that token is read-only (contents and issues) and
+  expires with the job. The issue's author is the maintainer, so the body is the maintainer's
+  text up to the label event.
+  [`gives Claude no gh tool`](../../tools/test/claude-workflow.test.ts),
+  [`runs only on the maintainer's own issue`](../../tools/test/claude-workflow.test.ts),
+  [`saves only the issue's title and body before Claude, and the prompt names that file`](../../tools/test/claude-workflow.test.ts),
+  [`keeps the Claude credential from the commands Claude runs`](../../tools/test/claude-workflow.test.ts),
+  [`exports the patch with the system git and checks it for a credential before the upload`](../../tools/test/claude-workflow.test.ts),
+  [`the header asks the maintainer to read the issue's comments before claude:go`](../../tools/test/claude-workflow.test.ts),
+  [`a setup-node before a guard or a token-holding tool never caches by itself`](../../tools/test/runner-node.test.ts)

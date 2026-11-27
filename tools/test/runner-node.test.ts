@@ -29,6 +29,8 @@ const PRINTS_ONLY = ["fuzz.yml report"];
 // Jobs whose setup-node runs before a guard (the docs-only classifier, tree-covered), before a
 // tool that holds a write token, or before a tool whose answer a job with a write token acts on
 // (dependabot-automerge classify, run from the base commit), with no npm install after it.
+// claude.yml spec is listed too: commands Claude writes run after its `npm ci`, on main's cache
+// scope, which every pull request restores.
 // actions/setup-node caches automatically when package.json names npm in packageManager or
 // devEngines.packageManager (package-manager-cache, true by default), which would read the
 // checkout's package.json and .npmrc before the guard, restore ~/.npm and save a cache in the
@@ -36,6 +38,7 @@ const PRINTS_ONLY = ["fuzz.yml report"];
 // changes nothing here.
 const NO_AUTO_CACHE = [
   "ci.yml covered",
+  "claude.yml spec",
   "dependabot-automerge.yml classify",
   "downloads.yml collect",
   "mutation.yml report",
