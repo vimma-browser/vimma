@@ -20,7 +20,8 @@
 // - Modified clicks (issue #1568): Firefox opens a ctrl-, shift- or middle-clicked link itself
 //   (ClickHandlerChild sends it, ClickHandlerParent.contentAreaClick calls openLinkIn), outside
 //   the sandbox flags, and a page with the user's activation can script that click. The method
-//   is wrapped, so such a click in an agent tab opens nothing.
+//   is wrapped, so such a click in an agent tab opens nothing, and the status bar says so, at most
+//   once per tab every few seconds (issue #1591).
 // - Dragged links (issue #1592): a link dragged out of an agent tab and dropped on the tab strip,
 //   the new-tab button or anywhere else in the window's interface would open (or load) what the
 //   page put in the drag data; each window refuses such a drop, and an agent tab's own content
@@ -30,6 +31,8 @@
 //   quarantine folder (`downloadFolderOverride`), and AgentDownloads asks and checks each.
 // The agent container is WorkspaceStore.agent's, read at each check.
 
+import { CLICK_NOTICE_SHOW_MS, clickNoticeDue, droppedClickNotice } from "../core/agent-pages.mjs";
+import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { AgentDownloads } from "./AgentDownloads.sys.mjs";
 
@@ -309,6 +312,35 @@ function wrapChooser() {
 }
 
 /**
+ * When each agent tab last showed the dropped-click notice (issue #1591).
+ * @type {WeakMap<Element, number>}
+ */
+const clickNoticeShown = new WeakMap();
+
+/**
+ * Says in the tab's window that a dropped click opened nothing, and how to open the link, when the
+ * tab is the one in view, at most once per tab every CLICK_NOTICE_MS (core/agent-pages.mjs): a page can script such clicks, and
+ * must not fill the status bar. The text is fixed; the key comes from the user's keymap.
+ * @param {CanonicalBrowsingContext | null | undefined} top  the tab's top browsing context
+ */
+function tellDroppedClick(top) {
+  const browser = top?.embedderElement;
+  // topChromeWindow, not the browser's ownerGlobal, which Firefox renamed (documentGlobal).
+  const win = /** @type {BrowserWindow | null | undefined} */ (top?.topChromeWindow);
+  // Only for the tab in view: the user's activation outlasts a quick switch to another tab, and a
+  // background tab's notice would cover what the shown one put in the status bar.
+  if (!browser || !win || browser !== win.gBrowser?.selectedBrowser) return;
+  const now = Date.now();
+  if (!clickNoticeDue(clickNoticeShown.get(browser), now)) return;
+  clickNoticeShown.set(browser, now);
+  try {
+    VimmaHost.say(win, droppedClickNotice(VimmaHost.baseKeymap()), { ms: CLICK_NOTICE_SHOW_MS });
+  } catch (e) {
+    console.error("vimma agent pages: no notice for a dropped click", e);
+  }
+}
+
+/**
  * Modified clicks (security.md M10, issue #1568): ClickHandlerParent.contentAreaClick opens a
  * link clicked with ctrl or cmd, shift or the middle button with openLinkIn, which no sandbox
  * flag reaches; ClickHandlerChild accepts a page's scripted click while the page holds the
@@ -334,6 +366,7 @@ function guardModifiedClicks() {
       lazy.BrowserUtils.whereToOpenLink(data) !== "current"
     ) {
       console.warn("vimma: a modified click in an agent tab opens no new tab or window");
+      tellDroppedClick(top);
       return undefined;
     }
     return original.call(this, data);

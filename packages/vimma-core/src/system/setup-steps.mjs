@@ -12,7 +12,7 @@
 
 import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
-import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
+import { displayBinding, formatKey, parseBinding, parseKey } from "../keys/keys.mjs";
 import { firefoxShortcuts } from "../keys/firefox-keys.mjs";
 import { INSERT_EDIT_DOES, insertEditChords, nativeFieldKeys } from "../keys/editable.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
@@ -412,18 +412,21 @@ export function hintRow(layouts, selected, pressed) {
 /** @param {string} key  as keysFor shows it @returns {boolean} whether it works from a page */
 const fromPage = (key) => !key.includes(" [");
 
-/** @param {string} key  as keysFor shows it (`I`, `ctrl+b u`) @returns {string} as a sequence */
-const sequenceOf = (key) =>
-  key
-    .split(" ")
-    .map((chord) => {
-      try {
-        return formatKey(parseKey(chord));
-      } catch {
-        return chord;
-      }
-    })
-    .join(" ");
+/**
+ * @param {string} key  as keysFor shows it (`I`, `ctrl+b u`, `gF`) @returns {string} as a sequence
+ */
+const sequenceOf = (key) => {
+  // parseBinding, not one parseKey per word: keysFor keeps a run of plain characters together
+  // (`gF` is `g shift+f`). Shown keys carry no prefix or leader element: displayBinding spells
+  // them out.
+  try {
+    return parseBinding(key)
+      .map((e) => ("special" in e ? e.special : formatKey(e)))
+      .join(" ");
+  } catch {
+    return key;
+  }
+};
 
 /**
  * The keys of `action` that work from a page (decision 8, behaviour 17): keysFor without the
