@@ -75,8 +75,8 @@ which a file with `requestLongerTimeout(6)` can need. Re-measure from the `TEST_
 `TEST_END` lines of recent job logs (`gh run view --log`, attempts included with
 `gh api .../runs/<id>/jobs?filter=all`) when a file's slowest time comes within 1.5 times of 68 s.
 
-It runs on every pull request except a docs-only one, gated by the same `changes` job as the
-Linux job, and on a manual run without a `firefox-version`. It does not run when `upstream.yml` or
+It runs on every pull request except one the browser jobs skip ("Pull requests the browser jobs
+skip"), gated by the same `changes` job as the Linux job, and on a manual run without a `firefox-version`. It does not run when `upstream.yml` or
 `upstream-beta.yml` call `e2e.yml` with a version, because a macOS failure must never block a
 Linux release (spec macos-build, decision 13). It does not build `vimma-ctl`, so
 `browser_vimma_control.js` skips there; vimma-ctl's own macOS tests run in `ci.yml` (`vimma-ctl
