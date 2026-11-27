@@ -522,7 +522,7 @@ add_task(async function test_a_dropped_modified_click_shows_one_notice_per_tab()
   const { droppedClickNotice } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/core/agent-pages.mjs",
   );
-  const text = droppedClickNotice(VimmaHost.baseKeymap().keysFor("follow_link_new_tab"));
+  const text = droppedClickNotice(VimmaHost.baseKeymap());
   Assert.ok(text.includes("gF"), "sanity: the default key is named");
   /** @type {{ win: ChromeWindow, text: string }[]} */
   const said = [];
@@ -559,15 +559,29 @@ add_task(async function test_a_dropped_modified_click_shows_one_notice_per_tab()
   await done;
   Assert.equal(notices().length, 2, "another agent tab shows its own notice");
 
+  // The activation outlasts a quick switch away: a background tab's notice would cover what the
+  // shown tab put in the status bar.
+  const background = await tabIn(agent.userContextId);
+  const behind = handled(background.linkedBrowser);
+  await scripted(background.linkedBrowser, accel);
+  await behind;
+  Assert.equal(notices().length, 2, "a background agent tab shows none");
+  gBrowser.selectedTab = background;
+  const shown = handled(background.linkedBrowser);
+  await scripted(background.linkedBrowser, accel);
+  await shown;
+  Assert.equal(notices().length, 3, "nor does it use up its notice: once shown, it says so");
+  gBrowser.selectedTab = other;
+
   const mine = await tabIn(previous.userContextId);
   gBrowser.selectedTab = mine;
   const opened = BrowserTestUtils.waitForNewTab(gBrowser, "https://example.org/browser/?scripted");
   await scripted(mine.linkedBrowser, accel);
   BrowserTestUtils.removeTab(await opened);
-  Assert.equal(notices().length, 2, "a tab of another workspace shows none");
+  Assert.equal(notices().length, 3, "a tab of another workspace shows none");
 
   gBrowser.selectedTab = previous;
-  for (const t of [tab, other, mine]) BrowserTestUtils.removeTab(t);
+  for (const t of [tab, other, background, mine]) BrowserTestUtils.removeTab(t);
 });
 
 /**

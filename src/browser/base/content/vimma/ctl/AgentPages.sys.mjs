@@ -318,8 +318,8 @@ function wrapChooser() {
 const clickNoticeShown = new WeakMap();
 
 /**
- * Says in the tab's window that a dropped click opened nothing, and how to open the link, at most
- * once per tab every CLICK_NOTICE_MS (core/agent-pages.mjs): a page can script such clicks, and
+ * Says in the tab's window that a dropped click opened nothing, and how to open the link, when the
+ * tab is the one in view, at most once per tab every CLICK_NOTICE_MS (core/agent-pages.mjs): a page can script such clicks, and
  * must not fill the status bar. The text is fixed; the key comes from the user's keymap.
  * @param {CanonicalBrowsingContext | null | undefined} top  the tab's top browsing context
  */
@@ -327,13 +327,14 @@ function tellDroppedClick(top) {
   const browser = top?.embedderElement;
   // topChromeWindow, not the browser's ownerGlobal, which Firefox renamed (documentGlobal).
   const win = /** @type {BrowserWindow | null | undefined} */ (top?.topChromeWindow);
-  if (!browser || !win) return;
+  // Only for the tab in view: the user's activation outlasts a quick switch to another tab, and a
+  // background tab's notice would cover what the shown one put in the status bar.
+  if (!browser || !win || browser !== win.gBrowser?.selectedBrowser) return;
   const now = Date.now();
   if (!clickNoticeDue(clickNoticeShown.get(browser), now)) return;
   clickNoticeShown.set(browser, now);
   try {
-    const keys = VimmaHost.baseKeymap().keysFor("follow_link_new_tab");
-    VimmaHost.say(win, droppedClickNotice(keys), { ms: CLICK_NOTICE_SHOW_MS });
+    VimmaHost.say(win, droppedClickNotice(VimmaHost.baseKeymap()), { ms: CLICK_NOTICE_SHOW_MS });
   } catch (e) {
     console.error("vimma agent pages: no notice for a dropped click", e);
   }

@@ -151,6 +151,12 @@ describe("keys named on the page (decisions 8 and 9)", () => {
     ]);
   });
 
+  test("a key typed as a run of characters is named", () => {
+    // keysFor shows gF for the sequence g shift+f; it still runs the action from a page.
+    expect(stepKeys(keymap, "follow_link_new_tab")).toEqual(["gF"]);
+    expect(stepKeys(compileKeymap({ keys: { next_tab: ["[l"] } }), "next_tab")).toContain("[l");
+  });
+
   test("keys with a mode suffix are left out of a placeholder", () => {
     expect(keymap.keysFor("focus_urlbar")).toContain("I [visual]");
     expect(stepKeys(keymap, "focus_urlbar").some((k) => k.includes("["))).toBe(false);

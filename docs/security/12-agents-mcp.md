@@ -424,9 +424,10 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   both rates of M3, and accepts a page's scripted click while the page holds the user's
   activation, so `contentAreaClick` is wrapped and drops every such click whose tab (its top
   browsing context, so a frame's click too) is in the agent container, the user's own included
-  (issue #1568). A dropped click shows a status-bar notice in the tab's window that it opened
-  nothing and that `gF` (the key read from the keymap) or the context menu opens the link in a new
-  tab. Its text is fixed and carries no page text, title or URL, so a page cannot write to the
+  (issue #1568). A dropped click in the tab in view shows a status-bar notice in its window that
+  it opened nothing and that `gF` (the key read from the keymap) or the context menu opens the link
+  in a new tab; a background tab's click shows none, so it cannot cover the shown tab's notice. Its
+  text is fixed and carries no page text, title or URL, so a page cannot write to the
   status bar through it, and it comes at most once per tab every five seconds, so a page that
   scripts a burst of such clicks shows one notice and cannot silence another tab's (issue #1591).
   A link dragged out of an agent tab (its top browsing context, a frame's drag too, read from the

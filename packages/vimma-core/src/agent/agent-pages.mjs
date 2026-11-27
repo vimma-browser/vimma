@@ -6,6 +6,10 @@
 // #1591): ctrl or cmd, shift, the middle button and alt-save open nothing there, which would
 // otherwise look like a dead click. Pure: AgentPages shows it.
 
+import { stepKeys } from "../system/setup-steps.mjs";
+
+/** @typedef {import("../keys/keymap.mjs").Keymap} Keymap */
+
 /**
  * At most one notice per tab in this interval. A page can script such clicks while it holds the
  * user's activation, so a burst must not fill the status bar; per tab, because a page reaches only
@@ -20,11 +24,11 @@ export const CLICK_NOTICE_SHOW_MS = 4000;
 /**
  * The notice's text. It is fixed, apart from the key, which is the user's own: it carries no page
  * text, title or URL, which are the page's to choose.
- * @param {readonly string[]} keys  the keys of `follow_link_new_tab` (Keymap.keysFor); the first
- *   that normal mode reaches from a page is named (a modal binding carries its mode in brackets)
+ * @param {Keymap} keymap  the keymap in force; the first key of `follow_link_new_tab` that runs it
+ *   from a page is named (stepKeys: no other mode's binding, none that normal mode rebinds)
  */
-export function droppedClickNotice(keys) {
-  const key = keys.find((k) => !k.includes("["));
+export function droppedClickNotice(keymap) {
+  const key = stepKeys(keymap, "follow_link_new_tab")[0];
   const how = key ? `${key} or the context menu` : "the context menu";
   return `the click opened nothing: in agent tabs, open a link in a new tab with ${how}`;
 }
