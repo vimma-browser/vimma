@@ -10,6 +10,10 @@ import { E2E_FONTCONFIG } from "../launcher.ts";
 import { defined } from "../../test/defined.ts";
 
 const CLI = fileURLToPath(new URL("../e2e.ts", import.meta.url));
+// The fixture page server's fixed port (pages.ts, PAGE_PORT) is shared with the other test files
+// vitest runs in parallel and with any e2e run on the machine: a CLI that finds it taken exits 2
+// before its first scenario (#1593). Only the port tests below ask for a given port.
+const ANY_PORT = ["--port", "0"];
 // macOS has no /bin/false or /bin/true, only /usr/bin's.
 const BIN = process.platform === "darwin" ? "/usr/bin" : "/bin";
 
@@ -58,7 +62,7 @@ describe("npm run e2e -- --report-json", () => {
         CLI,
         ...["--scenarios", scenarios, "--baselines", join(dir, "shots"), "--out", join(dir, "o")],
         ...["--build", `${BIN}/false`, "--vimma-ctl", `${BIN}/true`, "--discovery-timeout", "1"],
-        ...["--report-json", out],
+        ...["--report-json", out, ...ANY_PORT],
       ],
       { encoding: "utf8", env: { ...process.env, DISPLAY: ":0" }, timeout: 30_000 },
     );
@@ -123,6 +127,7 @@ describe("npm run e2e -- --headless", () => {
         CLI,
         ...["--scenarios", scenarios, "--baselines", shots, "--out", out, "--headless"],
         ...["--build", fakeBrowser, "--vimma-ctl", ctl, "--discovery-timeout", "10"],
+        ...ANY_PORT,
       ],
       { encoding: "utf8", env: { ...process.env, CI: "true" }, timeout: 60_000 },
     );
@@ -176,6 +181,7 @@ describe("npm run e2e: the scenarios' fonts", () => {
         ...["--scenarios", scenarios, "--baselines", join(dir, "shots"), "--out", join(dir, "o")],
         ...["--headless", "--keep"],
         ...["--build", fakeBrowser, "--vimma-ctl", ctl, "--discovery-timeout", "10"],
+        ...ANY_PORT,
       ],
       {
         encoding: "utf8",
