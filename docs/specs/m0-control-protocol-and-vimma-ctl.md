@@ -510,7 +510,7 @@ vimma-ctl [--profile DIR] mcp                              # MCP over stdio (vim
 The timeout (default 5 s, at most 3600 s) covers connect, handshake and the response; it is
 capped so the deadline cannot overflow. While the discovery file lists `agent`, the welcome of a
 `full` connection may wait up to 310 s for the user's answer, and then the command gets its own
-timeout. `vimma-ctl mcp` takes no `--timeout` or `--json`: each of its calls waits for the user,
+timeout. (Since changed: also while the file says `"fullAsks": true`.) `vimma-ctl mcp` takes no `--timeout` or `--json`: each of its calls waits for the user,
 and it runs until its stdin closes (exit 0); [vimma-mcp](vimma-mcp.md) describes it.
 
 ### What the server must do

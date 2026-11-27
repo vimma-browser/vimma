@@ -160,7 +160,7 @@ async function fullHandshake(auth = {}) {
   return { c, reply };
 }
 
-add_task(async function test_full_control_asks_only_while_mcp_is_on() {
+add_task(async function test_full_control_asks_while_mcp_is_on() {
   Services.prefs.setIntPref(ARMING, 100);
   await setSwitches({ control: true });
   const quiet = await fullHandshake();

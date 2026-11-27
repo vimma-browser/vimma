@@ -435,6 +435,9 @@ addTidyTask(async function test_full_control_asks_while_an_agent_ticket_is_live(
   const { ticket } = await AgentChat.issueTicket(c.id, "claude-code");
   await VimmaControl.settled();
   Assert.equal((await readDiscovery()).fullAsks, true, "a live ticket: the file says it asks");
+  const file = await IOUtils.readUTF8(DISCOVERY);
+  Assert.ok(!file.includes(ticket), "and never names the ticket (M53)");
+  Assert.ok(!file.includes(await hmacHex(ticket, "vimma-ticket\0")), "nor its id");
   Assert.ok(!quiet.client.closed, "a full connection open before the ticket stays open");
   quiet.client.close();
 

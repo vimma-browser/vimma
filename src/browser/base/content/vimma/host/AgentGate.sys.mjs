@@ -370,7 +370,8 @@ export const AgentGate = {
   },
 
   /**
-   * A new full-control connection while MCP is on (decision 29 C): resolves once the user answered
+   * A new full-control connection while MCP is on or an agent CLI's ticket is live (decision
+   * 29 C): resolves once the user answered
    * yes, or with the denial (no, `x`, timeout, a full queue). Nothing is remembered: the next
    * connection asks again.
    * @param {string | null} code  the code the client printed on its terminal, shown in the

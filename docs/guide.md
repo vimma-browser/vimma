@@ -3923,7 +3923,10 @@ nothing is remembered: the next one asks again. The line shows the code `vimma-c
 (`vimma-ctl with code 7F3K wants full control`): answer `y` only if it is the same, since
 another program could have asked at the same moment. `vimma-ctl` waits for your answer and says so; if refused, it
 prints `full control refused` and exits 4. With agents off and no agent CLI task running,
-nothing asks.
+nothing asks. Scripts that use full control while a task runs, such as the Omarchy hook's
+`vimma-ctl reload-theme`, ask too. A command an agent CLI left running after its task ended is
+not asked about, so keep full control off, or on for a while with `:control on 15`, while you
+use agent CLIs.
 
 `:control on 15` turns full control (the pref `vimma.control.enabled`) on for 15 minutes after a
 `y/N`, and then off again, even across a restart; `:control off` turns it off now, and `:control`

@@ -805,7 +805,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   model never to ask for full control or `vimma-ctl send-keys`. An agent that wants keys in the
   user's window has to talk the user into full control, so the questions state what a yes gives
   away. [`test_control_on_says_it_reaches_beyond_agent_while_mcp_is_on`](../../tests/browser/browser_vimma_mcp_control.js),
-  [`test_full_control_asks_only_while_mcp_is_on`](../../tests/browser/browser_vimma_mcp_control.js),
+  [`test_full_control_asks_while_mcp_is_on`](../../tests/browser/browser_vimma_mcp_control.js),
   [`while MCP is on, the question says full control reaches beyond the agent workspace`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`full control names the agent workspace it reaches beyond`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`the desktop notification names the client and the kind of request, never a URL`](../../packages/vimma-core/test/agent-prompt.test.ts),

@@ -1240,7 +1240,10 @@ class Server {
     this.token = token;
     /** The roles served now; a hello for any other is told `role-off`. */
     this.roles = roles;
-    /** Whether the discovery file says a new full connection asks (`fullAsks`). */
+    /**
+     * Whether the discovery file says a new full connection asks (`fullAsks`); null while it
+     * is being written. @type {boolean | null}
+     */
     this.fullAsks = false;
     /** Authenticated. @type {Set<Connection>} */
     this.connections = new Set();
@@ -1391,9 +1394,12 @@ async function startServer() {
     // the token and port stay.
     if (server.roles.join() === roles.join() && server.fullAsks === fullAsks()) return;
     server.setRoles(roles);
-    server.fullAsks = fullAsks();
+    // Recorded only once the file says it, so a failed write is tried again on the next start.
+    const asks = fullAsks();
+    server.fullAsks = null;
     if (roles.length) await writeDiscovery(discoveryOf(server));
     else removeDiscoveryFile();
+    server.fullAsks = asks;
     return;
   }
   // A directory where the file goes keeps the switches' roles off (S6); tickets need no file.
