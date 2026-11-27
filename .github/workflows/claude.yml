@@ -9,13 +9,15 @@
 #   answers, reviews and comments, but cannot push.
 # - `spec`: only when the repository owner adds `claude:go` to a `spec` issue. Claude edits and
 #   commits with a read-only token and a short tool allowlist; the commits leave as a patch.
-#   Claude gets the issue's title and body as they stood at the label event, saved to a file, and
-#   no gh tool: anyone can comment on an issue, so the maintainer reads the issue's comments
-#   before adding `claude:go` and edits the body to hold everything Claude should follow.
-#   The commands Claude runs (its own tests among them) do not see the Claude credential:
-#   CLAUDE_CODE_SUBPROCESS_ENV_SCRUB removes it from their environment and bubblewrap runs them
-#   in their own PID namespace. setup-node saves no npm cache, so a run cannot seed one that
-#   `main`'s other jobs restore (docs/security/14-build-and-release-supply-chain.md, B23).
+#   The issue must be the maintainer's own (copy someone else's request into a new issue).
+#   Claude gets its title and body as they stood at the label event, saved to a file, and no gh
+#   tool: anyone can comment on an issue, so the maintainer reads the issue's comments before
+#   adding `claude:go` and puts everything Claude should follow in the body. Claude's file
+#   tools reach only the checkout (not `.git/`) and that file. The commands Claude runs (its
+#   own tests among them) do not see the Claude credential: CLAUDE_CODE_SUBPROCESS_ENV_SCRUB
+#   removes it from their environment and bubblewrap runs them in their own PID namespace.
+#   setup-node saves no npm cache, so a run cannot seed one that `main`'s other jobs restore
+#   (docs/security/14-build-and-release-supply-chain.md, B23).
 # - `spec-pr`: no Claude. Applies the patch, pushes `claude/spec-*` and opens a draft PR (`bot`).
 #   GITHUB_TOKEN cannot push workflow changes, and PRs it opens do not trigger CI: mark the PR
 #   ready for review (or `gh workflow run ci.yml --ref <branch>`) to run CI.
@@ -84,6 +86,7 @@ jobs:
       github.event_name == 'issues' && github.event.action == 'labeled' &&
       github.event.label.name == 'claude:go' &&
       github.event.sender.login == 'JRanne' &&
+      github.event.issue.user.login == 'JRanne' &&
       contains(github.event.issue.labels.*.name, 'spec')
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -134,7 +137,7 @@ jobs:
 
       - name: Save the issue's title and body
         if: env.HAS_CLAUDE_AUTH == 'true'
-        # From the label event, not the API: the text the maintainer saw, without the comments.
+        # From the label event, not the API: the text as of the label, without the comments.
         run: |
           mkdir -p "$RUNNER_TEMP/spec-issue"
           jq '{title: .issue.title, body: .issue.body}' "$GITHUB_EVENT_PATH" \
@@ -165,13 +168,21 @@ jobs:
             --max-turns 100
             --permission-mode default
             --add-dir ${{ runner.temp }}/spec-issue
-            --allowedTools "Read,Glob,Grep,LS,Edit,MultiEdit,Write,Bash(npm test),Bash(npm run lint),Bash(npm run typecheck),Bash(npm run coverage),Bash(npm run format),Bash(npm run gen-docs),Bash(npm run test:py),Bash(git status),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*)"
+            --disallowedTools "Edit(./.git/**)"
+            --allowedTools "Edit(./**),Bash(npm test),Bash(npm run lint),Bash(npm run typecheck),Bash(npm run coverage),Bash(npm run format),Bash(npm run gen-docs),Bash(npm run test:py),Bash(git status),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*)"
 
       - name: Export commits as a patch
         id: patch
         if: env.HAS_CLAUDE_AUTH == 'true'
         run: |
-          git format-patch --stdout origin/main..HEAD > spec.patch
+          # Claude's commands may have changed .git/config or put a git earlier on PATH.
+          /usr/bin/git -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+            format-patch --stdout origin/main..HEAD > spec.patch
+          # Before the upload: an artifact of a public repository is open to any signed-in user.
+          if grep -qE 'sk-ant-[A-Za-z0-9_-]{8}' spec.patch; then
+            echo "::error::The patch holds what looks like an Anthropic credential; not uploaded."
+            exit 1
+          fi
           if [ ! -s spec.patch ]; then
             echo "::error::Claude made no commits for #$ISSUE."
             exit 1

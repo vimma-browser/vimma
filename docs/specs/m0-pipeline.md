@@ -71,8 +71,8 @@ new Firefox releases arrive as PRs.
 status`, `gh issue view`); no `Bash(git:*)`, `Bash(node:*)`, `Bash(npm:*)`. Its commits leave
     as a patch artifact. (Since changed: `gh issue view` left the allowlist, since it also prints
     the comments anyone can write; Claude reads the issue's title and body from a file saved from
-    the label event, its tools run with the Claude credential scrubbed, and the job saves no npm
-    cache. docs/security/14-build-and-release-supply-chain.md, B23.)
+    the label event, the issue must be the maintainer's own, its tools run with the Claude
+    credential scrubbed, and the job saves no npm cache. docs/security/14-build-and-release-supply-chain.md, B23.)
   - `spec-pr` (no Claude): `git am` with hooks off, force-push `claude/spec-<issue>`, draft PR
     labelled `bot`. GITHUB_TOKEN cannot change `.github/workflows`.
   - PRs opened with GITHUB_TOKEN (claude.yml, upstream.yml) do not trigger CI. ci.yml now also

@@ -21,15 +21,20 @@ all work with a notice.
 Tokens: because `github_token: github.token` is passed, each job's `permissions:` block is the
 token Claude gets (without it the action would use the Claude app's installation token with
 contents, pull-requests and issues write). `mention`: contents read, pull-requests and issues
-write, actions read. `spec` (Claude): contents and issues read; tools limited to file edits,
-`npm test`/`lint`/`typecheck`/`coverage`/`format`/`gen-docs`/`test:py`, `git add/commit/diff/
-log/status`, with no `gh` tool. Claude reads the issue's title and body from a file the job saves
-from the label event, never its comments: read the comments before adding `claude:go`, and put
-everything Claude should follow in the body. Tests Claude writes still run as code on that
-runner, which is why its token is read-only; `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` keeps the Claude
-credential out of their environment, under bubblewrap, and setup-node saves no npm cache
-(docs/security/14-build-and-release-supply-chain.md, B23). `spec-pr` (no Claude): contents and pull-requests write;
-GITHUB_TOKEN cannot change `.github/workflows`. No other secret is passed.
+write, actions read. `spec` (Claude): contents and issues read; it runs only on an issue you
+opened yourself (copy someone else's request into a new issue). Its tools: edits inside the
+checkout but not `.git/`, `npm test`/`lint`/`typecheck`/`coverage`/`format`/`gen-docs`/`test:py`
+and `git add/commit/diff/log/status`, with no `gh` tool. Claude reads the issue's title and body
+from a file the job saves from the label event, never its comments: read the comments before
+adding `claude:go`, and put everything Claude should follow in the body. Tests Claude writes
+still run as code on that runner, which is why its token is read-only;
+`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` keeps the Claude credential out of their environment, under
+bubblewrap, and setup-node saves no npm cache (docs/security/14-build-and-release-supply-chain.md,
+B23). Under bubblewrap Claude's commands cannot write `package.json`, the lockfile or
+`node_modules/.bin`, so a spec that adds an npm script needs Claude's edit tool for it, and a
+test that needs network or a port may behave differently from a local run. `spec-pr` (no
+Claude): contents and pull-requests write; GITHUB_TOKEN cannot change `.github/workflows`. No
+other secret is passed.
 Both Claude jobs name a permission mode (`mention` acceptEdits, `spec` default, which the scrub
 requires): since action 1.0.273 a session otherwise starts in auto mode, where a safety review
 can allow a tool call no allow rule covers.
