@@ -1,0 +1,12 @@
+{
+  "description": "The discovery file says a new full connection asks first (MCP on, or an agent CLI's ticket live), so vimma-ctl sends its code and waits for the answer",
+  "kind": "discovery",
+  "message": {
+    "protocol": 2,
+    "port": 43817,
+    "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "pid": 12345,
+    "roles": ["full"],
+    "fullAsks": true
+  }
+}

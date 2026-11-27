@@ -274,6 +274,11 @@ function checkDiscovery(m, errors) {
   if ("version" in m && !isCtlVersion(m.version)) {
     errors.push("version must be a Vimma version (X.Y.Z)");
   }
+  // A new full connection asks the user first (MCP on, or an agent CLI's ticket live), so
+  // vimma-ctl sends its code and waits for the answer (docs/specs/vimma-mcp.md decision 29).
+  if ("fullAsks" in m && typeof m.fullAsks !== "boolean") {
+    errors.push("fullAsks must be a boolean");
+  }
 }
 
 /** @param {Obj} args @param {string[]} errors */

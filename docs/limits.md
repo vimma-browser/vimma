@@ -248,7 +248,10 @@ the [user guide](guide.md); planned work is on the
 - The cost an agent CLI reports is its own estimate, at list prices even on a plan, and
   `max_cost` does not apply to it.
 - A shell command an agent CLI started may outlive a stop, since Vimma stops the CLI's own
-  process and not the commands it started.
+  process and not the commands it started. A new full-control connection asks only while the
+  task's ticket is live, so such a command can use `vimma-ctl send-keys` without a question
+  once the task has ended, if full control is on: keep `vimma.control.enabled` off, or on for a
+  while with `:control on N`, while you use agent CLIs.
 - An agent CLI runs in a folder in `$XDG_RUNTIME_DIR`, a small in-memory file system, so a CLI
   that writes large files there can fill it. Where Vimma falls back to
   `~/.cache/vimma-agent-cli`, the instruction files in your home folder apply to every run, as they do to the CLI in a terminal.

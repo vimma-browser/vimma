@@ -133,6 +133,12 @@ let connectionIds = 0;
 /** Live tickets, by id (HMAC-SHA256(ticket, TICKET_CONTEXT)). @type {Map<string, Ticket>} */
 const tickets = new Map();
 /**
+ * A new full connection asks the user first while an agent may be running with a shell that can
+ * read the token (vimma-mcp decision 29): MCP is on, or an agent CLI's ticket is live, since a
+ * CLI the built-in agent runs has its shell with MCP off too. With neither, nothing asks.
+ */
+const fullAsks = () => McpHost.state.enabled || tickets.size > 0;
+/**
  * Request ids that a ticket connection's commands run under in its conversation's state:
  * negative, so they never meet the ids the conversation's own model loop uses (AgentChat).
  */
@@ -866,9 +872,9 @@ class Connection {
       return;
     }
     srv.connections.add(this);
-    // While MCP is on, a new full connection asks first (vimma-mcp decision 29 C): an agent with
-    // a shell can read the token. The question waits as long as the agent role's do.
-    if (this.role === "full" && McpHost.state.enabled) {
+    // While an agent may be running, a new full connection asks first (vimma-mcp decision 29 C):
+    // an agent with a shell can read the token. The question waits as long as the agent role's do.
+    if (this.role === "full" && fullAsks()) {
       if (this.timer !== null) lazy.clearTimeout(this.timer);
       this.timer = null;
       // The code the client printed, shown in the question (security.md S13).
@@ -1234,6 +1240,11 @@ class Server {
     this.token = token;
     /** The roles served now; a hello for any other is told `role-off`. */
     this.roles = roles;
+    /**
+     * Whether the discovery file says a new full connection asks (`fullAsks`); null while it
+     * is being written. @type {boolean | null}
+     */
+    this.fullAsks = false;
     /** Authenticated. @type {Set<Connection>} */
     this.connections = new Set();
     /** Waiting for a hello, oldest first. @type {Set<Connection>} */
@@ -1363,6 +1374,8 @@ function discoveryOf(/** @type {Server} */ s) {
     pid: Services.appinfo.processID,
     roles: s.roles,
     ...(isCtlVersion(version) ? { version } : {}),
+    // So vimma-ctl sends its code and waits for the answer (decision 29).
+    ...(fullAsks() ? { fullAsks: true } : {}),
   };
 }
 
@@ -1377,11 +1390,16 @@ async function startServer() {
   const roles = enabledRoles();
   if (quitting || (!roles.length && !tickets.size)) return;
   if (server) {
-    // Running: only the roles changed. The file says so; the token and port stay.
-    if (server.roles.join() === roles.join()) return;
+    // Running: only the roles, or whether a full connection asks, changed. The file says so;
+    // the token and port stay.
+    if (server.roles.join() === roles.join() && server.fullAsks === fullAsks()) return;
     server.setRoles(roles);
+    // Recorded only once the file says it, so a failed write is tried again on the next start.
+    const asks = fullAsks();
+    server.fullAsks = null;
     if (roles.length) await writeDiscovery(discoveryOf(server));
     else removeDiscoveryFile();
+    server.fullAsks = asks;
     return;
   }
   // A directory where the file goes keeps the switches' roles off (S6); tickets need no file.
@@ -1389,6 +1407,7 @@ async function startServer() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   const s = new Server(hex(bytes), roles);
+  s.fullAsks = fullAsks();
   if (roles.length) {
     try {
       await writeDiscovery(discoveryOf(s));
@@ -1414,7 +1433,8 @@ function revoke(ticket) {
     if (c.ticket === ticket) c.close();
   }
   ticket.live?.close();
-  if (!tickets.size) enqueue(() => (wanted() ? undefined : stopServer()));
+  // The last ticket gone: the listener stops, or the file stops saying a full connection asks.
+  if (!tickets.size) enqueue(() => (wanted() ? startServer() : stopServer()));
 }
 
 /**

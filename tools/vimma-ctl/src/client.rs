@@ -162,11 +162,13 @@ impl Client {
         if !crate::hmac::constant_time_eq(challenge.proof.as_bytes(), expected.as_bytes()) {
             return Err(impostor(discovery));
         }
-        // 3. auth: now the token; 4. welcome. While MCP is on (the `agent` role is served), Vimma
-        // asks the user before it welcomes a full connection: wait for that answer, then give
-        // the command its own timeout.
+        // 3. auth: now the token; 4. welcome. While an agent may be running (MCP is on, or an
+        // agent CLI's ticket is live: the file's `fullAsks`), Vimma asks the user before it
+        // welcomes a full connection: wait for that answer, then give the command its own
+        // timeout. An older Vimma writes no `fullAsks` and asks while it serves the agent role.
         // Only a full connection is asked about; an agent's requests are asked one by one.
-        let asks = role == Role::Full && protocol >= 2 && discovery.roles.contains(&Role::Agent);
+        let mcp_on = discovery.roles.contains(&Role::Agent);
+        let asks = role == Role::Full && protocol >= 2 && (mcp_on || discovery.full_asks);
         if discovery.ticket {
             client.send(&protocol::auth_ticket(&discovery.token))?;
         } else if asks {
@@ -177,8 +179,13 @@ impl Client {
             auth_then_code(
                 || client.send(&auth),
                 || {
+                    let why = if mcp_on {
+                        "MCP is on"
+                    } else {
+                        "an agent may be running"
+                    };
                     eprintln!(
-                        "vimma-ctl: MCP is on: answer y in Vimma to let this vimma-ctl in (full \
+                        "vimma-ctl: {why}: answer y in Vimma to let this vimma-ctl in (full \
                          control); Vimma asks with code {code}: answer y only if it shows {code}"
                     );
                 },
@@ -562,6 +569,7 @@ mod tests {
             pid: 1,
             roles: vec![Role::Full],
             version: None,
+            full_asks: false,
             ticket: false,
         };
         let result = Client::connect(&discovery, Duration::MAX);

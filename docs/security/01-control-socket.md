@@ -161,19 +161,27 @@ only the agent workspace, and each request waits for your yes or runs under a gr
   [`test_each_role_runs_only_its_commands`](../../tests/browser/browser_vimma_mcp_agent.js),
   [`says_the_control_socket_is_off_when_only_mcp_is_on`](../../tools/vimma-ctl/tests/cli.rs),
   [`test_ticket_listener_with_mcp_off_takes_only_tickets`](../../tests/browser/browser_vimma_agent_cli.js)
-- S13. While MCP is on, a new `full` connection **must** get its welcome only after the user's
-  `y` in the agent question line (no grant covers it, one waits at a time, three noes mute the
-  question for a minute); a no, a timeout or a closed connection refuses it (`denied`). An agent
-  with a shell can read the token, so the token alone **never** gives it keys in your window.
-  With MCP off nothing asks. While MCP is on, `vimma-ctl` sends a 4-character code in its auth
-  and only then prints it, so a process reading your terminal learns it too late to race it in,
-  and the question shows it (`vimma-ctl with code 7F3K wants full control`; a client
-  without one is "a client with no code"), so a racing client's question is told from the one
-  the user ran; the question also says what it reaches (M22). `:control on <minutes>` **must**
-  turn full control off when its time is up, also across a restart, and **must** fail closed: an end time that is not a time ahead within 1441
-  minutes turns it off.
-  [`test_full_control_asks_only_while_mcp_is_on`](../../tests/browser/browser_vimma_mcp_control.js),
+- S13. While MCP is on, or while an agent CLI's one-time ticket is live (M51), a new `full`
+  connection **must** get its welcome only after the user's `y` in the agent question line (no
+  grant covers it, one waits at a time, three noes mute the question for a minute); a no, a
+  timeout or a closed connection refuses it (`denied`). An agent with a shell can read the
+  token, so while MCP is on or a ticket is live the token alone **never** gives it keys in your
+  window; a CLI the built-in agent runs has a shell with MCP off too. A command the CLI left
+  running after its task ended is not asked about (limits.md). With MCP off and no live ticket
+  nothing asks. The discovery file says `"fullAsks": true` while a new full connection asks, so
+  `vimma-ctl` sends its code and waits for the answer; the server asks whatever the file says.
+  While a new full connection asks (`fullAsks`, or `agent` listed), `vimma-ctl` sends a
+  4-character code in its auth and only then prints it, so a process reading your terminal
+  learns it too late to race it in, and the question shows it (`vimma-ctl with code 7F3K wants
+full control`; a client without one is "a client with no code"), so a racing client's
+  question is told from the one the user ran; the question also says what it reaches (M22).
+  `:control on <minutes>` **must** turn full control off when its time is up, also across a
+  restart, and **must** fail closed: an end time that is not a time ahead within 1441 minutes
+  turns it off.
+  [`test_full_control_asks_while_mcp_is_on`](../../tests/browser/browser_vimma_mcp_control.js),
+  [`test_full_control_asks_while_an_agent_ticket_is_live`](../../tests/browser/browser_vimma_agent_cli.js),
   [`prints_and_sends_a_code_while_mcp_is_on`](../../tools/vimma-ctl/tests/cli.rs),
+  [`sends_a_code_and_waits_when_the_file_says_full_control_asks`](../../tools/vimma-ctl/tests/cli.rs),
   [`the_code_is_shown_only_after_its_auth_was_sent`](../../tools/vimma-ctl/src/client.rs),
   [`a time ahead, within 1440 minutes and a minute: control stays on until then`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`test_control_on_minutes_turns_itself_off`](../../tests/browser/browser_vimma_mcp_control.js),

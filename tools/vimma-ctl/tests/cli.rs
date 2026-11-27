@@ -773,6 +773,32 @@ fn prints_and_sends_a_code_while_mcp_is_on() {
     );
 }
 
+// docs/specs/vimma-mcp.md decision 29 (since changed): while an agent CLI's ticket is live, Vimma
+// asks before a full connection with MCP off too, and its discovery file says so (`fullAsks`):
+// vimma-ctl sends a code, prints it, and waits for the answer past its own --timeout.
+#[test]
+fn sends_a_code_and_waits_when_the_file_says_full_control_asks() {
+    let server = asking_server(std::time::Duration::from_millis(2500), WELCOME_V2);
+    let port = read_port(&server.profile);
+    write_discovery_text(
+        &server.profile,
+        &format!(
+            r#"{{"protocol":2,"port":{port},"token":"{TOKEN}","pid":1,"roles":["full"],"fullAsks":true}}"#
+        ),
+        0o600,
+    );
+    let out = vimma_ctl(&server.profile, &["--timeout", "1", "state", "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(
+        err.contains("an agent may be running: answer y in Vimma to let this vimma-ctl in"),
+        "{err}"
+    );
+    assert!(err.contains("answer y only if it shows"), "{err}");
+    let lines = server.lines();
+    assert!(lines[1].starts_with(r#"{"code":""#), "{}", lines[1]);
+}
+
 #[test]
 fn sends_no_code_while_mcp_is_off() {
     let server = asking_server(std::time::Duration::ZERO, WELCOME_V2);

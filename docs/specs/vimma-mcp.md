@@ -619,7 +619,13 @@ grant_max_minutes` (default 480, at most 1440) caps both the count and the confi
       welcome, and closes. Full-control questions share one queue key: one waits at a time (a
       second new connection is refused `busy` at once), and three noes in a row mute them for a
       minute, so a token holder cannot flood; `x` is a plain no there. With MCP off nothing
-      changes. A full connection already open when MCP is turned on stays open.
+      changes. A full connection already open when MCP is turned on stays open. (Since
+      changed: a new full connection also asks while an agent CLI's one-time ticket is live
+      ([builtin-agent-cli](builtin-agent-cli.md) C3), MCP on or off, because a CLI the built-in
+      agent runs has its own shell and can read the token too; with MCP off and no live ticket
+      nothing asks. The discovery file says `"fullAsks": true` while a new full connection asks,
+      so `vimma-ctl` sends its code and waits for the answer then too; see
+      [m0-control-protocol-and-vimma-ctl](m0-control-protocol-and-vimma-ctl.md).)
     - **A code ties the question to the client the user ran.** While MCP is on, `vimma-ctl`
       prints a 4-character code (2-9 and A-Z without I and O) on stderr and sends it in its auth
       (an optional field of protocol 2's auth); the question shows it. The code is printed only

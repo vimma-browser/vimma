@@ -3917,14 +3917,19 @@ grant it had:
 #### Full control while agents are on
 
 An agent with a shell can read the control socket's token like any program of yours. So while
-agents are on (`:mcp on`), each new `vimma-ctl` connection with full control (keys in your
-window, every workspace) asks in the same line:
+agents are on (`:mcp on`), and while the built-in agent runs a task with an agent CLI such as
+Claude Code (which has a shell of its own even with `:mcp off`), each new `vimma-ctl` connection
+with full control (keys in your window, every workspace) asks in the same line:
 `◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "agent") — y/N`. `y` lets
 that one connection in, `n`, `Esc`, `Enter` or `x` refuses it (any other key does nothing), and
 nothing is remembered: the next one asks again. The line shows the code `vimma-ctl` printed in your terminal
 (`vimma-ctl with code 7F3K wants full control`): answer `y` only if it is the same, since
 another program could have asked at the same moment. `vimma-ctl` waits for your answer and says so; if refused, it
-prints `full control refused` and exits 4. With agents off, nothing asks.
+prints `full control refused` and exits 4. With agents off and no agent CLI task running,
+nothing asks. Scripts that use full control while a task runs, such as the Omarchy hook's
+`vimma-ctl reload-theme`, ask too. A command an agent CLI left running after its task ended is
+not asked about, so keep full control off, or on for a while with `:control on 15`, while you
+use agent CLIs.
 
 `:control on 15` turns full control (the pref `vimma.control.enabled`) on for 15 minutes after a
 `y/N`, and then off again, even across a restart; `:control off` turns it off now, and `:control`
