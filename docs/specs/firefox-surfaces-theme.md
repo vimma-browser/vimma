@@ -59,7 +59,12 @@ Their accent was Firefox's violet, not the theme's.
    buttons and checkboxes from its tokens, while its dialog and list of browsers sit in the
    view's shadow root, out of the page sheet's reach, and keep the UA's Canvas and CanvasText
    and the system's Menu colours. Issue
-   [#912](https://github.com/vimma-browser/vimma/issues/912).)
+   [#912](https://github.com/vimma-browser/vimma/issues/912).) (Since changed: on every page
+   and dialog these sheets reach, a button that is not the main one is bordered `--vimma-muted`,
+   as a prompt in a window of its own draws it, where Nova outlines it in the accent and makes it
+   look like the main one; a disabled main button, such as Change Primary Password's OK while its
+   fields are empty, is the accent dimmed by the disabled opacity instead of Nova's desaturated
+   violet. Issue [#1617](https://github.com/vimma-browser/vimma/issues/1617).)
 5. Firefox's privileged pages listed in Summary, and the print settings, are on `--vimma-bg`,
    their cards on `--vimma-bg-dark` bordered `--vimma-muted`, their text `--vimma-fg` and
    `--vimma-fg-dim`, their links `--vimma-text-accent`, their accent (the selected category,
@@ -224,6 +229,9 @@ contrast Firefox's own colours stay. Issue
   (computed and painted), cards, links, accent, selected and other navigation items and button
   tints, and the History sidebar's import promo, in the same three themes with Nova on; with
   high contrast both keep Firefox's colours.
+- `tests/browser/browser_vimma_firefox_dialogs_look.js` (since added, #1617): Change Primary
+  Password's other button bordered `--vimma-muted` and its disabled OK the accent, with the
+  corners and font of [firefox-surfaces-trim](firefox-surfaces-trim.md) decision 8.
 - `tools/test/chrome-css.test.ts`: every Firefox text-colour token the sheets set
   (`--*text-color*`, `--*link-color*`, `--*icon-color*`, `--*icon-fill*`) is set to a Vimma
   text token whose contrast `packages/vimma-core/test/a11y.test.mjs` checks.

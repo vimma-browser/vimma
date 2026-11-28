@@ -310,7 +310,16 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    Vimma. Colours stay as [firefox-surfaces-theme](firefox-surfaces-theme.md) set them.
    `--border-radius-circle` stays, because toggles and radio buttons are told apart by their round
    shape. (Since changed: Firefox's import wizard gets the same corners and font, in Settings and
-   over the setup page, [setup-v2](setup-v2.md) decision 17.)
+   over the setup page, [setup-v2](setup-v2.md) decision 17.) (Since changed: the dialogs
+   Settings opens get the same corners and font, as do the prompts
+   [firefox-surfaces-theme](firefox-surfaces-theme.md) behaviour 4 themes (a page's prompt over a
+   tab, a prompt in a window of its own), because each is a document of its own in a SubDialog
+   frame, out of `#preferences-root`'s reach, and kept Firefox's rounded fields, pill buttons and
+   system font inside a square, monospace frame. The rule names `:root[subdialog]` and
+   `commonDialog.xhtml`'s root, as the colour rules do, and reaches the dialog's own buttons
+   through `::part(dialog-button)`, because they sit in the `<dialog>`'s shadow root, whose
+   `dialog.css` sets them the system's menu font. Tested by `browser_vimma_firefox_dialogs_look.js`.
+   Issue [#1617](https://github.com/vimma-browser/vimma/issues/1617).)
 9. **Images are replaced, not hidden one by one.** A chrome `override` line per logo or mascot
    points it at Vimma's logo (where the layout needs an image, such as the About Vimma
    navigation button) or an empty SVG (illustrations), because one line covers every page that
