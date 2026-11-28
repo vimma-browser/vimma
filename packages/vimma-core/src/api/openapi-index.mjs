@@ -30,6 +30,12 @@ export const INDEX_VERSION = 1;
 export const MAX_DESCRIPTION_CHARS = 32 * 1024 * 1024;
 /** Operations kept from one description (GitHub's has 1,281); the rest are left out. */
 export const MAX_OPERATIONS = 5000;
+/**
+ * The most characters of JSON an index takes. Shared references cost nothing in a description,
+ * so without a bound a 0.6 MB description could make a 120 MB index; GitHub's whole index is
+ * 1.2 MB. Operations past it are left out, and the index says it was truncated.
+ */
+export const MAX_INDEX_CHARS = 8 * 1024 * 1024;
 /** Lines one search returns (behaviour 10). */
 export const FIND_LIMIT = 8;
 /** Characters of an operation's summary (behaviour 10). */
@@ -61,8 +67,15 @@ const LINE_NAMES = 20;
 const MAX_QUERY = 200;
 const MAX_QUERY_WORDS = 10;
 
-/** Printable ASCII without spaces: operation ids, parameter and field names. */
+/** Printable ASCII without spaces: body field names. */
 const NAME = /^[\x21-\x7e]+$/;
+/** Operation ids: letters, digits and `_ . / : -`, as GitHub's and Stripe's are. */
+const ID = /^[\w./:-]+$/;
+/**
+ * Path and query parameter names: letters, digits and `_ . - [ ] $ @ : ~`, nothing an address
+ * gives a meaning to (`& = # ? / % +`), so a name can be put in an address as it is.
+ */
+const PARAM_NAME = /^[\w.\-[\]$@:~]+$/;
 /** Printable ASCII with spaces: tags. */
 const TAG = /^[\x20-\x7e]+$/;
 /** What a path may hold: printable ASCII without space, `?`, `#` or a backslash. */
@@ -84,9 +97,9 @@ export class OpenApiError extends Error {
  * @typedef {{ name: string, in: "path" | "query", required: boolean, type: string }} Param
  * @typedef {{ name: string, required: boolean }} Field
  * @typedef {{ media: "json" | "form" | "other", contentType: string, required: boolean,
- *   fields: Field[] }} Body
- * @typedef {{ id: string, method: string, path: string, summary: string, tags: string[],
- *   params: Param[], body: Body | null, signature: string }} Operation
+ *   fields: Field[], moreFields: number }} Body
+ * @typedef {{ id: string, declared: boolean, method: string, path: string, summary: string,
+ *   tags: string[], params: Param[], body: Body | null, signature: string }} Operation
  * @typedef {{ version: number, openapi: string, title: string, servers: string[],
  *   operations: Operation[], dropped: number, truncated: boolean }} ApiIndex
  */
@@ -187,10 +200,17 @@ function refName(node) {
  */
 function pathTemplate(path) {
   if (path.length > MAX_PATH || !PATH_CHARS.test(path)) return null;
+  // Encoded dots, slashes and backslashes are what a URL parser or a server decodes into a step
+  // out of `base` (`%2e%2e`, `%2f`), so they are refused anywhere in a path.
+  if (/%(?:2e|2f|5c)/i.test(path)) return null;
   /** @type {string[]} */
   const names = [];
-  for (const segment of path.slice(1).split("/")) {
-    if (segment === "." || segment === "..") return null;
+  const segments = path.slice(1).split("/");
+  for (const [i, segment] of segments.entries()) {
+    // `//` would make the path a host for a URL parser; `..;` is `..` to Tomcat and Spring.
+    if (segment === "" && i < segments.length - 1) return null;
+    const plain = segment.split(";")[0];
+    if (plain === "." || plain === "..") return null;
     const rest = segment.replace(/\{([^{}]*)\}/g, (_, name) => {
       names.push(name);
       return "";
@@ -198,7 +218,7 @@ function pathTemplate(path) {
     if (rest.includes("{") || rest.includes("}")) return null;
   }
   for (const [i, name] of names.entries()) {
-    if (!short(name, MAX_NAME, NAME) || names.indexOf(name) !== i) return null;
+    if (!short(name, MAX_NAME, PARAM_NAME) || names.indexOf(name) !== i) return null;
   }
   return names;
 }
@@ -258,12 +278,59 @@ function enumOf(root, node) {
 }
 
 /**
+ * The properties already worked out for a schema node, per description: a schema shared by
+ * reference across thousands of operations is read once (buildIndex makes and drops it).
+ * @type {WeakMap<object, WeakMap<object, { name: string, schema: unknown, required: boolean }[]>>}
+ */
+const PROPERTIES = new WeakMap();
+
+/** Keys read from an object, per description, so a wide object shared by reference is read once. */
+const KEYS_READ = 400;
+/** @type {WeakMap<object, WeakMap<object, string[]>>} */
+const KEYS = new WeakMap();
+
+/**
+ * Up to `max` (at most KEYS_READ) own keys of `obj`. A wide object in dictionary mode costs its
+ * whole size to enumerate even when the loop stops early, so the keys are kept per description.
+ * @param {unknown} root @param {Record<string, unknown>} obj @param {number} max
+ */
+function someKeys(root, obj, max) {
+  const memo = isObj(root) ? KEYS.get(root) : undefined;
+  let keys = memo?.get(obj);
+  if (!keys) {
+    keys = [];
+    for (const key in obj) {
+      if (keys.length >= KEYS_READ) break;
+      if (Object.hasOwn(obj, key)) keys.push(key);
+    }
+    memo?.set(obj, keys);
+  }
+  return keys.slice(0, max);
+}
+
+/**
  * A schema's properties with whether each is required, merged from its `allOf` members (at most
  * MAX_MERGED schemas, so a shared or nested allOf cannot multiply the work).
  * @param {unknown} root @param {unknown} node
  * @returns {{ name: string, schema: unknown, required: boolean }[]}
  */
 function propertiesOf(root, node) {
+  // Keyed by the schema a reference names, since each use of it is a separate `$ref` object.
+  const schema = deref(root, node);
+  const memo = isObj(root) && isObj(schema) ? PROPERTIES.get(root) : undefined;
+  const known = memo?.get(/** @type {object} */ (schema));
+  if (known) return known;
+  const found = readProperties(root, schema);
+  memo?.set(/** @type {object} */ (schema), found);
+  return found;
+}
+
+/**
+ * propertiesOf's work, uncached.
+ * @param {unknown} root @param {unknown} node
+ * @returns {{ name: string, schema: unknown, required: boolean }[]}
+ */
+function readProperties(root, node) {
   /** @type {Map<string, { name: string, schema: unknown, required: boolean }>} */
   const out = new Map();
   /** @type {Set<string>} */
@@ -278,7 +345,7 @@ function propertiesOf(root, node) {
     }
     const props = own(schema, "properties");
     if (isObj(props)) {
-      for (const name of Object.keys(props)) {
+      for (const name of someKeys(root, props, KEYS_READ)) {
         if (out.size >= MAX_FIELDS) break;
         if (!short(name, MAX_NAME, NAME) || out.has(name)) continue;
         out.set(name, { name, schema: props[name], required: false });
@@ -335,7 +402,7 @@ function paramsOf(root, itemParams, opParams, template) {
       }
       const name = own(p, "name");
       const required = place === "path" || own(p, "required") === true;
-      if (!short(name, MAX_NAME, NAME)) {
+      if (!short(name, MAX_NAME, PARAM_NAME)) {
         if (required) return null;
         continue;
       }
@@ -369,6 +436,8 @@ function paramsOf(root, itemParams, opParams, template) {
   const all = [...byKey.values()];
   const path = all.filter((p) => p.in === "path");
   const query = all.filter((p) => p.in === "query");
+  // `args` holds path and query arguments by name alone, so a name in both is ambiguous.
+  if (query.some((q) => template.includes(q.name))) return null;
   if (query.length > MAX_PARAMS - path.length) {
     if (query.slice(MAX_PARAMS - path.length).some((p) => p.required)) return null;
     query.length = Math.max(0, MAX_PARAMS - path.length);
@@ -390,7 +459,7 @@ function bodyOf(root, raw) {
   if (!isObj(body)) return null;
   const content = own(body, "content");
   if (!isObj(content)) return null;
-  const keys = Object.keys(content).slice(0, 50);
+  const keys = someKeys(root, content, 50);
   if (keys.length === 0) return null;
   const json = keys.find((k) => /^application\/(?:[\w.+-]*\+)?json$/.test(mediaOf(k)));
   const form = keys.find((k) => mediaOf(k) === "application/x-www-form-urlencoded");
@@ -403,13 +472,19 @@ function bodyOf(root, raw) {
       media,
       contentType: short(contentType, 100, NAME) ? contentType : "unknown",
       required: own(body, "required") === true,
-      fields:
-        media === "other"
-          ? []
-          : propertiesOf(root, schema).map(({ name, required }) => ({ name, required })),
+      ...fieldsOf(media === "other" ? [] : propertiesOf(root, schema)),
     },
     schema,
   };
+}
+
+/**
+ * The body fields an index keeps: the LINE_NAMES a line shows, and how many more there are.
+ * @param {{ name: string, required: boolean }[]} props
+ */
+function fieldsOf(props) {
+  const fields = props.slice(0, LINE_NAMES).map(({ name, required }) => ({ name, required }));
+  return { fields, moreFields: props.length - fields.length };
 }
 
 /**
@@ -490,11 +565,29 @@ export function buildIndex(doc) {
   }
   const paths = own(doc, "paths");
   if (!isObj(paths)) throw new OpenApiError("The description has no paths.");
+  PROPERTIES.set(doc, new WeakMap());
+  KEYS.set(doc, new WeakMap());
+  try {
+    return indexPaths(doc, version, paths);
+  } finally {
+    PROPERTIES.delete(doc);
+    KEYS.delete(doc);
+  }
+}
 
-  /** @type {{ method: string, path: string, declared: unknown, op: Omit<Operation, "id"> }[]} */
+/**
+ * buildIndex's walk over a checked description.
+ * @param {Record<string, unknown>} doc @param {string} version
+ * @param {Record<string, unknown>} paths
+ * @returns {ApiIndex}
+ */
+function indexPaths(doc, version, paths) {
+  /** @type {{ method: string, path: string, declared: unknown, op: Omit<Operation, "id" | "declared"> }[]} */
   const found = [];
   let dropped = 0;
   let truncated = false;
+  // Room for the id, the title and the servers, which come after the walk.
+  let size = 64 * 1024;
   walk: for (const path of Object.keys(paths)) {
     const item = deref(doc, paths[path]);
     if (!isObj(item)) continue;
@@ -523,26 +616,28 @@ export function buildIndex(doc) {
             ),
           ].slice(0, MAX_TAGS)
         : [];
-      found.push({
-        method,
+      /** @type {Omit<Operation, "id" | "declared">} */
+      const entry = {
+        method: method.toUpperCase(),
         path,
-        declared: own(op, "operationId"),
-        op: {
-          method: method.toUpperCase(),
-          path,
-          summary:
-            oneLine(own(op, "summary"), SUMMARY_CHARS) || firstSentence(own(op, "description")),
-          tags,
-          params: params.map(({ name, in: place, required, type }) => ({
-            name,
-            in: place,
-            required,
-            type,
-          })),
-          body: body ? body.body : null,
-          signature: detailOf(doc, params, body),
-        },
-      });
+        summary:
+          oneLine(own(op, "summary"), SUMMARY_CHARS) || firstSentence(own(op, "description")),
+        tags,
+        params: params.map(({ name, in: place, required, type }) => ({
+          name,
+          in: place,
+          required,
+          type,
+        })),
+        body: body ? body.body : null,
+        signature: detailOf(doc, params, body),
+      };
+      size += JSON.stringify(entry).length + 2 * MAX_ID + 32;
+      if (size > MAX_INDEX_CHARS) {
+        truncated = true;
+        break walk;
+      }
+      found.push({ method, path, declared: own(op, "operationId"), op: entry });
     }
   }
   if (found.length === 0) throw new OpenApiError("The description has no operations.");
@@ -552,7 +647,7 @@ export function buildIndex(doc) {
   /** @type {Set<string>} */
   const taken = new Set();
   const ids = found.map(({ declared }) => {
-    if (!short(declared, MAX_ID, NAME) || taken.has(/** @type {string} */ (declared))) return null;
+    if (!short(declared, MAX_ID, ID) || taken.has(/** @type {string} */ (declared))) return null;
     taken.add(/** @type {string} */ (declared));
     return /** @type {string} */ (declared);
   });
@@ -560,6 +655,7 @@ export function buildIndex(doc) {
   const next = new Map();
   const operations = found.map(({ method, path, op }, i) => {
     let id = ids[i] ?? null;
+    const declared = id !== null;
     if (id === null) {
       const base = madeId(method, path);
       let n = next.get(base) ?? 1;
@@ -568,7 +664,7 @@ export function buildIndex(doc) {
       next.set(base, n + 1);
       taken.add(id);
     }
-    return { id, ...op };
+    return { id, declared, ...op };
   });
 
   const rawServers = own(doc, "servers");
@@ -637,13 +733,20 @@ export function selectOperations(index, only) {
   return { ...index, operations };
 }
 
+/** Methods `read_ops` never makes a read: they change or remove what they name. */
+const NEVER_READ = ["DELETE", "PUT", "PATCH"];
+
 /**
  * Whether an operation is a read: its method is GET or HEAD, or `read_ops` names it (decision
- * 24). Everything else is a write, which asks every time.
- * @param {Pick<Operation, "id" | "method">} op @param {readonly string[]} [readOps]
+ * 24). Everything else is a write, which asks every time. `read_ops` matches only an id the
+ * description declares, never a made one, and never a DELETE, PUT or PATCH, because the
+ * description can change under the user's list: a made id moves when operations are added, and
+ * an updated description could give a listed id to an operation that deletes.
+ * @param {Pick<Operation, "id" | "method" | "declared">} op @param {readonly string[]} [readOps]
  */
 export function isRead(op, readOps = []) {
-  return op.method === "GET" || op.method === "HEAD" || readOps.includes(op.id);
+  if (op.method === "GET" || op.method === "HEAD") return true;
+  return op.declared && !NEVER_READ.includes(op.method) && readOps.includes(op.id);
 }
 
 /**
@@ -669,8 +772,10 @@ export function operationLine(op, readOps = []) {
   const query = op.params.filter((p) => p.in === "query");
   if (query.length > 0) parts.push(`query: ${names(query)}`);
   if (op.body?.media === "other") parts.push(`body: ${op.body.contentType}, not supported`);
-  else if (op.body && op.body.fields.length > 0) parts.push(`body: ${names(op.body.fields)}`);
-  else if (op.body) parts.push(`body: ${op.body.contentType}`);
+  else if (op.body && op.body.fields.length > 0) {
+    const more = op.body.moreFields > 0 ? `, +${op.body.moreFields} more` : "";
+    parts.push(`body: ${names(op.body.fields)}${more}`);
+  } else if (op.body) parts.push(`body: ${op.body.contentType}`);
   return parts.join("  ");
 }
 

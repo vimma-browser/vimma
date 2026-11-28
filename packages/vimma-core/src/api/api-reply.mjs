@@ -35,12 +35,19 @@ export const MAX_FIELD_CHARS = 200;
 /** Arrays inside arrays that field selection walks; deeper ones become null. */
 const MAX_NESTING = 32;
 /** Keys the header lists before "+N more". */
-const SHAPE_KEYS = 30;
+const SHAPE_KEYS = 20;
 /**
- * A key the header may show, outside the delimiters: letters, digits and `_ . $ @ : -`, at most
- * 40 characters, so a key can neither carry a sentence nor look like a delimiter.
+ * A key the header may show, outside the delimiters: letters, digits and `_ . -`, at most 24
+ * characters, so a key can neither look like a delimiter nor carry more than a few words.
  */
-const SHOWN_KEY = /^[\w.$@:-]{1,40}$/;
+const SHOWN_KEY = /^[\w.-]{1,24}$/;
+/**
+ * A look-alike delimiter's start, with or without its closing `>`. wrapUntrusted's own pattern
+ * looks ahead for that `>` and so scans to the end of the text at each unclosed one, which is
+ * quadratic at a 500,000-character cap; broken here first with a zero-width space, those
+ * places no longer match it.
+ */
+const LOOK_ALIKE_START = /<(?=\s{0,40}\/?\s{0,40}untrusted)/gi;
 const MEDIA = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,62}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,62}$/;
 
 /** A call's arguments or reply that the shaper refuses, with a message for the agent. */
@@ -174,14 +181,43 @@ const isText = (/** @type {string} */ media) =>
   media.startsWith("text/") || /^application\/(?:[\w.!#$&^-]*\+)?xml$/.test(media);
 
 /**
- * `text` with every occurrence of `token` replaced by TOKEN_MARK. If any is left after that
+ * The spellings of a token a reply may echo: as given and folded, JSON-escaped (with `\/` too)
+ * and percent-encoded in upper and lower case. Escapes beyond these (HTML entities, `\u` in JSON
+ * that does not parse) are not undone.
+ * @param {string} token
+ */
+function spellings(token) {
+  const folded = token.normalize("NFKC");
+  const all = new Set();
+  for (const t of [token, folded]) {
+    const json = JSON.stringify(t).slice(1, -1);
+    const pct = encodeURIComponent(t);
+    for (const v of [
+      t,
+      json,
+      json.replaceAll("/", "\\/"),
+      pct,
+      pct.replace(/%[0-9A-F]{2}/g, (m) => m.toLowerCase()),
+    ]) {
+      all.add(v);
+    }
+  }
+  return [...all].filter(Boolean).sort((a, b) => b.length - a.length);
+}
+
+/**
+ * `text` with every spelling of `token` replaced by TOKEN_MARK. If any is left after that
  * (only a token that contains the mark itself could do it), nothing of the text is kept.
  * @param {string} text @param {string | undefined} token
  */
 function scrub(text, token) {
   if (!token) return text;
-  const out = text.replaceAll(token, TOKEN_MARK);
-  return out.includes(token) ? "(withheld: the reply contains the service's token)" : out;
+  let out = text;
+  const forms = spellings(token);
+  for (const form of forms) out = out.replaceAll(form, TOKEN_MARK);
+  return forms.some((f) => out.includes(f))
+    ? "(withheld: the reply contains the service's token)"
+    : out;
 }
 
 /**
@@ -274,20 +310,33 @@ export function shapeReply({ method, url, status, contentType, text, fields, max
       // Not JSON after all, or nested past the engine's limits: it goes back as text.
     }
   }
+  // JSON that does not parse keeps its escapes: they are undone here, so the scrub finds a token
+  // spelt with them.
+  if (kind === "json" && !parsed) {
+    out = out
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+      .replaceAll("\\/", "/");
+  }
   // Folded first (wrapUntrusted folds too), so full-width letters cannot spell the token past
-  // the scrub and the cut holds after the fold.
-  out = scrub(out.normalize("NFKC"), token);
+  // the scrub and the cut holds after the fold. Only a head of the text is folded, since one
+  // character can fold to 18: NFKC shrinks text at most threefold (a Hangul syllable from three
+  // jamo), so four times the cap and the token still covers the cap, and a token cut at that
+  // bound lies past the cap.
+  const whole = out.length;
+  const bound = 4 * (cap + (token?.length ?? 0)) + 16;
+  out = scrub((whole > bound ? out.slice(0, bound) : out).normalize("NFKC"), token);
 
   let header = `${method} ${url} → ${status}${media ? ` ${media}` : ""}, ${fmt(text.length)} characters`;
-  if (paths && parsed) header += `, ${fmt(out.length)} after fields`;
+  if (paths && parsed) header += `, ${fmt(whole)} after fields`;
   if (paths && !parsed) header += "; fields apply to JSON replies only";
-  if (out.length > cap) {
+  if (whole > bound || out.length > cap) {
     out = cutAt(out, cap);
     header += `, cut at ${fmt(cap)}.`;
     if (parsed) {
       header += ` Shape: ${shapeOf(shaped)}. Ask again with fields to keep what you need.`;
     }
   }
-  header = scrub(header.normalize("NFKC").replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " "), token);
+  out = out.replace(LOOK_ALIKE_START, "<\u200b");
+  header = scrub(header.normalize("NFKC").replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " "), token);
   return { header, body: wrapUntrusted(out) };
 }
