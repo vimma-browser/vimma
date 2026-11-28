@@ -1,7 +1,8 @@
 # Spec: agent-apis
 
-Status: accepted · Area: `packages/vimma-core/src/` (new `api/openapi-index.mjs`: an OpenAPI
-description in, an operation index out, and the search over it; new `api/api-request.mjs`: the
+Status: accepted (Delivery 1 built: the converter, which nothing loads yet) · Area:
+`packages/vimma-core/src/` (new `api/openapi-index.mjs`: an OpenAPI description in, an
+operation index out, and the search over it; new `api/api-request.mjs`: the
 request an operation and its arguments make, confined to the service's base; new
 `api/api-reply.mjs`: field selection and the cap of a reply; new `config/apis-file.mjs`: parse
 and validate `apis.toml`; `agent/agent.mjs` for the three tools and their rate;

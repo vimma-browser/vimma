@@ -55,6 +55,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/agent-tools.mjs": typeof import("../src/browser/base/content/vimma/core/agent-tools.mjs");
   "chrome://browser/content/vimma/core/agent-wait.mjs": typeof import("../src/browser/base/content/vimma/core/agent-wait.mjs");
   "chrome://browser/content/vimma/core/agent.mjs": typeof import("../src/browser/base/content/vimma/core/agent.mjs");
+  "chrome://browser/content/vimma/core/api-reply.mjs": typeof import("../src/browser/base/content/vimma/core/api-reply.mjs");
   "chrome://browser/content/vimma/core/appimage-update.mjs": typeof import("../src/browser/base/content/vimma/core/appimage-update.mjs");
   "chrome://browser/content/vimma/core/blocks.mjs": typeof import("../src/browser/base/content/vimma/core/blocks.mjs");
   "chrome://browser/content/vimma/core/bookmark-open.mjs": typeof import("../src/browser/base/content/vimma/core/bookmark-open.mjs");
@@ -90,6 +91,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/modes.mjs": typeof import("../src/browser/base/content/vimma/core/modes.mjs");
   "chrome://browser/content/vimma/core/motions.mjs": typeof import("../src/browser/base/content/vimma/core/motions.mjs");
   "chrome://browser/content/vimma/core/nativeswap.mjs": typeof import("../src/browser/base/content/vimma/core/nativeswap.mjs");
+  "chrome://browser/content/vimma/core/openapi-index.mjs": typeof import("../src/browser/base/content/vimma/core/openapi-index.mjs");
   "chrome://browser/content/vimma/core/page-first.mjs": typeof import("../src/browser/base/content/vimma/core/page-first.mjs");
   "chrome://browser/content/vimma/core/pageurl.mjs": typeof import("../src/browser/base/content/vimma/core/pageurl.mjs");
   "chrome://browser/content/vimma/core/panes.mjs": typeof import("../src/browser/base/content/vimma/core/panes.mjs");
