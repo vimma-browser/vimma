@@ -80,6 +80,8 @@ describe("defaults.toml as the config.toml reference (#1443)", () => {
         "tabs.sleep_after",
         "tabs.sleep_on_low_memory",
         "tabs.close_last",
+        "passwords.save",
+        "passwords.fill_on_load",
         "updates.check",
         "mcp.enabled",
         "mcp.workspace",

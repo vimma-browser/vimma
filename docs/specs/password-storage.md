@@ -1,6 +1,7 @@
 # Spec: password-storage
 
-Status: accepted · Area: core (`packages/vimma-core/src/config/config.mjs`,
+Status: accepted (Delivery item 1, the `[passwords]` keys, implemented; item 2, the setup steps, to
+come) · Area: core (`packages/vimma-core/src/config/config.mjs`,
 `packages/vimma-core/src/config/defaults.mjs`, `packages/vimma-core/defaults.toml`,
 `packages/vimma-core/src/system/setup-steps.mjs`), chrome (`config/ConfigHost.sys.mjs`, a new
 `services/Passwords.sys.mjs`), docs (`docs/guide.md`, `docs/limits.md`,
@@ -57,7 +58,7 @@ store none, and a user who keeps them in Vimma knows what protects them.
 3. **Applied at once.** A change to either key applies when `config.toml` is next read (the
    poll or `:source`), without a restart, to every window and workspace.
 4. **Removing a key restores Firefox's behaviour,** and a value the user sets in Firefox's
-   Settings (Privacy & Security → Passwords) or in `about:config` wins over `config.toml`
+   Settings (Passwords and autofill → Passwords) or in `about:config` wins over `config.toml`
    (decision 2).
 5. **First-run setup** gets two steps in the "Essentials" chapter, after "Content blocker"
    (decision 6). When the setup is skipped or left before them, nothing is written and saving
@@ -316,7 +317,7 @@ others work with their own account.
 
 - `docs/guide.md`: a "Saved passwords" section under "Privacy defaults", covering what is stored
   (`logins.db` and `key4.db` in the profile), the primary password and how to set it
-  (Settings → Privacy & Security → Passwords → Use a primary password), that Linux has no system
+  (Settings → Passwords and autofill → Set primary password), that Linux has no system
   password prompt for `about:logins`, the two keys, that a script on the page can read a password
   filled as the page loads and `fill_on_load = false` stops that, that logins saved before
   `save = false` stay in `about:logins` to export or remove, and the trade-off against a password

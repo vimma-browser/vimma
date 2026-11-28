@@ -202,6 +202,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/search/UrlbarRows.sys.mjs": typeof import("../src/browser/base/content/vimma/search/UrlbarRows.sys.mjs");
   "chrome://browser/content/vimma/services/AppLauncher.sys.mjs": typeof import("../src/browser/base/content/vimma/services/AppLauncher.sys.mjs");
   "chrome://browser/content/vimma/services/MozillaServices.sys.mjs": typeof import("../src/browser/base/content/vimma/services/MozillaServices.sys.mjs");
+  "chrome://browser/content/vimma/services/Passwords.sys.mjs": typeof import("../src/browser/base/content/vimma/services/Passwords.sys.mjs");
   "chrome://browser/content/vimma/services/TabSleep.sys.mjs": typeof import("../src/browser/base/content/vimma/services/TabSleep.sys.mjs");
   "chrome://browser/content/vimma/services/ViewedDownloads.sys.mjs": typeof import("../src/browser/base/content/vimma/services/ViewedDownloads.sys.mjs");
   "chrome://browser/content/vimma/services/WakeLock.sys.mjs": typeof import("../src/browser/base/content/vimma/services/WakeLock.sys.mjs");

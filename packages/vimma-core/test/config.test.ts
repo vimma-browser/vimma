@@ -428,6 +428,7 @@ describe("mergeWithDefaults", () => {
       },
       statusbar: { tab: true },
       tabs: { sleepAfter: 120, sleepOnLowMemory: true, closeLast: "picker" },
+      passwords: { save: true, fillOnLoad: true },
       updates: { check: true },
       search: null,
       agent: {

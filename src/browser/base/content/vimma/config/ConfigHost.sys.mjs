@@ -52,6 +52,7 @@ import { PrivateSwap } from "../host/private-swap.mjs";
 import { CloseLastTab } from "../host/close-last-ops.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
+import { Passwords } from "../services/Passwords.sys.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
 import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
@@ -265,6 +266,7 @@ function apply(next, text) {
   ThemeHost.setConfig(config.theme);
   PrivateSwap.configure(config.private.placement);
   CloseLastTab.configure(config.tabs.closeLast);
+  Passwords.configure(config.passwords);
   PanelNumbers.set(config.panel.numbers);
   VimmaActors.setScrollStep(config.scroll.step);
   McpHost.configure(config.mcp);

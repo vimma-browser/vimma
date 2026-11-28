@@ -819,6 +819,9 @@ the browsers start their import as soon as they are picked. Then choose **Done**
   Settings → Export passwords), then in Vimma open `about:logins`, its `…` menu → Import from a
   File. The file holds every password in plain text: delete it once the import is done, and
   empty the trash.
+- **Imported passwords fill only while saving is on.** With `[passwords] save = false` in
+  `config.toml`, Vimma neither fills nor lists any saved login, imported ones included
+  ([Saved passwords](#saved-passwords)).
 - **Your Firefox profile is not in the wizard**: its Firefox entry looks for profiles in Vimma's
   own folder, not Firefox's. From Firefox, use Sync, or files as below.
 
@@ -5475,6 +5478,11 @@ sleep_after = 120             # minutes unseen before a tab sleeps (5–10080); 
 sleep_on_low_memory = true    # false: Firefox never unloads tabs when memory runs low
 close_last = "picker"         # closing the last tab: "picker", "new_tab", "ask", "quit" or "keep"
 
+# Firefox's own saved passwords (about:logins); a change made in Settings wins over these.
+[passwords]
+save = true            # false: never offer to save, fill or list a saved login
+fill_on_load = true    # false: a saved login fills only when you pick it in the field's list
+
 # Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update
 # channel and the platform.
 [updates]
@@ -5486,7 +5494,8 @@ split](#picking-a-tab-during-a-split), [Colours and themes](#colours-and-themes)
 toolbar](#hiding-the-toolbar), [Tab line](#tab-line), [Firefox's Bookmarks
 Toolbar](#firefoxs-bookmarks-toolbar), [Side panel](#side-panel), [Private
 workspace](#private-workspace), [Bookmarks](#bookmarks), [Bookmarks in a
-file](#bookmarks-in-a-file), [Sleeping tabs](#sleeping-tabs), [Updates](#updates).
+file](#bookmarks-in-a-file), [Sleeping tabs](#sleeping-tabs), [Saved passwords](#saved-passwords),
+[Updates](#updates).
 
 ### Workspaces and routing
 
@@ -5830,6 +5839,56 @@ add-ons see Firefox's version number (`runtime.getBrowserInfo()`), under the bro
 `Vimma`. The
 About dialog shows Vimma's own version; `vimma --version` and the start page show it with the
 Firefox release it is built on, for example `Vimma X.Y.Z · Firefox N`.
+
+### Saved passwords
+
+Vimma saves and fills passwords as Firefox does: "Save password?" after you log in, and the
+saved login filled into the site's form the next time. Two keys in `config.toml` choose how
+much of that you want, so the choice travels with your dotfiles:
+
+```toml
+[passwords]
+save = true            # false: never offer to save, fill or list a saved login
+fill_on_load = true    # false: a saved login fills only when you pick it in the field's list
+```
+
+- **`save`** is Firefox's `signon.rememberSignons`. With `save = false` Vimma never offers to
+  save a password, and it also stops filling and listing the logins it already has, imported
+  ones included: Firefox's one switch covers all three. Nothing is deleted. The saved logins
+  stay in `about:logins`, where you can export them (`…` menu → Export Passwords) or remove
+  them, and they fill again when you turn `save` back on.
+- **`fill_on_load`** is Firefox's `signon.autofillForms`. With the default, `true`, a saved login
+  is written into its form as soon as the page shows it, before you touch it, and any script on
+  that page, the site's own or one injected into it, can read the password from the field. With
+  `fill_on_load = false` nothing is written until you ask: focusing the username or password
+  field opens the list of saved logins, and the one you pick (`Down`, then `Enter`) fills.
+  Firefox fills on load only on `https:` pages, and only with a login saved for that exact
+  site.
+
+Both keys apply within two seconds of saving `config.toml` (at once with `:source`), in every
+window and workspace, without a restart. Removing a key brings back Firefox's
+behaviour. A change made in Settings → Passwords and autofill ("Ask to save passwords", "Save and
+autofill usernames and passwords"), in `about:config`, or by an add-on that controls password
+saving wins over `config.toml`; to hand the choice back to the file, reset the pref in
+`about:config`.
+
+**What protects the saved passwords.** They are stored in your Vimma profile folder, encrypted
+in `logins.db` with a key kept in `key4.db`. Without a primary password that key opens with no
+password, so any program running as you, or anyone with a copy of the profile folder, can read
+every saved password. On Linux, `about:logins` also shows, copies and exports them without
+asking for anything, because Firefox has no system password prompt there. Set a primary password
+in Settings → Passwords and autofill → Set primary password: Vimma then asks for it,
+once per session, before it uses a saved login, and `about:logins` asks for it before it shows
+one.
+Saved passwords are shared by every workspace ([limits](limits.md#workspaces-by-design)).
+
+**Vimma's saved passwords or a password manager extension.** A password manager extension such
+as Bitwarden, Proton Pass or KeePassXC-Browser (from addons.mozilla.org) keeps its vault locked
+behind its own password, syncs it to other browsers and devices, and does not depend on the
+profile's `key4.db`. In exchange it needs permission to read and change every site you visit,
+since it draws its fill menu inside the page. If you keep your passwords in such a manager, set
+`save = false` so that Vimma stores none of its own and does not offer to save them twice. If
+you keep them in Vimma, set a primary password, and consider `fill_on_load = false`.
 
 ### Safe Browsing
 

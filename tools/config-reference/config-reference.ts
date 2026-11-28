@@ -39,6 +39,7 @@ const GROUPS: { heading: string; tables: string[]; more: [string, string][] }[] 
       "private",
       "bookmarks",
       "tabs",
+      "passwords",
       "updates",
     ],
     more: [
@@ -54,6 +55,7 @@ const GROUPS: { heading: string; tables: string[]; more: [string, string][] }[] 
       ["Bookmarks", "#bookmarks"],
       ["Bookmarks in a file", "#bookmarks-in-a-file"],
       ["Sleeping tabs", "#sleeping-tabs"],
+      ["Saved passwords", "#saved-passwords"],
       ["Updates", "#updates"],
     ],
   },

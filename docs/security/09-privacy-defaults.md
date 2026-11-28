@@ -1,7 +1,8 @@
 ## 9. Privacy defaults
 
 Spec: [m0-mozilla-services](../specs/m0-mozilla-services.md),
-[m0-safebrowsing-key](../specs/m0-safebrowsing-key.md).
+[m0-safebrowsing-key](../specs/m0-safebrowsing-key.md),
+[password-storage](../specs/password-storage.md).
 
 - P1. Vimma **must** be built without telemetry reporting and upload nothing.
   [`test_no_telemetry_upload`](../../tests/browser/browser_vimma_mozilla_services.js)
@@ -45,3 +46,18 @@ Spec: [m0-mozilla-services](../specs/m0-mozilla-services.md),
   [`import_wizard_respects_the_policy`](../../tests/browser/browser_vimma_setup_moving_in.js),
   [`closing_the_setup_tab_resolves_the_wizard_and_a_new_one_opens`](../../tests/browser/browser_vimma_setup_moving_in.js),
   [`asks for Make default and the import wizard only from the setup host`](../../tools/security/test/chrome-source.test.ts)
+- P10. Saved passwords **must** keep Firefox's defaults (`signon.rememberSignons` and
+  `signon.autofillForms` both `true`) unless `config.toml`'s `[passwords] save` or
+  `fill_on_load` says otherwise. Vimma sets them on the default branch only, at startup and at
+  each read of `config.toml`, so it writes nothing to `prefs.js`, removing a key brings back
+  Firefox's default, and a value the user set in Settings or `about:config` wins. No page can set
+  them: `config.toml` is the user's file (section 8). Turning `save` off deletes no stored login.
+  Accepted risk: with the default `fill_on_load = true`, a script on the page can read a login
+  filled as the page loads (spec decision 8); the guide says so with the key that stops it.
+  [`save_false_sets_remember_signons_on_the_default_branch`](../../tests/browser/browser_vimma_passwords.js),
+  [`fill_on_load_false_leaves_a_saved_login_unfilled_until_it_is_picked`](../../tests/browser/browser_vimma_passwords.js),
+  [`fill_on_load_true_fills_a_saved_login_as_the_page_loads`](../../tests/browser/browser_vimma_passwords.js),
+  [`a_value_set_in_settings_wins_over_config_toml`](../../tests/browser/browser_vimma_passwords.js),
+  [`removing_the_key_restores_firefoxs_default`](../../tests/browser/browser_vimma_passwords.js),
+  [`a_config_change_applies_without_a_restart`](../../tests/browser/browser_vimma_passwords.js),
+  [`save and fill_on_load default to true`](../../packages/vimma-core/test/config-passwords.test.ts)
