@@ -107,6 +107,8 @@ support-files = ["file_vimma_copy_motions.html"]
 ["browser_vimma_firefox_dialogs_look.js"]
 support-files = ["file_vimma_plain.html"]
 
+["browser_vimma_firefox_settings_controls_look.js"]
+
 ["browser_vimma_firefox_page_process.js"]
 
 ["browser_vimma_settings_managed.js"]

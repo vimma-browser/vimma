@@ -1,0 +1,18 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Settings and its dialogs have the theme's font (docs/specs/firefox-surfaces-trim.md, decision
+ * 8), but a few controls draw in shadow roots that firefox-pages.css does not reach, where the
+ * UA's forms.css gives a <button> and an <input> the system's -moz-button and -moz-field fonts:
+ * a visual picker's item (moz-visual-picker-item, Website appearance's choices), whose label sits
+ * inside its <button>, and checkboxes without a font of their own, such as the backup dialog's
+ * (turn-on-scheduled-backups). An agent sheet, which ui/theme-host.mjs loads into Settings and
+ * the dialogs firefox-pages.css squares: a document's agent sheets apply inside its shadow trees.
+ * Its selectors outrank forms.css's by specificity, and a widget's own font rule still wins. Not
+ * a colour, so high contrast keeps it too (decision 7). */
+
+button#picker-item,
+input[type="checkbox"] {
+  font-family: var(--vimma-font, monospace);
+}
