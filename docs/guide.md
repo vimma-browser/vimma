@@ -1649,7 +1649,8 @@ list of browsers included), Add-ons,
 Downloads (`about:downloads`), Troubleshooting (`about:support`), `about:config`,
 `about:profiles`, `about:processes` and Tab Overview (`about:firefoxview`), its cards and its
 navigation included. Their accent (the selected category, checkboxes, main
-buttons) is the normal-mode badge's colour. Settings' default-browser card shows its text and
+buttons) is the normal-mode badge's colour, and text you select in them, a dialog's field
+included, is on the theme's selection colour. Settings' default-browser card shows its text and
 button without Firefox's mascot. With your system's high-contrast setting on, these surfaces keep
 Firefox's own high-contrast colours. Pages that Firefox loads in a web content process, such as
 `about:logins` and Firefox's error pages, keep Firefox's colours.
