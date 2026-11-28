@@ -4434,12 +4434,14 @@ visit in it, as in any tab. For nothing on disk, use the [private workspace](#pr
   start, and one left behind by a crash is deleted then.
 - **It stays in its workspace.** `:wsmove`, the picker's `m` and the side panel's move refuse a
   temporary tab: open it again with `:tmp` in the other workspace.
-- **Not in the agent workspace or the private workspace.** `:tmp` is refused there: agents work
-  only with the agent workspace's own tabs and never see a temporary one, and the private
-  workspace is discarded when it closes already. Links from other apps never open in a temporary
-  container. `vimma-ctl state` marks temporary tabs with `"temporary": true`.
+- **Not in the agent workspace or the private workspace.** `ctrl+b t` and `:tmp` are refused
+  there: agents work only with the agent workspace's own tabs and never see a temporary one, and
+  the private workspace is discarded when it closes already. Links from other apps never open in
+  a temporary container. `vimma-ctl state` marks temporary tabs with `"temporary": true`.
 - **Your key.** `ctrl+b t` is `temporary_tab` in `[keys]`; bind it to another key, or to `[]` to
-  free `ctrl+b t`.
+  free `ctrl+b t`. A `config.toml` that already binds `prefix+t` to another action is refused
+  with `"prefix+t" is already bound to temporary_tab` until you add `temporary_tab = []` (or
+  another key) to its `[keys]`.
 
 ### Private workspace
 

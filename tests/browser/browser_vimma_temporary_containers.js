@@ -606,6 +606,13 @@ add_task(async function tmp_is_refused_in_the_agent_workspace() {
       "refused with the spec's text",
     );
     Assert.equal(gBrowser.tabs.length, count, "no tab opened");
+    await focusContent(gBrowser.selectedBrowser);
+    prefix("t");
+    await until(
+      () => noticeText().includes("no temporary containers in the agent workspace"),
+      "ctrl+b t is refused with the same text",
+    );
+    Assert.equal(gBrowser.tabs.length, count, "and opens no tab");
   } finally {
     ww().switchTo({ id: mainDef().id });
   }

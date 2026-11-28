@@ -2,7 +2,8 @@
 
 Status: accepted (Deliveries 1 to 3 and 5 built, on for everyone; 4 to come) · Area: core
 (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`, `cmdline.mjs`, a new
-`packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`, `ui/tabline.mjs`, `ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,
+`packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`, `ui/tabline.mjs`,
+`ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,
 `workspaces/WindowWorkspaces.sys.mjs`, `workspaces/WorkspaceRouter.sys.mjs`, `host/tab-ops.mjs`,
 `host/pane-ops.mjs`, `host/close-last-ops.mjs`, `ui/statusbar.mjs`, `ui/tabline.mjs`,
 `ui/side-panel.mjs`, `ctl/VimmaControl.sys.mjs`) · Upstream patches: one more hunk in
@@ -387,6 +388,11 @@ Written first and seen to fail.
    verified in a full build (ADR-010).
 5. The default key `ctrl+b t` with the regenerated bindings docs and help snapshot; the guide;
    the flag removed.
+
+Delivery 5 landed before Delivery 4, because Delivery 4 changes an upstream file and waits on a
+full-build hand test, while the rest of the feature was ready. Until Delivery 4 lands, history
+records the pages visited in a temporary container, and the guide and `docs/limits.md` say so;
+Delivery 4 updates them with behaviour 10.
 
 ## Open questions
 
