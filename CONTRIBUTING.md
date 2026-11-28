@@ -46,6 +46,9 @@ scope with a reason, and removes `needs-triage`. An issue moves onto the
 Labels are set by the maintainer only: a reporter's issue gets the form's labels and nothing
 more, and no workflow reads labels from an issue's title or text.
 
+[CONTRIBUTORS.md](CONTRIBUTORS.md) thanks the people whose reports, proposals and fixes shaped
+Vimma.
+
 ## Build and run
 
 ```sh
