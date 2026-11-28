@@ -1265,6 +1265,8 @@ interface BrowsingContext {
    * field; its setter throws on a discarded context).
    */
   fullZoom: number;
+  /** False when its embedder has `disableglobalhistory`: its visits stay out of history. */
+  useGlobalHistory: boolean;
   getAllBrowsingContextsInSubtree(): BrowsingContext[];
 }
 // The parent process's context (BrowsingContext.webidl). In the parent every context is one
