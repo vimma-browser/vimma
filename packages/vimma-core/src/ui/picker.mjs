@@ -47,6 +47,8 @@ import { graphemes } from "../text/textwidth.mjs";
  * @property {number} workspaceIndex 1-based, the workspace order
  * @property {number} tabCount
  * @property {number} foreignCount   tabs adopted from a container no workspace owns
+ * @property {number} [temporaryCount]  tabs in a temporary container
+ *   (docs/specs/temporary-containers.md behaviour 4)
  * @property {string} display        the name (`◇ agent` for the agent workspace)
  * @property {boolean} active        the window's active workspace
  * @property {true} [agent]          the agent workspace (docs/specs/vimma-mcp.md, decision 9)
@@ -559,14 +561,20 @@ export function pickerItems(state, info, labels, { agentId = null, window } = {}
 }
 
 /**
- * One item per workspace, in workspace order, with its tab count (`isForeign` tells the foreign
- * ones among them).
+ * One item per workspace, in workspace order, with its tab count (`isForeign` and `isTemporary`
+ * tell the foreign and the temporary ones among them).
  * @param {Workspaces} state
  * @param {(tabId: string) => boolean} [isForeign]
  * @param {string | null} [agentId]  the agent workspace's id
+ * @param {(tabId: string) => boolean} [isTemporary]
  * @returns {WorkspaceItem[]}
  */
-export function workspaceItems(state, isForeign = () => false, agentId = null) {
+export function workspaceItems(
+  state,
+  isForeign = () => false,
+  agentId = null,
+  isTemporary = () => false,
+) {
   return state.workspaces.map((w, wi) =>
     Object.freeze({
       kind: /** @type {const} */ ("workspace"),
@@ -575,6 +583,7 @@ export function workspaceItems(state, isForeign = () => false, agentId = null) {
       workspaceIndex: wi + 1,
       tabCount: w.tabs.length,
       foreignCount: w.tabs.filter(isForeign).length,
+      temporaryCount: w.tabs.filter(isTemporary).length,
       // The agent workspace's row: `◇ agent` (docs/specs/vimma-mcp.md, decision 9).
       display: w.id === agentId ? `${AGENT_GLYPH} ${w.name}` : w.name,
       active: w.id === state.active,

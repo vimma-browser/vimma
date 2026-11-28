@@ -26,6 +26,7 @@ type Row = {
   active: boolean;
   playing: boolean;
   asleep?: boolean;
+  temporary?: number;
 };
 
 const row = (n: number, display: string, extra: Partial<Row> = {}): Row => ({
@@ -129,6 +130,22 @@ describe("tabLineEntries", () => {
     expect(after.items.map(itemWidth)).toEqual(before.items.map(itemWidth));
     expect(lineWidth(after)).toBe(lineWidth(before));
     expect(text(after)).toBe(text(before));
+  });
+
+  test("a temporary tab's entry carries tmpN in its fixed columns (temporary-containers 16)", () => {
+    const entries = tabLineEntries(
+      [row(1, "mail"), row(2, "sign in to the admin", { temporary: 1, active: true })],
+      [],
+    );
+    expect(entries.map((e) => e.temporary)).toEqual([undefined, 1]);
+    // "tmp1" and a space, kept when the name is cut, so the marker survives a narrow line.
+    const plain = { number: 2, name: "", pane: false, playing: false };
+    expect(itemWidth({ ...plain, temporary: 1 })).toBe(itemWidth(plain) + 5);
+    const fit = fitTabLine(entries, { width: 14, nameWidth: 14 });
+    const current = fit.items.find((i) => i.tabId === "t2");
+    expect(current?.temporary).toBe(1);
+    expect(current?.name.endsWith("…")).toBe(true);
+    expect(lineWidth(fit)).toBeLessThanOrEqual(14);
   });
 
   test("tabs shown in a pane of the shown split are marked (decision 11)", () => {

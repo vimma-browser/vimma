@@ -334,6 +334,37 @@ describe("status bar segments", () => {
     expect(s[1]).toMatchObject({ id: "workspace", text: "◆ private", fg: "--vimma-text-magenta" });
   });
 
+  // docs/specs/temporary-containers.md decision 16: after the workspace, in a colour of its own.
+  test("a temporary tab shows ◇ tmp1 after the workspace segment", () => {
+    const s = statusSegments({
+      mode: "normal",
+      workspace: { name: "work", index: 1, color: "green" },
+      tab: { index: 2, count: 3, title: "Sign in" },
+      temporary: 1,
+    });
+    const at = s.findIndex((x) => x.id === "workspace");
+    expect(s[at + 1]).toMatchObject({
+      id: "temporary",
+      text: "◇ tmp1",
+      fg: "--vimma-text-bright-green",
+      label: "temporary container tmp1",
+    });
+    const plain = statusSegments({ mode: "normal", workspace: { name: "work", index: 1 } });
+    expect(plain.some((x) => x.id === "temporary")).toBe(false);
+  });
+
+  test("the temporary segment gives way after the tab and title, before the workspace", () => {
+    const s = statusSegments({
+      mode: "normal",
+      workspace: { name: "work", index: 1 },
+      tab: { index: 2, count: 3, title: "Sign in" },
+      temporary: 2,
+    });
+    const p = (id: string) => s.find((x) => x.id === id)?.priority ?? NaN;
+    expect(p("temporary")).toBeGreaterThan(p("workspace"));
+    expect(p("temporary")).toBeLessThan(p("tab"));
+  });
+
   // docs/specs/builtin-agent.md Behaviour 35: the built-in agent's running tasks, unless a
   // question waits, which comes first.
   test("the agent segment shows the built-in agent's running tasks", () => {

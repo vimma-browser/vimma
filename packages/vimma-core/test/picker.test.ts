@@ -421,6 +421,7 @@ describe("workspace picker (m3-workspaces 5)", () => {
         workspaceIndex: 1,
         tabCount: 2,
         foreignCount: 1,
+        temporaryCount: 0,
         display: "work",
         active: false,
       },
@@ -429,6 +430,20 @@ describe("workspace picker (m3-workspaces 5)", () => {
     ]);
     expect(Object.isFrozen(ws[0])).toBe(true);
     expect(workspaceItems(model)[0]?.foreignCount).toBe(0);
+  });
+
+  test("counts a workspace's temporary tabs (temporary-containers decision 16)", () => {
+    const items = workspaceItems(
+      model,
+      () => false,
+      null,
+      (id) => id === "t1" || id === "t2",
+    );
+    expect(items.map((i) => [i.workspaceId, i.temporaryCount])).toEqual([
+      ["w1", 2],
+      ["w2", 0],
+      ["w3", 0],
+    ]);
   });
 
   test("filters by name only, with highlights", () => {

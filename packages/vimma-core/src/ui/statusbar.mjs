@@ -14,6 +14,11 @@ import { displayLabel } from "../workspaces/tablabels.mjs";
 import { clusterWidth, graphemes, textWidth } from "../text/textwidth.mjs";
 import { PRIVATE_COLOR_TOKEN, PRIVATE_GLYPH, PRIVATE_NAME } from "../workspaces/privatews.mjs";
 import { AGENT_GLYPH } from "../agent/agent.mjs";
+import {
+  TEMPORARY_COLOR_TOKEN,
+  TEMPORARY_GLYPH,
+  temporaryMarker,
+} from "../workspaces/tempcontainers.mjs";
 import { upperLast } from "../page/hints.mjs";
 
 export { textWidth };
@@ -65,6 +70,8 @@ function paneText({ index, count, hidden, split, splits = 1 }) {
  * @property {readonly string[]} [pending]      dispatcher.pending()
  * @property {{ name: string, index: number, color?: string, private?: boolean } | null} [workspace]
  *   `private`: the private workspace (docs/specs/private-workspace.md), `◆ private`
+ * @property {number | null} [temporary]  the selected tab's temporary container's number in the
+ *   window, `◇ tmp1` (docs/specs/temporary-containers.md decision 16); null for any other tab
  * @property {{ index: number, count: number, title?: string | null, url?: string | null,
  *   label?: string | null, origin?: UrlOrigin | null } | null} [tab]
  * @property {{ index: number, count: number, hidden?: boolean, split?: number, splits?: number }
@@ -384,6 +391,7 @@ export function statusSegments(input) {
     mode,
     pending = [],
     workspace = null,
+    temporary = null,
     tab = null,
     pane = null,
     loading = false,
@@ -508,6 +516,20 @@ export function statusSegments(input) {
         priority: 3,
         min: 6,
         cut: "end",
+      }),
+    );
+  }
+  if (temporary !== null) {
+    // After the workspace's (temporary-containers decision 16); it gives way after the tab and
+    // title, before the workspace, which says where the tab is.
+    const marker = temporaryMarker(temporary);
+    left.push(
+      seg({
+        id: "temporary",
+        text: `${TEMPORARY_GLYPH} ${marker}`,
+        label: `temporary container ${marker}`,
+        fg: TEMPORARY_COLOR_TOKEN,
+        priority: 3.2,
       }),
     );
   }

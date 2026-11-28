@@ -14,6 +14,7 @@ import { AGENT_GLYPH } from "../core/agent.mjs";
 import { itemId, openPicker, pickerKey, sectionOf, setPickerItems } from "../core/picker.mjs";
 import { accessibleName, countText, rowRange, sectionHeading } from "../core/tabsearch.mjs";
 import { LAST_TAB_TITLE } from "../core/closelast.mjs";
+import { temporaryCountText } from "../core/tempcontainers.mjs";
 
 /** @import { AnyItem, AddonOp, PickerItem, PickerState, WorkspaceItem } from "../core/picker.mjs" */
 /** @import { AddonItem } from "../core/addons.mjs" */
@@ -138,7 +139,10 @@ const WORKSPACES = {
     }
     const tabs = `${item.tabCount} ${item.tabCount === 1 ? "tab" : "tabs"}`;
     const foreign = item.foreignCount ? `, ${item.foreignCount} foreign` : "";
-    return [String(item.workspaceIndex), `${tabs}${foreign}${item.active ? " · current" : ""}`];
+    // docs/specs/temporary-containers.md behaviour 4.
+    const temp = item.temporaryCount ? `, ${temporaryCountText(item.temporaryCount)}` : "";
+    const current = item.active ? " · current" : "";
+    return [String(item.workspaceIndex), `${tabs}${foreign}${temp}${current}`];
   },
 };
 

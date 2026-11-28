@@ -9,6 +9,7 @@
 import { hintLabelCase, hintLabels } from "../page/hints.mjs";
 import { textWidth } from "../text/textwidth.mjs";
 import { truncate } from "./statusbar.mjs";
+import { temporaryMarker } from "../workspaces/tempcontainers.mjs";
 
 /** @import { Chord } from "../keys/keys.mjs" */
 
@@ -16,17 +17,19 @@ import { truncate } from "./statusbar.mjs";
 
 /**
  * One tab of the line, before it is fitted. `asleep`: drawn muted, in the same columns
- * (docs/specs/tab-sleep.md, behaviour 14).
+ * (docs/specs/tab-sleep.md, behaviour 14). `temporary`: its temporary container's number, drawn
+ * `tmp1` before the name (docs/specs/temporary-containers.md decision 16); only on such a tab.
  * @typedef {{ readonly tabId: string, readonly number: number, readonly name: string,
  *   readonly current: boolean, readonly playing: boolean, readonly pane: boolean,
- *   readonly asleep: boolean }} TabLineEntry
+ *   readonly asleep: boolean, readonly temporary?: number }} TabLineEntry
  */
 /**
  * One drawn entry: `name` cut to fit ("" for none); while gb's labels show, `label` the whole
  * label and `rest` the letters still to type, which are what is drawn.
  * @typedef {{ readonly tabId: string, readonly number: number, readonly name: string,
  *   readonly current: boolean, readonly playing: boolean, readonly pane: boolean,
- *   readonly asleep: boolean, readonly label: string | null, readonly rest?: string }} TabLineItem
+ *   readonly asleep: boolean, readonly temporary?: number, readonly label: string | null,
+ *   readonly rest?: string }} TabLineItem
  */
 /**
  * What the line draws: the entries in view and how many tabs are hidden on each side.
@@ -69,7 +72,7 @@ export function nextTabLineSetting(drawn) {
  * The line's entries from the side panel's rows (core sidepanel.mjs openPanel), so the numbers,
  * names and tabs are the panel's (decision 7).
  * @param {readonly { tabId: string, number: number, display: string, active: boolean,
- *   playing: boolean, asleep?: boolean }[]} rows
+ *   playing: boolean, asleep?: boolean, temporary?: number }[]} rows
  * @param {readonly string[]} panes  the shown split's tabs
  * @returns {TabLineEntry[]}
  */
@@ -84,6 +87,7 @@ export function tabLineEntries(rows, panes) {
       playing: r.playing,
       pane: inPane.has(r.tabId),
       asleep: !!r.asleep,
+      ...(r.temporary ? { temporary: r.temporary } : {}),
     }),
   );
 }
@@ -108,9 +112,10 @@ function cut(text, width) {
 
 /**
  * The columns of an entry but its name: a column of padding on each side, the label's letters
- * still to type and a space, the number, the pane mark, a space before ♪ and ♪.
+ * still to type and a space, the number, the pane mark, a space before a temporary tab's marker
+ * and the marker, a space before ♪ and ♪. The marker is fixed, so a cut name never hides it.
  * @param {{ number: number, pane: boolean, playing: boolean, label?: string | null,
- *   rest?: string }} item
+ *   rest?: string, temporary?: number }} item
  */
 function fixedWidth(item) {
   const shown = item.rest ?? item.label ?? "";
@@ -120,6 +125,7 @@ function fixedWidth(item) {
     (shown ? label + 1 : 0) +
     String(item.number).length +
     (item.pane ? 1 : 0) +
+    (item.temporary ? temporaryMarker(item.temporary).length + 1 : 0) +
     (item.playing ? 2 : 0)
   );
 }
@@ -127,7 +133,7 @@ function fixedWidth(item) {
 /**
  * One entry's columns; the name takes a space before it.
  * @param {{ number: number, name: string, pane: boolean, playing: boolean,
- *   label?: string | null, rest?: string }} item
+ *   label?: string | null, rest?: string, temporary?: number }} item
  */
 export function itemWidth(item) {
   return fixedWidth(item) + (item.name ? 1 + columns(item.name) : 0);

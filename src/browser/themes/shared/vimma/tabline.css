@@ -68,6 +68,12 @@
   color: var(--vimma-fg-dim);
 }
 
+/* A temporary tab's marker (docs/specs/temporary-containers.md decision 16): the text says it,
+   in a colour no workspace marker uses (core TEMPORARY_COLOR_TOKEN), on the current tab too. */
+.vimma-tabline-temporary {
+  color: var(--vimma-text-bright-green);
+}
+
 .vimma-tabline-more {
   flex: none;
   color: var(--vimma-fg-dim);

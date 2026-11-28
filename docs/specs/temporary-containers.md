@@ -1,7 +1,7 @@
 # Spec: temporary-containers
 
-Status: accepted (Delivery 1 built, behind `vimma.feature.temporary_containers`; 2 to 5 to
-come) · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
+Status: accepted (Deliveries 1 and 2 built, behind `vimma.feature.temporary_containers`; 3 to
+5 to come) · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
 `cmdline.mjs`, a new `packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`,
 `ui/tabline.mjs`, `ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,
 `workspaces/WindowWorkspaces.sys.mjs`, `workspaces/WorkspaceRouter.sys.mjs`, `host/tab-ops.mjs`,
@@ -267,7 +267,11 @@ close_last` decides, and its container is deleted as the tab closes, so that no 
     colour, the number tells two temporary sessions in one split apart, and `◇` echoes the
     private workspace's `◆` without claiming to be it. Numbers count up from 1 within a window
     and are not reused while a container with that number is open, so that a marker never
-    changes under a tab.
+    changes under a tab. A new container takes the lowest number no open one has, so that the
+    numbers stay short. The colour is the theme's bright green (`--vimma-text-bright-green`),
+    because the workspace colours, the private workspace's magenta, the agent's cyan and the
+    accent take the others, and the palette's `brown` falls back to the muted text in themes that
+    leave it out.
 17. **Agents, MCP and `vimma-ctl`.** Agents cannot open or see a temporary tab, and
     `vimma-ctl state` (the user's full role) lists temporary tabs with `"temporary": true`; no
     command or agent tool is added, because the agent workspace's confinement is its container

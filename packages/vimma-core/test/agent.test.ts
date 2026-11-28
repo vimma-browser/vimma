@@ -165,6 +165,7 @@ describe("the agent workspace's picker row (decision 9)", () => {
       workspaceIndex: 2,
       tabCount: 3,
       foreignCount: 0,
+      temporaryCount: 0,
       display: `${AGENT_GLYPH} agent`,
       active: false,
       agent: true,

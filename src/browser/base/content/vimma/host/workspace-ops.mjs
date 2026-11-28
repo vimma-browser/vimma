@@ -394,6 +394,11 @@ export function workspacePickerItems(win) {
       return !!tab && ww.isForeign(tab);
     },
     WorkspaceStore.agent?.id ?? null,
+    // docs/specs/temporary-containers.md behaviour 4: `2 temporary` in the row's count.
+    (id) => {
+      const tab = ww.tabOf(id);
+      return !!tab && ww.isTemporary(tab);
+    },
   );
 }
 
