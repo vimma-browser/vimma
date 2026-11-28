@@ -2156,6 +2156,8 @@ unbind = ["ctrl+k"]
   `gT` are off on that site, since the page has to see the first key of its own shortcuts. The
   keys after it must be free too: GitHub's `g c` works with `"g"` alone, but its `g i` also needs
   `"i"`, since `i` is Vimma's insert key.
+- A listed digit goes to the page instead of starting a count: with `"1"` listed, `1` is the
+  site's, while `2j` still scrolls two lines there.
 - A listed chord is the field's in insert mode too: with `"ctrl+w"` listed, Vimma's
   [text-field keys](#normal-and-insert-mode) leave `ctrl+w` to the site.
 - `esc` and the prefix (`ctrl+b`) cannot be listed, so a site never keeps you from leaving insert
