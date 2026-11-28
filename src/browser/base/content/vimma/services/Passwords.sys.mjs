@@ -12,9 +12,10 @@
 //
 // The default branch is not saved between starts and config.toml is read asynchronously, so a
 // restored tab could show a login form under Firefox's defaults before the file applies. The
-// values in force are therefore remembered in Vimma's own prefs and set again as the first window
-// opens, before it loads a page; the same values stay when a file with errors leaves only the built-in defaults to stand
-// in for it, as a broken file keeps the last good config (docs/security/08-config-toml.md F2).
+// values in force are therefore remembered in Vimma's own prefs and set again as the first
+// window opens, before it loads a page. The same values stay when a file with errors leaves only
+// the built-in defaults to stand in for it, as a broken file keeps the last good config
+// (docs/security/08-config-toml.md F2).
 
 /** Saving, filling and listing saved logins (LoginHelper.enabled). */
 export const SAVE_PREF = "signon.rememberSignons";

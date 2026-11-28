@@ -210,7 +210,7 @@ add_task(async function the_values_in_force_are_remembered_for_the_next_start() 
   Assert.equal(Services.prefs.getBoolPref(LAST_SAVE), true, "the default is remembered too");
 });
 
-add_task(async function a_file_the_defaults_stand_in_for_keeps_the_values_in_force() {
+add_task(async function configure_null_keeps_the_values_in_force() {
   await config("[passwords]\nsave = false\nfill_on_load = false\n");
   // ConfigHost passes null when a file with errors, or one it cannot read, has no last good
   // config and the defaults stand in for it.

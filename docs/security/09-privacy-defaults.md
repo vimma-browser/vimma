@@ -68,5 +68,5 @@ Spec: [m0-mozilla-services](../specs/m0-mozilla-services.md),
   [`a_config_change_applies_without_a_restart`](../../tests/browser/browser_vimma_passwords.js),
   [`save_false_neither_fills_nor_lists_a_saved_login`](../../tests/browser/browser_vimma_passwords.js),
   [`the_values_in_force_are_remembered_for_the_next_start`](../../tests/browser/browser_vimma_passwords.js),
-  [`a_file_the_defaults_stand_in_for_keeps_the_values_in_force`](../../tests/browser/browser_vimma_passwords.js),
+  [`configure_null_keeps_the_values_in_force`](../../tests/browser/browser_vimma_passwords.js),
   [`save and fill_on_load default to true`](../../packages/vimma-core/test/config-passwords.test.ts)
