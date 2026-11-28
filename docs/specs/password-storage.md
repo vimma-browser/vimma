@@ -1,6 +1,6 @@
 # Spec: password-storage
 
-Status: draft · Area: core (`packages/vimma-core/src/config/config.mjs`,
+Status: accepted · Area: core (`packages/vimma-core/src/config/config.mjs`,
 `packages/vimma-core/src/config/defaults.mjs`, `packages/vimma-core/defaults.toml`,
 `packages/vimma-core/src/system/setup-steps.mjs`), chrome (`config/ConfigHost.sys.mjs`, a new
 `services/Passwords.sys.mjs`), docs (`docs/guide.md`, `docs/limits.md`,
@@ -63,7 +63,7 @@ store none, and a user who keeps them in Vimma knows what protects them.
    (decision 6). When the setup is skipped or left before them, nothing is written and saving
    stays on, as in Firefox.
    - **Password manager**, an action step in the content blocker's style: a curated list of
-     password manager extensions (open question 1), `/` searches addons.mozilla.org, `space`
+     password manager extensions (decision 10), `/` searches addons.mozilla.org, `space`
      marks an add-on, and `enter` installs the marked ones, each with Firefox's permission
      prompt. `enter` with nothing marked moves on.
    - **Saved passwords**, a setting step that asks "Turn off passwords saved in Vimma?" with two
@@ -190,7 +190,8 @@ vault behind their own password, sync across browsers and devices, and do not de
 profile's `key4.db`. These are properties of the WebExtension model; the permissions and lock
 behaviour of each named extension were not checked (**unverified**).
 
-Read on addons.mozilla.org's public API (`api/v5/addons/addon/<slug>/`) for open question 1:
+Read on addons.mozilla.org's public API (`api/v5/addons/addon/<slug>/`) for the password manager
+step (decision 10):
 
 | Add-on            | Slug                           | Add-on ID                                    | Licence on AMO              | Badge       | Daily users |
 | ----------------- | ------------------------------ | -------------------------------------------- | --------------------------- | ----------- | ----------- |
@@ -253,6 +254,16 @@ others work with their own account.
    are independent and each maps one-to-one to a Firefox pref (decision 1), with defaults
    matching decisions 6 and 8. Rejected: one `[passwords] manager = "browser" | "none"`, because
    it cannot express filling on choice while saving stays on.
+
+10. **The password manager step lists Bitwarden, Proton Pass and KeePassXC-Browser,** because
+    they are well-known password managers with published source (Proton Pass and
+    KeePassXC-Browser GPL-3.0 on AMO; Bitwarden's client source is public, under the licence AMO
+    links, **unverified** beyond that listing), and between them they cover a hosted account
+    (Bitwarden, Proton Pass) and a local vault with no account (KeePassXC); any other manager,
+    1Password included, stays one `/` search away. Rejected: Bitwarden alone, the only one AMO
+    marks "Recommended", because it leaves out a local vault for a user who wants no account;
+    adding 1Password, because its add-on is not published under an open licence ("all rights
+    reserved" on AMO) and the list stays short.
 
 ## Security and privacy
 
@@ -325,12 +336,4 @@ others work with their own account.
 
 ## Open questions
 
-1. **Which password managers the setup lists.** The content blocker step's curated list holds
-   three add-ons that AMO marks "Recommended"; only Bitwarden of the password managers carries
-   that badge (Research, "Password manager extensions"). (a) Bitwarden, Proton Pass and
-   KeePassXC-Browser; (b) Bitwarden alone, the only Recommended one; (c) (a) plus 1Password.
-   Recommendation: (a), because they are well-known password managers with published source
-   (Proton Pass and KeePassXC-Browser GPL-3.0 on AMO; Bitwarden's client source is public, under
-   the licence AMO links, **unverified** beyond that listing), and between them they cover a
-   hosted account (Bitwarden, Proton Pass) and a local vault with no account (KeePassXC); any
-   other manager, 1Password included, stays one `/` search away.
+None.
