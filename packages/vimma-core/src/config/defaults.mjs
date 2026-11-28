@@ -68,6 +68,9 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
  *   Firefox's toolbar at startup (docs/specs/toolbar-toggle.md), its Bookmarks Toolbar
  *   (docs/specs/bookmarks-toolbar-hidden.md) and Vimma's outline beside a PDF
  *   (docs/specs/pdf-mode.md decision 19), and the tab line (docs/specs/tab-line.md)
+ * @property {{ save?: boolean, fill_on_load?: boolean }} [passwords]  saving and filling saved
+ *   logins, Firefox's `signon.rememberSignons` and `signon.autofillForms`
+ *   (docs/specs/password-storage.md)
  * @property {{ tab?: boolean }} [statusbar]  whether the status bar keeps its tab and title while
  *   the tab line is drawn (docs/specs/tab-line.md decision 16)
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
@@ -588,6 +591,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     tabline_width: TABLINE_WIDTH.default,
   },
   statusbar: { tab: true },
+  passwords: { save: true, fill_on_load: true },
   updates: { check: true },
   // docs/specs/vimma-mcp.md, decision 26. No `enabled`: left out, `:mcp on|off` decides.
   mcp: {
@@ -1050,6 +1054,21 @@ export function configTables({ brief = false } = {}) {
             "close_last",
             CLOSE_LAST_DEFAULT,
             'closing the last tab: "picker", "new_tab", "ask", "quit" or "keep"',
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "passwords",
+      lines: [
+        "# Firefox's own saved passwords (about:logins); a change made in Settings wins over these.",
+        "[passwords]",
+        ...annotate([
+          set("save", c.passwords.save, "false: never offer to save, fill or list a saved login"),
+          set(
+            "fill_on_load",
+            c.passwords.fill_on_load,
+            "false: a saved login fills only when you pick it in the field's list",
           ),
         ]),
       ],

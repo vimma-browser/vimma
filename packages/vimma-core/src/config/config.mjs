@@ -134,6 +134,9 @@ import { hasControl } from "../text/strings.mjs";
  *   `sleepOnLowMemory` is `sleep_on_low_memory`, whether Firefox's low-memory unloader runs
  *   (docs/specs/tab-sleep.md); `closeLast` is `close_last`, what closing a window's last tab
  *   does (docs/specs/close-last-tab.md)
+ * @property {{ save: boolean, fillOnLoad: boolean }} passwords  `[passwords]`: `save` is
+ *   Firefox's `signon.rememberSignons`, `fillOnLoad` its `signon.autofillForms`
+ *   (docs/specs/password-storage.md)
  * @property {ResolvedSearch | null} search              `[search]`, null without it;
  *   docs/specs/search-engines.md
  * @property {{ check: boolean }} updates                `[updates]`,
@@ -238,6 +241,7 @@ const TOP_KEYS = [
   "scroll",
   "statusbar",
   "tabs",
+  "passwords",
 ];
 const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox", "sites"]);
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
@@ -263,6 +267,8 @@ export const MAIN_SIZE_MAX = 80;
 const SITE_KEYS = ["insert", "unbind", "sleep"];
 /** `[tabs]` (docs/specs/tab-sleep.md, decision 11; docs/specs/close-last-tab.md). */
 const TABS_KEYS = ["sleep_after", "sleep_on_low_memory", "close_last"];
+/** `[passwords]` (docs/specs/password-storage.md, decision 9). */
+const PASSWORDS_KEYS = ["save", "fill_on_load"];
 const MODAL_KEYS = ["leader", "timeout_ms", "hint_chars", "insert_editing"];
 const FIREFOX_KEYS = ["disable", "enable"];
 const FIREFOX_DISABLE = 'must be "all" or a list of keys like "ctrl+w"';
@@ -841,6 +847,14 @@ function validate(raw, warnings = []) {
     }
   }
 
+  if (isTable(raw.passwords)) {
+    for (const [key, v] of Object.entries(raw.passwords)) {
+      const path = ["passwords", key];
+      if (!PASSWORDS_KEYS.includes(key)) unknownKey(path, key, PASSWORDS_KEYS);
+      else if (typeof v !== "boolean") typeError(path, v, "a boolean");
+    }
+  }
+
   if (isTable(raw.updates)) {
     for (const [key, v] of Object.entries(raw.updates)) {
       const path = ["updates", key];
@@ -1408,6 +1422,11 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       sleepAfter: user.tabs?.sleep_after ?? SLEEP_AFTER.default,
       sleepOnLowMemory: user.tabs?.sleep_on_low_memory ?? true,
       closeLast: user.tabs?.close_last ?? CLOSE_LAST_DEFAULT,
+    },
+    // Firefox's defaults (decisions 6 and 8).
+    passwords: {
+      save: user.passwords?.save ?? true,
+      fillOnLoad: user.passwords?.fill_on_load ?? true,
     },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },

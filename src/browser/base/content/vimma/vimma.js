@@ -33,6 +33,13 @@
   );
   ViewedDownloads.init();
 
+  // Saved passwords as `[passwords]` last left them (password-storage), before this window loads
+  // a page: config.toml is read asynchronously, later.
+  const { Passwords } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/services/Passwords.sys.mjs",
+  );
+  Passwords.init();
+
   // The start page as the new-tab page, before this window opens its first tab (start-page).
   const { StartPage } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/start/StartPage.sys.mjs",

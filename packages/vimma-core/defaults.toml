@@ -438,6 +438,11 @@ sleep_after = 120             # minutes unseen before a tab sleeps (5–10080); 
 sleep_on_low_memory = true    # false: Firefox never unloads tabs when memory runs low
 close_last = "picker"         # closing the last tab: "picker", "new_tab", "ask", "quit" or "keep"
 
+# Firefox's own saved passwords (about:logins); a change made in Settings wins over these.
+[passwords]
+save = true            # false: never offer to save, fill or list a saved login
+fill_on_load = true    # false: a saved login fills only when you pick it in the field's list
+
 # Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update
 # channel and the platform.
 [updates]

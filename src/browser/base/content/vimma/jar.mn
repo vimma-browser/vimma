@@ -91,6 +91,7 @@ browser.jar:
 % category browser-before-ui-startup chrome://browser/content/vimma/services/AppLauncher.sys.mjs AppLauncher.beforeUIStartup
         content/browser/vimma/services/ViewedDownloads.sys.mjs (services/ViewedDownloads.sys.mjs)
         content/browser/vimma/services/TabSleep.sys.mjs (services/TabSleep.sys.mjs)
+        content/browser/vimma/services/Passwords.sys.mjs (services/Passwords.sys.mjs)
         content/browser/vimma/workspaces/WorkspaceStore.sys.mjs (workspaces/WorkspaceStore.sys.mjs)
         content/browser/vimma/workspaces/WindowWorkspaces.sys.mjs (workspaces/WindowWorkspaces.sys.mjs)
         content/browser/vimma/workspaces/WorkspaceRouter.sys.mjs (workspaces/WorkspaceRouter.sys.mjs)

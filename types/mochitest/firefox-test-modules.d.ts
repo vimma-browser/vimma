@@ -139,6 +139,13 @@ interface VimmaModules {
       };
     };
   };
+  // engine/toolkit/components/passwordmgr/LoginManagerParent.sys.mjs: a hook for the messages
+  // its child sends, such as "FormProcessed" once a login form was looked at.
+  "resource://gre/modules/LoginManagerParent.sys.mjs": {
+    LoginManagerParent: {
+      setListenerForTests(listener: ((msg: string, data: unknown) => void) | null): void;
+    };
+  };
   // engine/netwerk/base/NetUtil.sys.mjs
   "resource://gre/modules/NetUtil.sys.mjs": {
     NetUtil: LazyModules["NetUtil"] & {
