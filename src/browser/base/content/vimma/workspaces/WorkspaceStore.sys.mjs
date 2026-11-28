@@ -827,6 +827,18 @@ export class WorkspaceStoreImpl {
   }
 
   /**
+   * Whether a `<browser>` in container `userContextId` keeps its visits out of history
+   * (decision 12): a temporary container, or one the startup cleanup deleted, whose tabs session
+   * restore may bring back before their window closes them.
+   * @param {number | string | null | undefined} userContextId
+   */
+  keepsNoHistory(userContextId) {
+    // A `usercontextid` attribute is a string, and temporaryWorkspaceOf compares with ===.
+    const id = Number(userContextId);
+    return this.isTemporaryContainer(id) || this.#purged.has(id);
+  }
+
+  /**
    * The workspace temporary container `userContextId` was opened in (decision 3), or undefined.
    * @param {number} userContextId
    */

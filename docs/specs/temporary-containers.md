@@ -244,7 +244,9 @@ close_last` decides, and its container is deleted as the tab closes, so that no 
     is read from the attribute each time a browsing context attaches to the `<browser>`, while a
     value set on the browsing context afterwards is lost when a navigation replaces it (Research,
     "History"); asking by container also covers tabs and pop-ups the page
-    opens, which take its container (decision 13). The hunk changes an upstream file, so its
+    opens, which take its container (decision 13). A container the startup cleanup deleted
+    counts too, because session restore may bring back its tabs before their window closes them
+    (decision 18). The hunk changes an upstream file, so its
     pull request is verified in a full build (ADR-010) and adds its line to ADR-003's patch
     register. Rejected: recording history like any tab, because it needs no patch but leaves a
     record of a session meant to be thrown away; and private browsing per tab, because it needs a

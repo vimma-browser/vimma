@@ -104,8 +104,10 @@ containers.
 - W13. A visit in a temporary container's tab, or in a tab or pop-up window its page opens,
   **never** reaches history, address-bar suggestions or history search: `createBrowser` gives the
   tab's `<browser>` the `disableglobalhistory` attribute when its container is one of Vimma's
-  temporary ones (`Tabbrowser-sys-mjs.patch`), before the first load, and the docshell reads it
+  temporary ones, or one the startup cleanup deleted whose tab session restore brings back
+  (`Tabbrowser-sys-mjs.patch`), before the first load, and the docshell reads it
   into `UseGlobalHistory` each time a browsing context attaches, so a cross-site navigation that
   replaces the browsing context keeps it. A finished download is still recorded in history and
   the downloads list, as Firefox does for every download outside private browsing (W12).
-  [`a_visit_in_a_temporary_tab_or_its_popup_is_not_in_history`](../../tests/browser/browser_vimma_temporary_containers.js)
+  [`a_visit_in_a_temporary_tab_or_its_popup_is_not_in_history`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`a_tab_restored_into_a_deleted_container_keeps_no_history`](../../tests/browser/browser_vimma_temporary_containers.js)

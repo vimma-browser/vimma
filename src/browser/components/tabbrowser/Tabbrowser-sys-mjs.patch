@@ -22,7 +22,7 @@ index 241875edde94e674713d6651704e19a142c40b5d..8a157b4aac84a293881fb8b47bf28c7f
 +      if (
 +        ChromeUtils.importESModule(
 +          "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs"
-+        ).WorkspaceStore.isTemporaryContainer(Number(userContextId))
++        ).WorkspaceStore.keepsNoHistory(userContextId)
 +      ) {
 +        b.setAttribute("disableglobalhistory", "true");
 +      }

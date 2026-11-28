@@ -270,6 +270,25 @@ add_task(async function a_visit_in_a_temporary_tab_or_its_popup_is_not_in_histor
   );
   Assert.ok(!keepsHistory(child.linkedBrowser), "and keeps no history");
 
+  // A noopener open takes its container from the triggering principal, not from an opener.
+  const lone = BrowserTestUtils.waitForNewTab(gBrowser, url(OTHER, "lone"), true);
+  await SpecialPowers.spawn(tab.linkedBrowser, [url(OTHER, "lone")], (u) => {
+    content.open(u, "_blank", "noopener");
+  });
+  const loneTab = await lone;
+  Assert.equal(loneTab.userContextId, tab.userContextId, "a noopener tab is in its container");
+  Assert.ok(!keepsHistory(loneTab.linkedBrowser), "and keeps no history either");
+
+  // Tabbrowser passes numbers today, but a `usercontextid` attribute is a string.
+  Assert.ok(
+    WorkspaceStore.keepsNoHistory(String(tab.userContextId)),
+    "the check takes the container as a string too",
+  );
+  const copy = gBrowser.duplicateTab(tab, true);
+  await BrowserTestUtils.browserLoaded(copy.linkedBrowser, false, url(OTHER, "next"));
+  Assert.equal(copy.userContextId, tab.userContextId, "a duplicate is in its container");
+  Assert.ok(!keepsHistory(copy.linkedBrowser), "and keeps no history");
+
   const popupOpened = BrowserTestUtils.waitForNewWindow({ url: url(OTHER, "popup") });
   await SpecialPowers.spawn(tab.linkedBrowser, [url(OTHER, "popup")], (u) => {
     content.open(u, "", "popup,width=300,height=300");
@@ -277,18 +296,36 @@ add_task(async function a_visit_in_a_temporary_tab_or_its_popup_is_not_in_histor
   const popup = await popupOpened;
   Assert.ok(!keepsHistory(popup.gBrowser.selectedBrowser), "nor does a pop-up window");
 
+  // A backstop only: the useGlobalHistory checks above carry the guarantee, since this one
+  // assumes that visits from different content processes reach Places in the order they happen.
   // A workspace visit made after them is recorded; the temporary visits came first and are not.
   BrowserTestUtils.startLoadingURIString(home.linkedBrowser, url(SITE, "home"));
   await BrowserTestUtils.browserLoaded(home.linkedBrowser, false, url(SITE, "home"));
   await until(() => visited(url(SITE, "home")), "the workspace tab's visit is in history");
-  for (const what of ["tab", "next", "child", "popup"]) {
+  for (const what of ["tab", "next", "child", "lone", "popup"]) {
     const site = what === "tab" ? SITE : OTHER;
     Assert.ok(!(await visited(url(site, what))), `no ${what} visit in history`);
   }
 
   await BrowserTestUtils.closeWindow(popup);
+  BrowserTestUtils.removeTab(copy);
+  BrowserTestUtils.removeTab(loneTab);
   BrowserTestUtils.removeTab(child);
   BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(home);
+});
+
+add_task(async function a_tab_restored_into_a_deleted_container_keeps_no_history() {
+  const home = await workspaceTab();
+  // Session restore may bring back a tab of a container the startup cleanup deleted; it is no
+  // temporary container any more, and keeps no history until its window closes it.
+  const name = "vimma temporary 4157";
+  const { userContextId } = CIS.create(name, "fence", "toolbar");
+  WorkspaceStore.cleanTemporary([{ userContextId, name }]);
+  const restored = BrowserTestUtils.addTab(gBrowser, `${SITE}?purged`, { userContextId });
+  Assert.ok(WorkspaceStore.keepsNoHistory(userContextId), "a deleted container keeps no history");
+  Assert.ok(!keepsHistory(restored.linkedBrowser), "nor does a tab restored into it");
+  await until(() => !restored.isConnected, "and is closed");
   BrowserTestUtils.removeTab(home);
 });
 
