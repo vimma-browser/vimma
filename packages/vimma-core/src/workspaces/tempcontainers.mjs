@@ -170,8 +170,9 @@ export const TEMPORARY_GLYPH = "◇";
 
 /**
  * The markers' colour (decision 16): a theme token no workspace colour, the private workspace
- * nor the default accent uses, so a marker is not read as a workspace. The text carries it
- * without colour.
+ * nor the default accent uses. Many palettes give bright green the same value as green (a
+ * workspace colour, the panel's mark gutter) and split 8's stripe uses it too, so the colour can
+ * match those on screen: the text is what tells a temporary tab apart.
  */
 export const TEMPORARY_COLOR_TOKEN = "--vimma-text-bright-green";
 

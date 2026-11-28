@@ -420,6 +420,14 @@ add_task(async function markers_number_temporary_tabs_in_the_bar_line_panel_and_
     await until(panelOpen, "the side panel is open");
     await until(() => panelMarker(a) === "tmp1" && panelMarker(b) === "tmp2", "the panel: tmp1/2");
     Assert.equal(panelMarker(home), undefined, "no marker on a workspace tab's row");
+    Assert.equal(
+      document
+        .getElementById(PANEL_ID)
+        ?.querySelector(".vimma-panel-temporary")
+        ?.getAttribute("aria-label"),
+      "temporary tmp1",
+      "the row reads the marker as the tab line does",
+    );
     EventUtils.synthesizeKey("KEY_Escape");
     await until(() => !panelOpen(), "the side panel closed");
 

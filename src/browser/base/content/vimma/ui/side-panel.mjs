@@ -354,7 +354,10 @@ export class SidePanel {
         if (marks.length || r.temporary) {
           const box = el("span", "vimma-panel-marks", marks.join(" "));
           if (r.temporary) {
-            const marker = el("span", "vimma-panel-temporary", temporaryMarker(r.temporary));
+            const text = temporaryMarker(r.temporary);
+            const marker = el("span", "vimma-panel-temporary", text);
+            // Read as the tab line reads it, "temporary tmp1", like the split label's name.
+            marker.setAttribute("aria-label", `temporary ${text}`);
             box.prepend(marker, marks.length ? " " : "");
           }
           row.append(box);

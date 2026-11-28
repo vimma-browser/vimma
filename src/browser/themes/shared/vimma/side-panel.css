@@ -140,8 +140,9 @@
     grid-column: 4;
   }
 
-  /* A temporary tab's tmp1 (docs/specs/temporary-containers.md decision 16), in the colour of
-     core TEMPORARY_COLOR_TOKEN, which no workspace marker uses. */
+  /* A temporary tab's tmp1 (docs/specs/temporary-containers.md decision 16), in core
+     TEMPORARY_COLOR_TOKEN: a token of its own, though some palettes give it green's value, so
+     the text is what tells a temporary tab apart. */
   & .vimma-panel-temporary {
     color: var(--vimma-text-bright-green);
   }

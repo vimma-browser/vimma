@@ -263,7 +263,7 @@ close_last` decides, and its container is deleted as the tab closes, so that no 
     the user opened on purpose. It can be added later as a setting if it is needed.
 16. **Numbered text markers.** `tmp1`, `tmp2` in the tab line and the side panel, `◇ tmp1` in the
     status bar after the workspace segment when the current tab is temporary, and `2 temporary`
-    in the picker's count, in a theme colour no workspace marker uses, because text works without
+    in the picker's count, in a theme colour token of their own, because text works without
     colour, the number tells two temporary sessions in one split apart, and `◇` echoes the
     private workspace's `◆` without claiming to be it. Numbers count up from 1 within a window
     and are not reused while a container with that number is open, so that a marker never
@@ -271,7 +271,10 @@ close_last` decides, and its container is deleted as the tab closes, so that no 
     numbers stay short. The colour is the theme's bright green (`--vimma-text-bright-green`),
     because the workspace colours, the private workspace's magenta, the agent's cyan and the
     accent take the others, and the palette's `brown` falls back to the muted text in themes that
-    leave it out.
+    leave it out. The token is distinct, not the colour on screen: many palettes, 13 of the 23
+    stock Omarchy themes among them, give bright green the same value as green, a workspace
+    colour and the side panel's mark gutter, and split 8's stripe uses bright green too, so the
+    `tmp` text, never the colour, is what tells a temporary tab apart.
 17. **Agents, MCP and `vimma-ctl`.** Agents cannot open or see a temporary tab, and
     `vimma-ctl state` (the user's full role) lists temporary tabs with `"temporary": true`; no
     command or agent tool is added, because the agent workspace's confinement is its container

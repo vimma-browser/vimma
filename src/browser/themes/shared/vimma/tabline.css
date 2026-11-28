@@ -69,7 +69,8 @@
 }
 
 /* A temporary tab's marker (docs/specs/temporary-containers.md decision 16): the text says it,
-   in a colour no workspace marker uses (core TEMPORARY_COLOR_TOKEN), on the current tab too. */
+   in core TEMPORARY_COLOR_TOKEN on the current tab too. The token is its own, though some
+   palettes give it green's value, so the colour alone does not set it apart. */
 .vimma-tabline-temporary {
   color: var(--vimma-text-bright-green);
 }
