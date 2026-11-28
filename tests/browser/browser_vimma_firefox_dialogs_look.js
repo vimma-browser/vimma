@@ -8,6 +8,8 @@
 // and a page's prompt over a tab look like Settings: square corners and the theme's font, with
 // the buttons that are not the main one bordered --vimma-muted, as a prompt in a window of its
 // own draws them, and a disabled main button the accent dimmed instead of Firefox's violet.
+// Text selected in a dialog's field is --vimma-selection with --vimma-fg-bright, not the
+// system's Highlight.
 
 "use strict";
 
@@ -88,6 +90,28 @@ function assertLook(label, doc, fields, square) {
   }
 }
 
+/**
+ * Text selected in `field` is --vimma-selection with --vimma-fg-bright.
+ * @param {string} label
+ * @param {Element} field
+ */
+function assertSelection(label, field) {
+  const selected = /** @type {Window} */ (field.ownerDocument.defaultView).getComputedStyle(
+    field,
+    "::selection",
+  );
+  Assert.equal(
+    selected.backgroundColor,
+    rgb(token("--vimma-selection")),
+    `${label}: selected text in ${field.id} is on --vimma-selection`,
+  );
+  Assert.equal(
+    selected.color,
+    rgb(token("--vimma-fg-bright")),
+    `${label}: selected text in ${field.id} is --vimma-fg-bright`,
+  );
+}
+
 add_task(async function settings_primary_password_dialog_looks_like_vimma() {
   await withSettingsDialog("chrome://mozapps/content/preferences/changemp.xhtml", (doc) => {
     const label = "Change Primary Password";
@@ -103,6 +127,7 @@ add_task(async function settings_primary_password_dialog_looks_like_vimma() {
     const accept = dialog.getButton("accept");
     const cancel = dialog.getButton("cancel");
     assertLook(label, doc, [...fields, accept], [...fields, accept, cancel]);
+    assertSelection(label, fields[0]);
 
     Assert.equal(
       style(cancel).borderTopColor,
@@ -141,6 +166,7 @@ add_task(async function tab_prompt_looks_like_vimma() {
       /** @type {unknown} */ (doc.querySelector("dialog"))
     );
     const accept = dialog.getButton("accept");
+    assertSelection("A page's prompt", field);
     assertLook(
       "A page's prompt",
       doc,

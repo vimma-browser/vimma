@@ -106,6 +106,13 @@
     scrollbar-color: var(--vimma-muted) var(--vimma-bg-dark) !important;
   }
 
+  /* Selected text, a dialog's field included, is a selected row (side-panel.css), where the UA
+   * paints it the system's Highlight and HighlightText. */
+  ::selection {
+    background-color: var(--vimma-selection) !important;
+    color: var(--vimma-fg-bright) !important;
+  }
+
   /* The import wizard (Settings, Import browser data) is an HTML <dialog> in the page, painted
    * from --dialog-background-color and --dialog-border-color (preferences.css) with the UA's
    * CanvasText: a dialog's surface, as above. Its browser list is themed from inside the
