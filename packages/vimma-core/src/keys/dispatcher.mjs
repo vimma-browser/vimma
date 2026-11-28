@@ -131,7 +131,10 @@ export function createDispatcher(keymap) {
       COUNT_MODES.has(m) &&
       isBareDigit(chord) &&
       (chord.key !== "0" || count !== "") &&
-      !root.children.has(key)
+      !root.children.has(key) &&
+      // trie() drops a site's unbound keys, but no binding starts with a digit, so a digit the
+      // site unbinds must be checked here or it stays a count (docs/specs/site-unbind.md).
+      !(m === "normal" && c === "page" && keymap.unbinds(site, key))
     ) {
       count += chord.key;
       return PENDING;

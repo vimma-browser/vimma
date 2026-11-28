@@ -172,6 +172,32 @@ describe("the dispatcher on a site", () => {
     expect(d.dispatch("normal", parseKey("t"), "page", site).kind).toBe("pass");
     expect(d.pending()).toEqual([]);
   });
+
+  // No default binding starts with a digit, so removing one from the trie alone left it a count.
+  test("an unbound digit reaches the page instead of starting a count", () => {
+    const keymap = keymapOf(cfg('[sites."example.com"]', 'unbind = ["1", "0"]'));
+    const d = createDispatcher(keymap);
+    const site = keymap.site("example.com");
+    expect(d.dispatch("normal", parseKey("1"), "page", site).kind).toBe("pass");
+    expect(d.pending()).toEqual([]);
+    expect(d.dispatch("normal", parseKey("j"), "page", site)).toEqual({
+      kind: "action",
+      action: { id: "scroll.down" },
+    });
+    // A digit the site keeps is still a count there, and an unbound one does not join it.
+    expect(d.dispatch("normal", parseKey("2"), "page", site).kind).toBe("pending");
+    expect(d.dispatch("normal", parseKey("0"), "page", site).kind).toBe("cancel");
+    expect(d.pending()).toEqual([]);
+    // Elsewhere, and in Vimma's own modes on the site, the digit is still a count.
+    expect(d.dispatch("normal", parseKey("1"), "page", null).kind).toBe("pending");
+    expect(d.dispatch("normal", parseKey("j"), "page", null)).toEqual({
+      kind: "action",
+      action: { id: "scroll.down", count: 1 },
+    });
+    expect(d.dispatch("visual", parseKey("1"), "page", site).kind).toBe("pending");
+    d.reset();
+    expect(d.dispatch("normal", parseKey("1"), "pdf", site).kind).toBe("pending");
+  });
 });
 
 describe("[sites] unbind is checked", () => {
