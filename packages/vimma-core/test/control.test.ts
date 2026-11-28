@@ -335,6 +335,21 @@ describe("validateMessage: state", () => {
     }
   });
 
+  test("a temporary tab is listed temporary: true; the field is true or left out (#1602)", () => {
+    // docs/specs/temporary-containers.md, decision 17.
+    const tab = { id: "7", url: "https://example.com/", title: "Example", selected: false };
+    const with_ = (extra: Record<string, unknown>) => ({
+      ...state,
+      tabs: [...state.tabs, { ...tab, ...extra }],
+    });
+    expect(errorsOf(ok(with_({ temporary: true })), { command: "state" })).toEqual([]);
+    for (const temporary of [false, "yes", 1, null]) {
+      expect(errorsOf(ok(with_({ temporary })), { command: "state" })).toEqual([
+        "result.tabs[1].temporary must be true when present",
+      ]);
+    }
+  });
+
   test("reports each broken field", () => {
     const broken = {
       mode: 1,

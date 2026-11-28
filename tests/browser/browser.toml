@@ -721,6 +721,8 @@ support-files = [
 
 ["browser_vimma_tab_sleep_command.js"]
 
+["browser_vimma_temporary_containers.js"]
+
 ["browser_vimma_agent_tab_sleep.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 

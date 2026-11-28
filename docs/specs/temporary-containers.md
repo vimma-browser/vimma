@@ -1,6 +1,6 @@
 # Spec: temporary-containers
 
-Status: accepted · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
+Status: accepted (Delivery 1 built, behind `vimma.feature.temporary_containers`; 2 to 5 to come) · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
 `cmdline.mjs`, a new `packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`,
 `ui/tabline.mjs`, `ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,
 `workspaces/WindowWorkspaces.sys.mjs`, `workspaces/WorkspaceRouter.sys.mjs`, `host/tab-ops.mjs`,
@@ -205,7 +205,10 @@ userContextId })` before dropping the identity (same file, 552-575), so the cont
 5. **Vimma records the containers it made**, in `vimma-workspaces.json` next to the workspace
    definitions, so that a container left by a crash or a kill is deleted at the next start. A
    recorded id is deleted only when its identity still has the name Vimma gave it, so that a
-   container reused or renamed outside Vimma keeps its data, as W4 asks for workspaces.
+   container reused or renamed outside Vimma keeps its data, as W4 asks for workspaces. The
+   record is an optional `temporary` list of ids and names beside schema 1's fields, and the
+   schema stays 1, because an older Vimma reads such a file and skips the list, while a raised
+   schema would make its workspaces read-only after a downgrade.
 6. **Optional and out of the way**, because Vimma lets each user choose how to work: with no
    temporary container open, no marker, notice, setting or Firefox surface changes (decision 15).
 7. **No temporary containers in the agent workspace or the private workspace** (behaviour 8).

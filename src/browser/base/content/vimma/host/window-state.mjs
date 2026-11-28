@@ -67,7 +67,7 @@ import {
   shownSplit,
   splitPickerRows,
 } from "./pane-ops.mjs";
-import { moveTabFromPicker, workspaceNames } from "./workspace-ops.mjs";
+import { moveTabFromPicker, temporaryContainersOn, workspaceNames } from "./workspace-ops.mjs";
 import {
   PRIVATE_WORKSPACE_ID,
   isPrivateBrowsing,
@@ -262,6 +262,8 @@ export function newWindowState(host, win, keymap, env) {
         sitebind: siteBindCompletions(win, host.baseKeymap()),
         bookmarksfile: HostServices.bookmarksFileWords(),
       }),
+      // docs/specs/temporary-containers.md: no `:tmp` while the feature is off.
+      hidden: () => (temporaryContainersOn() ? [] : ["workspace.temporary_tab"]),
     }),
     tabStrip: null,
     toolbar: null,

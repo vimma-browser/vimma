@@ -8,6 +8,9 @@
  * with a backup and a shutdown flush), reconciles it with `[workspaces]` and with Firefox's
  * containers, and owns the container lifecycle: create, adopt, update, and remove only through
  * an explicit, confirmed delete (decision 7). The pure part is core's workspacedefs.mjs.
+ * It also owns the temporary containers (docs/specs/temporary-containers.md): it creates them,
+ * records them in the same file, deletes each when its last tab is gone, and deletes what a
+ * crash left at the next start; core's tempcontainers.mjs holds their rules.
  */
 
 import {
@@ -26,8 +29,19 @@ import {
   withBookmarksFolder,
   withContainer,
 } from "../core/workspacedefs.mjs";
+import {
+  TEMPORARY_LOOKS,
+  canRemoveTemporary,
+  planTemporaryCleanup,
+  readTemporaryRecords,
+  temporaryName,
+  temporaryWorkspaceOf,
+  withTemporary,
+  withoutTemporary,
+} from "../core/tempcontainers.mjs";
 
 /** @import { Definitions, WorkspaceDefinition } from "../core/workspacedefs.mjs" */
+/** @import { RecordedTemporary, TemporaryRecord } from "../core/tempcontainers.mjs" */
 /** @import { Workspace } from "../core/config.mjs" */
 
 /**
@@ -52,6 +66,8 @@ const CONTAINERS_PREF = "privacy.userContext.enabled";
 export const CONTAINERS_OFF_ALERT =
   "workspaces off: containers are disabled (set privacy.userContext.enabled to true, restart)";
 const DELETED_TOPIC = "contextual-identity-deleted";
+/** A content process's browser is gone, after its last session update (closeContainerTabs). */
+const BROWSER_DESTROYED_TOPIC = "ipc:browser-destroyed";
 
 /**
  * Whether an extension opened this tab or window: `tabs.create` and `windows.create` pass the
@@ -145,6 +161,26 @@ export class WorkspaceStoreImpl {
   /** Where the store records the id of an agent workspace it made, or null. */
   /** @type {string | null} */
   #agentPref;
+  /** The temporary containers open this session (docs/specs/temporary-containers.md). */
+  /** @type {readonly TemporaryRecord[]} */
+  #temporary = [];
+  /**
+   * Recorded containers the startup cleanup deleted this session: a tab session restore brings
+   * back in one is closed (WindowWorkspaces), since its container is gone (decision 18).
+   * @type {Set<number>}
+   */
+  #purged = new Set();
+  /** Deleted containers whose restored tabs closed since: their data is deleted once more. */
+  /** @type {Set<number>} */
+  #purgedClosed = new Set();
+  /**
+   * The content browsers of closing temporary tabs, per container: the container waits for
+   * them, so that their last session update reaches SessionStore before the deletion makes it
+   * forget their closed tabs; an update after it would list the tab as closed again.
+   * @type {Map<number, Set<number>>}
+   */
+  #closing = new Map();
+  #watchingBrowsers = false;
 
   /**
    * @param {{ path?: string, config?: readonly Workspace[],
@@ -211,7 +247,8 @@ export class WorkspaceStoreImpl {
     if (this.readOnly) return;
     this.#recordAgent(agentCreated);
     const containersChanged = this.#checkContainers();
-    if (changed || containersChanged) this.#save();
+    const hadTemporary = this.cleanTemporary(readTemporaryRecords(file.data));
+    if (changed || containersChanged || hadTemporary) this.#save();
     if (this.#watch && !this.#watching) {
       Services.obs.addObserver(this.#onDeleted, DELETED_TOPIC);
       this.#watching = true;
@@ -317,7 +354,9 @@ export class WorkspaceStoreImpl {
   #save() {
     if (this.readOnly || this.disabled) return;
     const file = this.#open();
-    file.data = this.definitions;
+    // Only the id and the name: what the next start needs to delete it (decision 5).
+    const temporary = this.#temporary.map(({ userContextId, name }) => ({ userContextId, name }));
+    file.data = temporary.length ? { ...this.definitions, temporary } : this.definitions;
     file.saveSoon();
     if (this.#cachePref) {
       Services.prefs.setIntPref(this.#cachePref, this.#userWorkspace()?.userContextId ?? 0);
@@ -727,10 +766,187 @@ export class WorkspaceStoreImpl {
     }
   }
 
+  /** Every workspace's container, which is never deleted as a temporary one. */
+  #workspaceContainers() {
+    return this.definitions.workspaces.map((w) => w.userContextId);
+  }
+
+  /**
+   * The startup cleanup (docs/specs/temporary-containers.md, decisions 5 and 18): deletes, with
+   * their site data, the recorded temporary containers that still have the name Vimma gave them
+   * and are no workspace's; a renamed or reused one keeps its data. The records are dropped
+   * either way (the caller saves). Windows then close the tabs session restore brings back in a
+   * deleted one. Returns whether anything was recorded.
+   * @param {readonly RecordedTemporary[]} records
+   * @returns {boolean}
+   */
+  cleanTemporary(records) {
+    if (!records.length) return false;
+    const CIS = lazy.ContextualIdentityService;
+    const plan = planTemporaryCleanup(
+      records,
+      CIS.getPublicIdentities(),
+      this.#workspaceContainers(),
+    );
+    for (const ucid of plan.remove) {
+      this.#purged.add(ucid);
+      CIS.remove(ucid);
+    }
+    if (plan.remove.length) this.#notify([]);
+    return true;
+  }
+
+  /**
+   * `:tmp` (docs/specs/temporary-containers.md, behaviour 1): a new temporary container for
+   * workspace `workspace`, recorded so that it is deleted with its last tab, or at the next
+   * start after a crash. Returns its id.
+   * @param {string} workspace  a workspace id
+   * @returns {number}
+   */
+  createTemporary(workspace) {
+    this.#writable();
+    if (!this.definitions.workspaces.some((w) => w.id === workspace)) {
+      throw storeError("unknown-workspace", `no workspace "${workspace}"`);
+    }
+    const token = Services.uuid.generateUUID().toString().replace(/[{}-]/g, "");
+    const name = temporaryName(token);
+    const { color, icon } = TEMPORARY_LOOKS;
+    const { userContextId } = lazy.ContextualIdentityService.create(name, icon, color);
+    this.#temporary = withTemporary(this.#temporary, { userContextId, name, workspace });
+    this.#watchBrowsers();
+    this.#save();
+    return userContextId;
+  }
+
+  /**
+   * Whether `userContextId` is a temporary container open this session.
+   * @param {number | null | undefined} userContextId
+   */
+  isTemporaryContainer(userContextId) {
+    return !!userContextId && temporaryWorkspaceOf(this.#temporary, userContextId) !== undefined;
+  }
+
+  /**
+   * The workspace temporary container `userContextId` was opened in (decision 3), or undefined.
+   * @param {number} userContextId
+   */
+  temporaryWorkspace(userContextId) {
+    return temporaryWorkspaceOf(this.#temporary, userContextId);
+  }
+
+  /**
+   * Whether the startup cleanup deleted container `userContextId` this session.
+   * @param {number} userContextId
+   */
+  wasPurged(userContextId) {
+    return this.#purged.has(userContextId);
+  }
+
+  /**
+   * A tab of a temporary or deleted container is closing (WindowWorkspaces' TabClose): once no
+   * tab of that container is left in any window and its content browsers are gone, the
+   * container is deleted (#sweep).
+   * @param {MozTabbrowserTab} tab
+   */
+  temporaryTabClosing(tab) {
+    const ucid = tab.userContextId;
+    const purged = this.#purged.has(ucid);
+    if (!purged && !this.isTemporaryContainer(ucid)) return;
+    if (purged) this.#purgedClosed.add(ucid);
+    const remote = tab.linkedBrowser?.frameLoader?.remoteTab?.tabId;
+    if (typeof remote === "number") {
+      const ids = this.#closing.get(ucid) ?? new Set();
+      ids.add(remote);
+      this.#closing.set(ucid, ids);
+    }
+    this.#watchBrowsers();
+    Services.tm.dispatchToMainThread(this.#sweep);
+  }
+
+  #watchBrowsers() {
+    if (this.#watchingBrowsers) return;
+    Services.obs.addObserver(this.#browserDestroyed, BROWSER_DESTROYED_TOPIC);
+    this.#watchingBrowsers = true;
+  }
+
+  #unwatchBrowsers() {
+    if (!this.#watchingBrowsers) return;
+    Services.obs.removeObserver(this.#browserDestroyed, BROWSER_DESTROYED_TOPIC);
+    this.#watchingBrowsers = false;
+  }
+
+  /** @param {unknown} subject  the nsIRemoteTab whose browser is gone */
+  #browserDestroyed = (subject) => {
+    /** @type {number | undefined} */
+    let id;
+    try {
+      id = /** @type {nsISupports} */ (subject).QueryInterface(Ci.nsIRemoteTab).tabId;
+    } catch {
+      // not a remote tab
+    }
+    for (const ids of this.#closing.values()) if (id !== undefined) ids.delete(id);
+    // After the other observers of this browser's end, SessionStore's included.
+    Services.tm.dispatchToMainThread(this.#sweep);
+  };
+
+  /**
+   * Deletes each temporary container no open tab in any window uses and no closing tab's
+   * content browser is still waited for (decision 18); the window a pop-up closes with is one
+   * such window. The deletion goes through ContextualIdentityService.remove, which deletes its
+   * cookies, storage and cache and makes SessionStore forget its closed tabs; only a container
+   * canRemoveTemporary allows is removed. A deleted container's restored tabs, once closed, get
+   * their data deleted once more, since a selected one loaded its page meanwhile.
+   */
+  #sweep = () => {
+    /** @type {Set<number>} */
+    const busy = new Set();
+    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+      if (win.closed) continue;
+      for (const t of /** @type {MozTabbrowserTab[]} */ (win.gBrowser?.tabs ?? [])) {
+        if (!t.closing) busy.add(t.userContextId);
+      }
+    }
+    for (const [ucid, ids] of this.#closing) {
+      if (ids.size) busy.add(ucid);
+      else this.#closing.delete(ucid);
+    }
+    let changed = false;
+    for (const record of this.#temporary) {
+      if (busy.has(record.userContextId)) continue;
+      this.#release(record);
+      changed = true;
+    }
+    for (const ucid of this.#purgedClosed) {
+      if (busy.has(ucid)) continue;
+      this.#purgedClosed.delete(ucid);
+      // Its identity is gone already (cleanTemporary checked it was ours): only its data.
+      Services.clearData.deleteDataFromOriginAttributesPattern({ userContextId: ucid });
+    }
+    if (changed) this.#save();
+    if (!this.#temporary.length && !this.#purgedClosed.size && !this.#closing.size) {
+      this.#unwatchBrowsers();
+    }
+  };
+
+  /**
+   * Forgets temporary container `record` and deletes it when it is still Vimma's
+   * (canRemoveTemporary: its name, never a workspace's, never 0).
+   * @param {TemporaryRecord} record
+   */
+  #release(record) {
+    const ucid = record.userContextId;
+    this.#temporary = withoutTemporary(this.#temporary, ucid);
+    this.#closing.delete(ucid);
+    const CIS = lazy.ContextualIdentityService;
+    const identity = CIS.getPublicIdentityFromId(ucid);
+    if (canRemoveTemporary(record, identity, this.#workspaceContainers())) CIS.remove(ucid);
+  }
+
   /** Flushes a pending save and stops saving (shutdown does this on its own). */
   async finalize() {
     if (this.#watching) Services.obs.removeObserver(this.#onDeleted, DELETED_TOPIC);
     this.#watching = false;
+    this.#unwatchBrowsers();
     if (this.#file) await this.#file.finalize();
   }
 }

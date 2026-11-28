@@ -78,6 +78,12 @@ describe("parseCommandLine: the Vim-style commands", () => {
     [":priv", run("private", "workspace.private")],
     [":private close", run("private", "workspace.private", { text: "close" })],
     [":private_workspace", run("private_workspace", "workspace.private")],
+    // docs/specs/temporary-containers.md behaviour 1: a new tab in a new temporary container.
+    [":tmp", run("tmp", "workspace.temporary_tab")],
+    [":temporary", run("tmp", "workspace.temporary_tab")],
+    [":tmp example.com", run("tmp", "workspace.temporary_tab", { text: "example.com" })],
+    [":temporary cats", run("tmp", "workspace.temporary_tab", { text: "cats" })],
+    [":temporary_tab", run("temporary_tab", "workspace.temporary_tab")],
     [":ls", run("ls", "goto.picker")],
     // docs/specs/tab-search.md decision 2: tab search, with the text as its query.
     [":tabsearch", run("tabsearch", "goto.picker")],
@@ -740,6 +746,16 @@ describe("parseCommandLine: messages and edges", () => {
 });
 
 describe("parseCommandLine: hidden actions", () => {
+  test(":tmp does not exist while temporary containers are off (CONTRIBUTING, unfinished)", () => {
+    const hidden = ["workspace.temporary_tab"];
+    for (const line of [":tmp", ":temporary", ":tmp example.com", ":temporary_tab"]) {
+      expect(errorOf(line, { hidden }).code).toBe("unknown-command");
+    }
+    const words = completeCommandLine(":tm", { hidden }).candidates.map((c) => c.value);
+    expect(words).not.toContain("tmp");
+    expect(completeCommandLine(":tm").candidates.map((c) => c.value)).toContain("tmp");
+  });
+
   test("a hidden action's name neither runs nor is suggested", () => {
     expect(errorOf("new_tab", { hidden: ["tab.new"] }).code).toBe("unknown-command");
     expect(errorOf("new_tabb", { hidden: ["tab.new"] }).suggestions).not.toContain("new_tab");

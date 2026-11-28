@@ -50,6 +50,17 @@ function notAgent(ucid) {
   return !ucid || WorkspaceStore.isAgentContainer(ucid) ? null : ucid;
 }
 
+/**
+ * `ucid` for a link from another app: notAgent's, and null for a temporary container too
+ * (docs/specs/temporary-containers.md, decision 8), since a link from outside was not opened by
+ * the throwaway session and lands with the workspace's sign-ins.
+ * @param {number | null | undefined} ucid
+ * @returns {number | null}
+ */
+function forOutside(ucid) {
+  return WorkspaceStore.isTemporaryContainer(ucid) ? null : notAgent(ucid);
+}
+
 const FLAG = "vimma-from";
 const ENV = "VIMMA_FROM";
 const CONTRACT = "@vimma.org/routing/from-clh;1";
@@ -443,7 +454,7 @@ export const WorkspaceRouter = {
       console.error("vimma: routing an external link failed", e);
     }
     try {
-      if (ucid === null && guess) ucid = notAgent(lazy.URILoadingHelper.guessUserContextId(uri));
+      if (ucid === null && guess) ucid = forOutside(lazy.URILoadingHelper.guessUserContextId(uri));
       return ucid ?? WorkspaceStore.nonAgentUserContextId(win);
     } catch (e) {
       // addTab still gets the link (as fromExternal), and its default skips the agent's too.
@@ -454,7 +465,8 @@ export const WorkspaceRouter = {
 
   /**
    * BrowserDOMWindow, for a link from another app once `aWhere` is resolved: "the current tab"
-   * becomes a new tab when the selected tab is the agent workspace's (vimma-mcp decision 42).
+   * becomes a new tab when the selected tab is the agent workspace's (vimma-mcp decision 42) or
+   * a temporary container's (temporary-containers decision 8).
    * @param {number} where  an nsIBrowserDOMWindow OPEN_* value
    * @param {BrowserWindow} win
    * @returns {number}
@@ -464,7 +476,7 @@ export const WorkspaceRouter = {
     if (where !== OPEN_CURRENTWINDOW) return where;
     try {
       const ucid = win.gBrowser?.selectedTab?.userContextId;
-      return ucid && notAgent(ucid) === null ? OPEN_NEWTAB : where;
+      return ucid && forOutside(ucid) === null ? OPEN_NEWTAB : where;
     } catch (e) {
       console.error("vimma: checking the current tab for a link from another app failed", e);
       return OPEN_NEWTAB;

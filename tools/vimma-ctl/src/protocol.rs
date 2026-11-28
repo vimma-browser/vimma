@@ -558,6 +558,12 @@ fn decode_state(map: &BTreeMap<String, Value>, raw: &Value) -> Result<State, Dec
                 "result.tabs[{i}].asleep must be true when present"
             )));
         }
+        // A temporary container's tab (docs/specs/temporary-containers.md, decision 17).
+        if !matches!(tab.get("temporary"), None | Some(Value::Bool(true))) {
+            return Err(fail(&format!(
+                "result.tabs[{i}].temporary must be true when present"
+            )));
+        }
         tabs.push(Tab {
             id: field("id")?,
             url: withheld("url")?,
@@ -1242,6 +1248,8 @@ mod tests {
             r#"{"mode":"normal","pending":null,"workspace":null,"private":true,"tabs":[{"id":"1","url":"u","title":null,"selected":true}],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":"u","title":"t","selected":false,"asleep":false}],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":"u","title":"t","selected":false,"asleep":"yes"}],"panes":null}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":"u","title":"t","selected":false,"temporary":false}],"panes":null}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":"u","title":"t","selected":false,"temporary":1}],"panes":null}"#,
             r#"{"pending":null,"workspace":null,"tabs":[],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":{}}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[1]}"#,

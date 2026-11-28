@@ -33,7 +33,7 @@ S9 or M62), so a citation that gives only those ("security.md M62", "§12") find
 | ------- | ------------------------------------------------------------------------------- | --------------------- |
 | §1      | [Control socket](01-control-socket.md)                                          | S1 to S15             |
 | §2      | [Workspace routing](02-workspace-routing.md)                                    | R1 to R6, R8 to R10   |
-| §3      | [Workspace deletion and containers](03-workspace-deletion-and-containers.md)    | W1 to W8              |
+| §3      | [Workspace deletion and containers](03-workspace-deletion-and-containers.md)    | W1 to W12             |
 | §4      | [Opening URLs from untrusted text](04-opening-urls-from-untrusted-text.md)      | U1 to U8              |
 | §5      | [Add-ons](05-add-ons.md)                                                        | A1 to A3              |
 | §6      | [Chrome UI rendering](06-chrome-ui-rendering.md)                                | C1 to C4              |
@@ -42,7 +42,7 @@ S9 or M62), so a citation that gives only those ("security.md M62", "§12") find
 | §9      | [Privacy defaults](09-privacy-defaults.md)                                      | P1 to P9              |
 | §10     | [Firefox updates](10-firefox-updates.md)                                        | G1 to G15             |
 | §11     | [Out of scope and trust boundaries](11-out-of-scope-and-trust-boundaries.md)    | none                  |
-| §12     | [Agents (MCP)](12-agents-mcp.md)                                                | M1 to M34, M62 to M67 |
+| §12     | [Agents (MCP)](12-agents-mcp.md)                                                | M1 to M34, M62 to M68 |
 | §12     | [Agents (MCP): the built-in agent](12-agents-mcp-built-in-agent.md)             | M35 to M61            |
 | §13     | [Page modes](13-page-modes.md)                                                  | K1 to K16             |
 | §14     | [Build and release supply chain](14-build-and-release-supply-chain.md)          | B1 to B23             |

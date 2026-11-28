@@ -1,9 +1,12 @@
 ## 3. Workspace deletion and containers (`workspaces/WorkspaceStore.sys.mjs`)
 
 Closing a runtime workspace deletes its container and that container's cookies and site data.
-Spec: [m3-workspaces](../specs/m3-workspaces.md).
+Spec: [m3-workspaces](../specs/m3-workspaces.md). A temporary container is deleted with its data
+when its last tab closes (W9 to W12). Spec: [temporary-containers](../specs/temporary-containers.md),
+behind `vimma.feature.temporary_containers` until it is finished.
 
-**Reach:** you, by keys or `:wsdelete`. Extensions and Firefox's Settings can delete containers.
+**Reach:** you, by keys, `:wsdelete` or `:tmp`. Extensions and Firefox's Settings can delete
+containers.
 
 - W1. Site data **never** goes without a y to a y/N question; n keeps everything.
   [`closing_asks_n_keeps_y_deletes_the_container_and_its_cookies`](../../tests/browser/browser_vimma_workspace_ops.js),
@@ -56,3 +59,40 @@ Spec: [m3-workspaces](../specs/m3-workspaces.md).
   [`an_extensions_tab_takes_the_agent_workspaces_container_only_if_it_names_it`](../../tests/browser/browser_vimma_workspace_extension_tabs.js),
   [`a_link_clicked_in_an_extensions_popup_opens_in_no_container`](../../tests/browser/browser_vimma_workspace_extension_tabs.js),
   [`a_page_never_opens_in_no_container_through_an_extension`](../../tests/browser/browser_vimma_workspace_extension_tabs.js)
+- W9. Only Vimma's own temporary containers are **ever** deleted as temporary: an id Vimma
+  recorded when `:tmp` made it (in memory, and in `vimma-workspaces.json` for the next start)
+  whose live container still has the name Vimma gave it (`vimma temporary <hex>`), never a
+  workspace's container and never container 0. A recorded container renamed in Settings, reused
+  after a `containers.json` reset, or now a workspace's keeps its data (W4). A temporary
+  container is deleted without a question, unlike W1, because you opened it to be thrown away;
+  the guide says so in its first lines about the feature.
+  [`canRemoveTemporary: only Vimma's own temporary containers are ever deleted`](../../packages/vimma-core/test/tempcontainers.test.ts),
+  [`planTemporaryCleanup (decisions 5 and 18)`](../../packages/vimma-core/test/tempcontainers.test.ts),
+  [`a_renamed_recorded_container_is_kept`](../../tests/browser/browser_vimma_temporary_containers.js)
+- W10. When the last tab of a temporary container closes, in any window (a pop-up window its page
+  opened included), the container **must** be deleted with its cookies, storage and cache
+  through `ContextualIdentityService.remove`, after the closing tabs' content browsers are gone,
+  so that SessionStore has their last update before it forgets their closed tabs: undo-close-tab
+  cannot bring them back, into the deleted container or any other. The workspace's container
+  keeps its data.
+  [`closing_the_last_temporary_tab_removes_the_container_and_its_cookies`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`a_popup_from_a_temporary_tab_shares_its_container`](../../tests/browser/browser_vimma_temporary_containers.js)
+- W11. A temporary container a crash or a quit left **must** be deleted at the next start (W9's
+  check first), and a tab session restore brings back in it is closed, its data deleted once more
+  after its browser is gone (a selected one loaded its page meanwhile), and not left in the
+  recently closed tabs. Until then its data is on disk like any container's.
+  [`a_recorded_container_left_by_a_crash_is_removed_at_startup`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`a_temporary_tab_restored_into_a_deleted_container_is_closed`](../../tests/browser/browser_vimma_temporary_containers.js)
+- W12. A temporary container keeps its cookies and site data apart from the workspace's, both
+  ways; it is **not** private browsing: form history, saved logins you choose to save,
+  bookmarks, downloads, HSTS entries and session-restore entries are kept as for any tab
+  ([temporary-containers](../specs/temporary-containers.md), "Security and privacy"). A tab you
+  open from it (`ctrl+t`, `:tabnew`) takes the workspace's container; a tab or pop-up its page
+  opens takes its own, as Firefox's opener rule gives it. A link from another app never lands in
+  one: Firefox's container guess skips it, and "the current tab" on one becomes a new tab. A
+  temporary tab never moves to another workspace, which would reopen it in a signed-in
+  container.
+  [`a_cookie_set_in_a_temporary_tab_is_not_seen_by_the_workspace_and_back`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`a_new_tab_from_a_temporary_tab_takes_the_workspace_container`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`an_external_link_never_lands_in_a_temporary_container`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`a_temporary_tab_cannot_move_workspace`](../../tests/browser/browser_vimma_temporary_containers.js)

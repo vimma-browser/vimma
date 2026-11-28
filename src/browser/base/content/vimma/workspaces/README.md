@@ -1,7 +1,9 @@
 # `vimma/workspaces/`
 
 Workspaces as Firefox containers. `WorkspaceStore.sys.mjs` holds the app's workspace
-definitions and their file (`<profile>/vimma-workspaces.json`); `WindowWorkspaces.sys.mjs`
+definitions and their file (`<profile>/vimma-workspaces.json`), and the temporary containers
+`:tmp` opens (created, recorded in the same file, deleted with their last tab or at the next
+start; [temporary-containers](../../../../../../docs/specs/temporary-containers.md)); `WindowWorkspaces.sys.mjs`
 keeps each window's tab membership, hidden tabs and snapshot; `WorkspaceRouter.sys.mjs` applies
 the `[[routes]]` rules that send a URL to a workspace, and the `-vimma-from` command line.
 `tab-labels.mjs` keeps each tab's rename as a SessionStore tab value, which the snapshot also

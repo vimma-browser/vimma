@@ -83,6 +83,7 @@ import {
   closeWorkspace,
   moveTabToWorkspace,
   newWorkspace,
+  openTemporaryTab,
   renameWorkspace,
   workspaceRef,
 } from "./workspace-ops.mjs";
@@ -462,6 +463,16 @@ export function hostRunners(host, page) {
             ? closePrivate((q, yes) => s.rename.ask(q, yes))
             : togglePrivate(s.win);
       if (said) s.notice.show(said);
+    },
+    // docs/specs/temporary-containers.md: `:tmp [text]`, a tab in a new temporary container.
+    "workspace.temporary_tab": (
+      /** @type {WindowState} */ s,
+      _a,
+      /** @type {string | undefined} */ text,
+    ) => {
+      s.notice.hide();
+      const said = openTemporaryTab(s.win, text ?? "");
+      if (said) s.notice.show(said, { error: true });
     },
     // workspace-routing: `:route` lists the rules (about:vimma); `add [workspace]`, `move`.
     "workspace.route": (

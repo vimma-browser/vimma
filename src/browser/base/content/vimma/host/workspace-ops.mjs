@@ -7,7 +7,9 @@
 // picker's rows, over the app's WorkspaceStore and the window's WindowWorkspaces. Each operation
 // returns the text to show in the notice, or null.
 
+import { refusedScheme } from "../core/pageurl.mjs";
 import { workspaceItems } from "../core/picker.mjs";
+import { TEMPORARY_REFUSALS, temporaryRefusal } from "../core/tempcontainers.mjs";
 import {
   closeWorkspaceQuestion,
   deleteBookmarksQuestion,
@@ -24,12 +26,67 @@ import {
   renameWorkspaceFolder,
   workspaceFolder,
 } from "./bookmark-ops.mjs";
+import { BLOCKED_URL_TEXT } from "./tab-ops.mjs";
 
 /** @import { WorkspaceItem } from "../core/picker.mjs" */
 /** @import { WorkspaceRef, Workspaces } from "../core/workspaces.mjs" */
 /** @import { WorkspaceDefinition } from "../core/workspacedefs.mjs" */
 
 export const NO_WORKSPACES = "no workspaces in this window";
+
+/** Temporary containers (docs/specs/temporary-containers.md) while they are unfinished. */
+export const TEMPORARY_FEATURE_PREF = "vimma.feature.temporary_containers";
+
+/** Whether temporary containers are on (CONTRIBUTING.md, "Unfinished features"). */
+export function temporaryContainersOn() {
+  return Services.prefs.getBoolPref(TEMPORARY_FEATURE_PREF, false);
+}
+
+const lazy = /** @type {Lazy<"PrivateBrowsingUtils">} */ ({});
+ChromeUtils.defineESModuleGetters(lazy, {
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+});
+
+/**
+ * `:tmp [text]` (docs/specs/temporary-containers.md, behaviour 1): a new tab, selected, in a new
+ * temporary container of the window's workspace, showing the new-tab page or what was typed
+ * (a URL, or words for the default search engine, as `:tabnew` loads them). Refused in the
+ * private and the agent workspace (behaviour 8). The container is given explicitly, so neither
+ * a routing rule nor the selected tab's container decides it.
+ * @param {BrowserWindow} win
+ * @param {string} [text]
+ * @returns {string | null} why not, or null
+ */
+export function openTemporaryTab(win, text = "") {
+  // While the feature is off, the command does not exist: a binding to it says what :tmp would.
+  if (!temporaryContainersOn()) return 'not a command: "tmp"';
+  const ww = WindowWorkspaces.get(win);
+  const refusal = temporaryRefusal({
+    privateWindow: lazy.PrivateBrowsingUtils.isWindowPrivate(win),
+    agentWorkspace: !!ww?.model && ww.model.active === WorkspaceStore.agent?.id,
+  });
+  if (refusal) return TEMPORARY_REFUSALS[refusal];
+  if (!ww?.model) return NO_WORKSPACES;
+  const typed = text.trim();
+  if (typed && refusedScheme(typed)) {
+    return BLOCKED_URL_TEXT;
+  }
+  /** @type {number} */
+  let userContextId;
+  try {
+    userContextId = WorkspaceStore.createTemporary(ww.model.active);
+  } catch (e) {
+    return `:tmp: ${/** @type {Error} */ (e).message}`;
+  }
+  /** @type {{ openTrustedLinkIn: (url: string, where: string, params: object) => void }} */ (
+    /** @type {unknown} */ (win)
+  ).openTrustedLinkIn(typed || win.BROWSER_NEW_TAB_URL, "tab", {
+    userContextId,
+    inBackground: false,
+    ...(typed ? { allowThirdPartyFixup: true } : {}),
+  });
+  return null;
+}
 
 /**
  * What the user typed as a workspace: a workspace of exactly that name first (config.toml
@@ -361,6 +418,8 @@ export function moveTabFromPicker(win, id, ask, say, row) {
   if (!target) return "that workspace is gone";
   const gBrowser = win.gBrowser;
   const tab = row ?? gBrowser.selectedTab;
+  // Before the question: the move would be refused after the yes (temporary-containers 4).
+  if (ww.isTemporary(tab)) return TEMPORARY_REFUSALS["move-temporary"];
   if (target.tabs.includes(ww.idOf(tab)) && !ww.isForeign(tab)) {
     return `already in "${target.name}"`;
   }

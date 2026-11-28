@@ -544,6 +544,9 @@ const COMMANDS = {
         // out for an awake tab (docs/specs/tab-sleep.md, behaviour 15). It names no page, so a
         // private window keeps it.
         ...(tabAsleep(tab) ? { asleep: true } : {}),
+        // A tab in a temporary container (docs/specs/temporary-containers.md, decision 17): a
+        // flag, left out for every other tab. The agent role never reaches `state`.
+        ...(WorkspaceStore.isTemporaryContainer(tab.userContextId) ? { temporary: true } : {}),
       })),
       panes: paneState(win, visible),
       ...splitsState(win, visible),

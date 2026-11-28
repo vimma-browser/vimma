@@ -149,6 +149,12 @@ group("Workspaces", [
     "workspace.private",
     "Private workspace (a private window); again goes back",
   ],
+  // docs/specs/temporary-containers.md: a tab with cookies of its own, deleted when it closes.
+  [
+    "temporary_tab",
+    "workspace.temporary_tab",
+    "New tab in a new temporary container (deleted when its last tab closes)",
+  ],
 ]);
 
 group("Navigation", [

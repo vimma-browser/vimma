@@ -121,6 +121,10 @@ export const COMMANDS = Object.freeze([
   cmd("private", "optional", "workspace.private", "Private workspace; again goes back (close)", {
     aliases: ["priv"],
   }),
+  // docs/specs/temporary-containers.md behaviour 1: with text, that page in it.
+  cmd("tmp", "optional", "workspace.temporary_tab", "New tab in a new temporary container", {
+    aliases: ["temporary"],
+  }),
   // docs/specs/firefox-keys.md decision 5: any command or key of the window, by its id.
   cmd(
     "firefox",
