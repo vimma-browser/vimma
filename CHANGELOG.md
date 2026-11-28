@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.26](https://github.com/vimma-browser/vimma/compare/v0.1.25...v0.1.26) (2026-11-28)
+## [Unreleased]
+
+## [0.1.26](https://github.com/vimma-browser/vimma/compare/v0.1.25...v0.1.26) · Firefox 161.0 (2026-11-28)
 
 
 ### Added
@@ -24,8 +26,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * **mcp:** links dragged from agent tabs open no tab ([#1606](https://github.com/vimma-browser/vimma/issues/1606)) ([901172a](https://github.com/vimma-browser/vimma/commit/901172ab44bd9d655d0c106bd16b0ec3a666088e)), closes [#1592](https://github.com/vimma-browser/vimma/issues/1592)
 * **theme:** selected text in settings' dialogs and prompts uses the theme's selection colour ([#1632](https://github.com/vimma-browser/vimma/issues/1632)) ([9b0d86b](https://github.com/vimma-browser/vimma/commit/9b0d86b459632706a7fc0381e9f80d50bd02588a))
 * **theme:** settings' dialogs and prompts get square corners and the theme's font ([#1620](https://github.com/vimma-browser/vimma/issues/1620)) ([3c93a31](https://github.com/vimma-browser/vimma/commit/3c93a31a5b872efc0bab0533c65971d9ff8652ba))
-
-## [Unreleased]
 
 ## [0.1.25](https://github.com/vimma-browser/vimma/compare/v0.1.24...v0.1.25) · Firefox 161.0 (2026-11-26)
 
