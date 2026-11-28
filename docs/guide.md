@@ -5926,7 +5926,9 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   tabs, Home also hides the Start Page content group that set up Firefox Home; set
   `vimma.startpage.newtab` to false in `about:config` and it comes back with Firefox Home.
   Settings has square corners and the theme's font, as the status bar and the pickers do, and
-  keeps Firefox Sync, the Vimma support link and the About section.
+  so do the dialogs it opens (Change Primary Password, the exceptions lists, Fonts, Connection
+  Settings and the others) and the prompts a page opens. It keeps Firefox Sync, the Vimma support
+  link and the About section.
 - **Firefox's features keep their place under plain names.** Settings, menus and the address bar
   say Address Bar Suggestions, Start Page, Tab Overview, Labs, Translations and Screenshots where
   Firefox says Firefox Suggest, Firefox Home, Firefox View, Firefox Labs, Firefox Translations and
