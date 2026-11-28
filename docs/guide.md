@@ -5377,6 +5377,12 @@ One plain file holds your settings and keys; every key, the prefix and the leade
   the defaults apply and a notice says `config.toml missing; using the defaults`; an editor that
   saves by replacing the file never triggers it.
 - **Old files:** a `schema = …` line is ignored.
+- **A default's key:** a key you bind under `[keys]` is yours even when a default action also
+  has it, so a key a newer Vimma adds as a default never stops your file from loading. Your
+  binding runs, the default action keeps its other keys, and the status bar warns at your line:
+  `"prefix+n" takes next_tab's default key; next_tab keeps ctrl+tab, ctrl+pagedown and gt`. To
+  give that action a key again, bind it under `[keys]` too. One key bound to two of your own
+  actions is still an error.
 - **Newer files:** a setting this version does not know, such as one a newer Vimma added, is
   skipped and named in the status bar (`unknown key "…"; skipped`), and the rest of the file
   applies. So is a binding to an action this version does not have, in `[keys]` or a

@@ -380,13 +380,11 @@ describe("describing and adding rules", () => {
 
   test("appendRouteText checks the file with the platform's keymap (#386)", () => {
     const rule = { domain: "a.com", workspace: "w" };
-    // alt+d is focus_urlbar on Linux only; meta+l is focus_urlbar on macOS only.
-    const altD = cfg("[keys]", 'reload = ["alt+d"]');
-    const metaL = cfg("[keys]", 'reload = ["meta+l"]');
-    expect(appendRouteText(altD, rule)).toHaveProperty("error");
-    expect(appendRouteText(altD, rule, { mac: true })).toHaveProperty("append");
-    expect(appendRouteText(metaL, rule)).toHaveProperty("append");
-    expect(appendRouteText(metaL, rule, { mac: true })).toHaveProperty("error");
+    // ctrl+h deletes a character in a text field on Linux only, so it cannot be the prefix there;
+    // macOS's fields already take it as backspace.
+    const ctrlH = cfg("[keys]", 'prefix = "ctrl+h"');
+    expect(appendRouteText(ctrlH, rule)).toHaveProperty("error");
+    expect(appendRouteText(ctrlH, rule, { mac: true })).toHaveProperty("append");
   });
 
   test("appendRouteText quotes a workspace name as a TOML string", () => {

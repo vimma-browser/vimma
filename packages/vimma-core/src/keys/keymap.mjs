@@ -69,6 +69,7 @@ const TEXT_FIELD_MODES = Object.freeze(["insert", "command", "help"]);
  * @property {"keys" | "modal"} layer
  * @property {Set<KeymapTarget>} modes  the modes it is bound in, and `pdf` for normal mode's pdf context
  * @property {boolean} user       written in the user's config, not a default
+ * @property {string} [path]      [keys] only: where it is written, e.g. keys.new_tab[1]
  * @property {Set<KeymapTarget>} [shadowed]  [keys] only: the modes where a modal binding on the
  *   same sequence hides it; it is that binding's fallback there (keymap `fallback`)
  */
@@ -172,6 +173,14 @@ function asList(v, path) {
  * @returns {KeymapTarget}
  */
 const target = (mode, context) => (mode === "normal" && context === "pdf" ? "pdf" : mode);
+
+/**
+ * `a`, `a and b`, `a, b and c`.
+ * @param {string[]} items
+ */
+function listText(items) {
+  return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
 
 /**
  * A trie over `entries`, which hold one binding per sequence.
@@ -336,6 +345,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
         layer: "keys",
         modes: new Set(modes),
         user: userKeyNames.has(name),
+        path,
       });
     });
   }
@@ -492,6 +502,24 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     }
   });
 
+  // A [keys] binding the user wrote wins over a default [keys] binding of the same sequence, in
+  // the modes both are bound in, with a warning (#1633): a newer Vimma's new default key must not
+  // refuse a config.toml that already uses that key. The default action keeps its other keys.
+  /** @type {[Entry, Entry][]} each user binding and the default it took a key from */
+  const taken = [];
+  for (const u of entries) {
+    if (u.layer !== "keys" || !u.user || u.modes.size === 0) continue;
+    for (const d of entries) {
+      if (d.layer !== "keys" || d.user || d.seq !== u.seq || d.action === u.action) continue;
+      let lost = false;
+      for (const m of u.modes) {
+        if (d.modes.delete(m)) lost = true;
+        d.shadowed?.delete(m);
+      }
+      if (lost) taken.push([u, d]);
+    }
+  }
+
   // Build one trie per mode and one for the pdf context; detect conflicts within each.
   /** @type {Record<string, TrieNode>} */
   const tries = {};
@@ -568,10 +596,26 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     return out;
   };
 
+  // Named once every key is taken, so a default that loses two keys never lists one as kept.
+  const warnings = taken.map(([u, d]) => {
+    const name = d.action.name;
+    overridden.add(name);
+    const kept = listBindings(name, (text) => text);
+    return {
+      path: /** @type {string} */ (u.path),
+      message: kept.length
+        ? `"${u.text}" takes ${name}'s default key; ${name} keeps ${listText(kept)}`
+        : `"${u.text}" takes ${name}'s default key, so ${name} has no key:` +
+          " bind it under [keys] to get it back",
+    };
+  });
+
   return {
     prefix,
     leader,
     timeoutMs,
+    /** Each default key a [keys] binding of the user's took, at that binding's path (#1633). */
+    warnings,
     /**
      * The trie a key is looked up in: the mode's, or the pdf context's in normal mode; on a site
      * that `site()` named, without the keys it unbinds (docs/specs/site-unbind.md).
