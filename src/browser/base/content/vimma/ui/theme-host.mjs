@@ -38,6 +38,8 @@ const CHROME_SHEET = "chrome://browser/skin/vimma/firefox-chrome.css";
 const PAGES_SHEET = "chrome://browser/skin/vimma/firefox-pages.css";
 /** The History sidebar's import promo in the theme's colours, as an agent sheet (#912). */
 const SIDEBAR_PROMO_SHEET = "chrome://browser/skin/vimma/firefox-sidebar-promo.css";
+/** The theme's font on the controls Settings and its dialogs draw in shadow roots (#1617). */
+const SETTINGS_CONTROLS_SHEET = "chrome://browser/skin/vimma/firefox-settings-controls.css";
 /** Tab Overview's and the sidebar's empty states without their picture's column (#912). */
 const EMPTY_STATES_SHEET = "chrome://browser/skin/vimma/firefox-empty-states.css";
 /**
@@ -601,7 +603,10 @@ function isFirefoxPage(doc) {
  * One of Firefox's pages or dialogs, with firefox-pages.css; a prompt in a window of its own
  * gets its buttons coloured once it is parsed. The root carries vimma-startpage while Vimma's
  * start page replaces Firefox Home, so Settings hides Firefox Home's content group (spec
- * firefox-surfaces-trim, decision 6): CSS cannot read a pref.
+ * firefox-surfaces-trim, decision 6): CSS cannot read a pref. Settings and the dialogs, the
+ * documents that take the theme's font (decision 8), also get firefox-settings-controls.css as an
+ * agent sheet, for the controls in shadow roots that firefox-pages.css does not reach; not the
+ * other pages, whose text keeps Firefox's font.
  * @param {Document} doc
  */
 function attachFirefoxPage(doc) {
@@ -610,6 +615,16 @@ function attachFirefoxPage(doc) {
       "vimma-startpage",
       Services.prefs.getBoolPref("vimma.startpage.newtab", false),
     );
+    const win = parsed.defaultView;
+    const frame = win?.browsingContext?.embedderElement;
+    if (
+      win &&
+      (parsed.documentElement?.id === "preferences-root" ||
+        !frame ||
+        frame.classList?.contains("dialogFrame"))
+    ) {
+      win.windowUtils.loadSheetUsingURIString(SETTINGS_CONTROLS_SHEET, win.windowUtils.AGENT_SHEET);
+    }
     colourDialogButtons(parsed);
     colourWizards(parsed);
   });

@@ -319,6 +319,15 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    `commonDialog.xhtml`'s root, as the colour rules do, and reaches the dialog's own buttons
    through `::part(dialog-button)`, because they sit in the `<dialog>`'s shadow root, whose
    `dialog.css` sets them the system's menu font. Tested by `browser_vimma_firefox_dialogs_look.js`.
+   Issue [#1617](https://github.com/vimma-browser/vimma/issues/1617).) (Since changed: the
+   controls Settings and those dialogs draw in shadow roots that no document sheet reaches take
+   the font too: a visual picker's item (Website appearance's choices), whose label sits inside
+   its `<button>`, and a checkbox without a font of its own (the backup dialog's), where the UA's
+   `forms.css` gives a `<button>` and an `<input>` the system's `-moz-button` and `-moz-field`
+   fonts. `ThemeHost` loads `firefox-settings-controls.css` into those documents only, as an agent
+   sheet, because a document's agent sheets apply inside its shadow trees; its selectors outrank
+   `forms.css` by specificity, so a widget's own font rule still wins. The other privileged pages
+   keep Firefox's font, as before. Tested by `browser_vimma_firefox_settings_controls_look.js`.
    Issue [#1617](https://github.com/vimma-browser/vimma/issues/1617).)
 9. **Images are replaced, not hidden one by one.** A chrome `override` line per logo or mascot
    points it at Vimma's logo (where the layout needs an image, such as the About Vimma

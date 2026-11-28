@@ -214,6 +214,10 @@ loaded only into parent-process, system-principal documents, never a web page. T
 colours only: no security or permission UI lives in Tab Overview or the promo, and under high
 contrast Firefox's own colours stay. Issue
 [#912](https://github.com/vimma-browser/vimma/issues/912).)
+(Since changed: Settings and the dialogs these sheets reach get one more agent sheet,
+`firefox-settings-controls.css`, a constant file loaded only into those parent-process,
+system-principal documents; it sets the font family of a visual picker's item and of checkboxes,
+nothing else. Issue [#1617](https://github.com/vimma-browser/vimma/issues/1617).)
 
 ## Tests
 
