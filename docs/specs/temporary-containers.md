@@ -1,14 +1,13 @@
 # Spec: temporary-containers
 
-Status: accepted (Delivery 1 built, behind `vimma.feature.temporary_containers`; 2 to 5 to
-come) · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
+Status: accepted (Delivery 1 and 4 built, behind `vimma.feature.temporary_containers`; 2, 3 and
+5 to come) · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
 `cmdline.mjs`, a new `packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`,
 `ui/tabline.mjs`, `ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,
 `workspaces/WindowWorkspaces.sys.mjs`, `workspaces/WorkspaceRouter.sys.mjs`, `host/tab-ops.mjs`,
 `host/pane-ops.mjs`, `host/close-last-ops.mjs`, `ui/statusbar.mjs`, `ui/tabline.mjs`,
 `ui/side-panel.mjs`, `ctl/VimmaControl.sys.mjs`) · Upstream patches: one more hunk in
-`Tabbrowser-sys-mjs.patch` (decision 12); its line in ADR-003's patch register comes with the
-pull request that adds it · ADR: none
+`Tabbrowser-sys-mjs.patch` (decision 12), with its line in ADR-003's patch register · ADR: none
 
 Issue: [#1602](https://github.com/vimma-browser/vimma/issues/1602)
 
@@ -120,7 +119,10 @@ userContextId })` before dropping the identity (same file, 552-575), so the cont
 - **History.** The docshell skips global history when the browsing context's
   `UseGlobalHistory` is false or it is private (`docshell/base/nsDocShell.cpp:11920`).
   `UseGlobalHistory` is set from the absence of a `disableglobalhistory` attribute on the
-  embedding `<browser>` when the context attaches (`docshell/base/BrowsingContext.cpp:855-856`).
+  embedding `<browser>` when the context attaches (`docshell/base/BrowsingContext.cpp:855-856`),
+  and again for each browsing context that later attaches to that `<browser>`. The field can also
+  be set from chrome, but a navigation that replaces the top browsing context does not carry it
+  over (`CanonicalBrowsingContext::ReplacedBy`, `docshell/base/CanonicalBrowsingContext.cpp:284`).
   `Tabbrowser.sys.mjs` never sets that attribute (grep), so keeping a tab's visits out of history
   needs a change where it builds the tab's browser (`createBrowser`, 3178, called from
   `#createBrowserForTab`, 4843).
@@ -239,8 +241,9 @@ close_last` decides, and its container is deleted as the tab closes, so that no 
     visits in history, address-bar suggestions or history search. A hunk in
     `Tabbrowser-sys-mjs.patch` sets it in `createBrowser` when the tab's `userContextId` is one of
     Vimma's temporary containers (asked of the host's container map), because `UseGlobalHistory`
-    is read from the attribute when the browsing context attaches (Research, "History") and
-    cannot be changed afterwards; asking by container also covers tabs and pop-ups the page
+    is read from the attribute each time a browsing context attaches to the `<browser>`, while a
+    value set on the browsing context afterwards is lost when a navigation replaces it (Research,
+    "History"); asking by container also covers tabs and pop-ups the page
     opens, which take its container (decision 13). The hunk changes an upstream file, so its
     pull request is verified in a full build (ADR-010) and adds its line to ADR-003's patch
     register. Rejected: recording history like any tab, because it needs no patch but leaves a

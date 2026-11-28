@@ -7,6 +7,7 @@
 // workspace's; its last close deletes the container and its site data; a crash's leftovers go at
 // the next start; moving one, and opening one in the agent or private workspace, is refused;
 // links from other apps never land in one; `vimma-ctl state` marks them and agents never see one.
+// Delivery 4: their visits, and those of what their pages open, stay out of history.
 
 "use strict";
 
@@ -231,6 +232,63 @@ add_task(async function a_popup_from_a_temporary_tab_shares_its_container() {
   Assert.ok(CIS.getPublicIdentityFromId(ucid), "the pop-up keeps the container");
   await BrowserTestUtils.closeWindow(popup);
   await until(() => !CIS.getPublicIdentityFromId(ucid), "closing the pop-up deletes it");
+  BrowserTestUtils.removeTab(home);
+});
+
+/** Whether history has a visit to `url`. @param {string} url */
+const visited = (url) => PlacesUtils.history.hasVisits(url);
+
+/** @param {MozBrowser} browser */
+const keepsHistory = (browser) =>
+  /** @type {BrowsingContext} */ (browser.browsingContext).useGlobalHistory;
+
+add_task(async function a_visit_in_a_temporary_tab_or_its_popup_is_not_in_history() {
+  const OTHER = "https://example.org/";
+  const tag = `tmp-history-${Date.now()}`;
+  const url = (/** @type {string} */ site, /** @type {string} */ what) => `${site}?${tag}-${what}`;
+  registerCleanupFunction(() => PlacesUtils.history.clear());
+  const home = await workspaceTab();
+  Assert.ok(keepsHistory(home.linkedBrowser), "a workspace tab keeps history");
+
+  const tab = await tmp(url(SITE, "tab"), url(SITE, "tab"));
+  Assert.ok(!keepsHistory(tab.linkedBrowser), "a temporary tab keeps no history");
+  // A cross-site load switches process, and may replace the browsing context, which reads the
+  // attribute again.
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, url(OTHER, "next"));
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, url(OTHER, "next"));
+  Assert.ok(!keepsHistory(tab.linkedBrowser), "nor after a cross-site load");
+
+  const opened = BrowserTestUtils.waitForNewTab(gBrowser, url(OTHER, "child"), true);
+  await SpecialPowers.spawn(tab.linkedBrowser, [url(OTHER, "child")], (u) => {
+    content.open(u);
+  });
+  const child = await opened;
+  Assert.equal(
+    child.userContextId,
+    tab.userContextId,
+    "the tab its page opens is in its container",
+  );
+  Assert.ok(!keepsHistory(child.linkedBrowser), "and keeps no history");
+
+  const popupOpened = BrowserTestUtils.waitForNewWindow({ url: url(OTHER, "popup") });
+  await SpecialPowers.spawn(tab.linkedBrowser, [url(OTHER, "popup")], (u) => {
+    content.open(u, "", "popup,width=300,height=300");
+  });
+  const popup = await popupOpened;
+  Assert.ok(!keepsHistory(popup.gBrowser.selectedBrowser), "nor does a pop-up window");
+
+  // A workspace visit made after them is recorded; the temporary visits came first and are not.
+  BrowserTestUtils.startLoadingURIString(home.linkedBrowser, url(SITE, "home"));
+  await BrowserTestUtils.browserLoaded(home.linkedBrowser, false, url(SITE, "home"));
+  await until(() => visited(url(SITE, "home")), "the workspace tab's visit is in history");
+  for (const what of ["tab", "next", "child", "popup"]) {
+    const site = what === "tab" ? SITE : OTHER;
+    Assert.ok(!(await visited(url(site, what))), `no ${what} visit in history`);
+  }
+
+  await BrowserTestUtils.closeWindow(popup);
+  BrowserTestUtils.removeTab(child);
+  BrowserTestUtils.removeTab(tab);
   BrowserTestUtils.removeTab(home);
 });
 

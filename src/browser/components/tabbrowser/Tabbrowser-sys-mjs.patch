@@ -13,7 +13,23 @@ index 241875edde94e674713d6651704e19a142c40b5d..8a157b4aac84a293881fb8b47bf28c7f
  
      let remoteTypeOptions = { window: this.documentGlobal, userContextId };
      if (triggeringRemoteType) {
-@@ -3769,6 +3773,18 @@ export class Tabbrowser {
+@@ -3204,7 +3208,15 @@ export class Tabbrowser {
+     }
+ 
+     if (userContextId) {
+       b.setAttribute("usercontextid", userContextId);
++      // Vimma (temporary-containers, decision 12): a temporary tab's visits stay out of history.
++      if (
++        ChromeUtils.importESModule(
++          "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs"
++        ).WorkspaceStore.isTemporaryContainer(Number(userContextId))
++      ) {
++        b.setAttribute("disableglobalhistory", "true");
++      }
+     }
+ 
+     if (remoteType) {
+@@ -3769,6 +3781,18 @@ export class Tabbrowser {
        (openerBrowser && this.getTabForBrowser(openerBrowser)) ||
        (relatedToCurrent && this.selectedTab) ||
        null;
