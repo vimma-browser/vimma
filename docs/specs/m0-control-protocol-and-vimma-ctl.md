@@ -250,6 +250,10 @@ such a result, and nothing otherwise.)
   loads it. It names no page, so a private window keeps it. Added without a version bump, like
   `loading`.
   [tab-sleep](tab-sleep.md), behaviour 15 and decision 18.)
+  (Since changed: a tab in a temporary container is listed with `temporary: true`, and the
+  field is left out for every other tab. Added without a version bump, like `asleep`; behind
+  `vimma.feature.temporary_containers` until that feature is on.
+  [temporary-containers](temporary-containers.md), behaviour 11 and decision 17.)
 - `panes`: the pane tree once split view exists (M3), `null` before. Its shape is that spec's to
   define; it is added without a version bump because clients ignore what they do not know.
   Since m3-workspaces sub-spec 7: `null` while the window shows one pane, else

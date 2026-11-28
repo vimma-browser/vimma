@@ -1,0 +1,26 @@
+{
+  "description": "temporary is left out for a tab in no temporary container, never false (temporary-containers, decision 17)",
+  "kind": "response",
+  "command": "state",
+  "message": {
+    "type": "response",
+    "id": 2,
+    "ok": true,
+    "result": {
+      "mode": "normal",
+      "pending": null,
+      "workspace": "work",
+      "tabs": [
+        {
+          "id": "12",
+          "url": "https://example.com/",
+          "title": "Example Domain",
+          "selected": true,
+          "loading": false,
+          "temporary": false
+        }
+      ],
+      "panes": null
+    }
+  }
+}

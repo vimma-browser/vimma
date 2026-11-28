@@ -1,6 +1,7 @@
 # Spec: temporary-containers
 
-Status: accepted · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
+Status: accepted (Delivery 1 built, behind `vimma.feature.temporary_containers`; 2 to 5 to
+come) · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
 `cmdline.mjs`, a new `packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`,
 `ui/tabline.mjs`, `ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,
 `workspaces/WindowWorkspaces.sys.mjs`, `workspaces/WorkspaceRouter.sys.mjs`, `host/tab-ops.mjs`,
@@ -76,7 +77,7 @@ Every key below is rebindable in `config.toml`, like the prefix and the leader.
 6. As a Vimma user, a temporary container is not restored at the next start, and anything a crash
    left behind is deleted then.
 7. As a Vimma user, a temporary tab stays in the workspace it was opened in: `:wsmove`, the
-   picker's `m` and the side panel's move refuse it with
+   picker's `m` and the side panel's move refuse it, onto the private workspace's row too, with
    `a temporary tab stays in its workspace: open it again with :tmp there`.
 8. As a Vimma user, `:tmp` in the agent workspace and in the private workspace is refused, with
    `no temporary containers in the agent workspace` / `the private workspace is discarded when
@@ -205,7 +206,10 @@ userContextId })` before dropping the identity (same file, 552-575), so the cont
 5. **Vimma records the containers it made**, in `vimma-workspaces.json` next to the workspace
    definitions, so that a container left by a crash or a kill is deleted at the next start. A
    recorded id is deleted only when its identity still has the name Vimma gave it, so that a
-   container reused or renamed outside Vimma keeps its data, as W4 asks for workspaces.
+   container reused or renamed outside Vimma keeps its data, as W4 asks for workspaces. The
+   record is an optional `temporary` list of ids and names beside schema 1's fields, and the
+   schema stays 1, because an older Vimma reads such a file and skips the list, while a raised
+   schema would make its workspaces read-only after a downgrade.
 6. **Optional and out of the way**, because Vimma lets each user choose how to work: with no
    temporary container open, no marker, notice, setting or Firefox surface changes (decision 15).
 7. **No temporary containers in the agent workspace or the private workspace** (behaviour 8).
@@ -342,7 +346,9 @@ Written first and seen to fail.
   `a_visit_in_a_temporary_tab_or_its_popup_is_not_in_history`;
   `a_new_tab_from_a_temporary_tab_takes_the_workspace_container`;
   `prefix_t_opens_a_temporary_tab`;
-  `a_temporary_tab_cannot_move_workspace`; `tmp_is_refused_in_the_agent_workspace`;
+  `a_temporary_tab_cannot_move_workspace`;
+  `a_temporary_tab_cannot_move_into_the_private_workspace`;
+  `tmp_is_refused_in_the_agent_workspace`;
   `an_external_link_never_lands_in_a_temporary_container`;
   `a_recorded_container_left_by_a_crash_is_removed_at_startup`;
   `a_renamed_recorded_container_is_kept`;

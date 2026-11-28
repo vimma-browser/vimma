@@ -43,6 +43,7 @@ export * from "./config/routes.mjs";
 export * from "./page/pageurl.mjs";
 export * from "./panes/layouts.mjs";
 export * from "./workspaces/privatews.mjs";
+export * from "./workspaces/tempcontainers.mjs";
 export * from "./keys/prompt-keys.mjs";
 export * from "./system/default-browser.mjs";
 export * from "./workspaces/hyprswap.mjs";

@@ -20,6 +20,7 @@ import {
   privateReturn,
   privateToggle,
 } from "../core/privatews.mjs";
+import { TEMPORARY_REFUSALS } from "../core/tempcontainers.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { PrivateSwap, isBrowserWindow, startedUp } from "./private-swap.mjs";
@@ -337,6 +338,11 @@ export function pickerMove(win, id, ask, say, row) {
   if (refused) return refused;
   const gBrowser = win.gBrowser;
   const tab = row ?? gBrowser.selectedTab;
+  // Before the question: a throwaway session's URL (and its tokens) never reaches the private
+  // window, and its container is not kept alive by a start page (temporary-containers 4, W12).
+  if (WorkspaceStore.isTemporaryContainer(tab.userContextId)) {
+    return TEMPORARY_REFUSALS["move-temporary"];
+  }
   ask(movePrivateQuestion(), () => {
     if (!tab.isConnected || (!row && gBrowser.selectedTab !== tab)) {
       say("move: the tab changed since you were asked; nothing was moved");

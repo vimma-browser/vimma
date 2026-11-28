@@ -41,6 +41,7 @@ import {
 import { getTabLabel, LABEL_EVENT, setTabLabel, TAB_LABEL_KEY } from "./tab-labels.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
 import { unpinnedNotice } from "../core/workspacedefs.mjs";
+import { TEMPORARY_REFUSALS } from "../core/tempcontainers.mjs";
 import { CHANGED_TOPIC, WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 
 /** @import { Workspaces, WorkspaceRef, WorkspaceState } from "../core/workspaces.mjs" */
@@ -429,6 +430,14 @@ export class WindowWorkspacesImpl {
     return this.#foreign.has(this.#idOf(tab));
   }
 
+  /**
+   * Whether `tab` is in a temporary container (docs/specs/temporary-containers.md).
+   * @param {Tab} tab
+   */
+  isTemporary(tab) {
+    return WorkspaceStore.isTemporaryContainer(tab.userContextId);
+  }
+
   /** The status bar's workspace segment: the active workspace's name, place and colour. */
   status() {
     const model = this.#model;
@@ -494,6 +503,9 @@ export class WindowWorkspacesImpl {
   moveTab(tab, ref, { onMoved } = {}) {
     const model = this.#model;
     if (!model) return "no workspaces in this window";
+    // Temporary containers, decision 4: reopening it in the target's container would carry a
+    // page meant to stay apart into a signed-in one.
+    if (this.isTemporary(tab)) return TEMPORARY_REFUSALS["move-temporary"];
     const target = findWorkspace(model, ref);
     if (!target) return unknown(ref);
     const id = this.#idOf(tab);
@@ -614,6 +626,8 @@ export class WindowWorkspacesImpl {
     if (this.#win.closed) return;
     // Before the restore check: openURI's tab for a routed link comes in the routing's task.
     if (e.type === "TabOpen") lazy.WorkspaceRouter.adoptTab(/** @type {Tab} */ (e.target));
+    // Also inside a restore: a temporary container goes with its last tab in any window.
+    if (e.type === "TabClose") WorkspaceStore.temporaryTabClosing(/** @type {Tab} */ (e.target));
     switch (e.type) {
       case "SSWindowRestoring":
       case "SSWindowStateBusy":
@@ -926,6 +940,45 @@ export class WindowWorkspacesImpl {
     return model?.workspaces.find((w) => w.container === String(userContextId));
   }
 
+  /**
+   * The workspace a tab of container `userContextId` belongs to: the one owning the container,
+   * else, for a temporary container, the one it was opened in (docs/specs/temporary-containers.md,
+   * decision 3), so that its tabs are that workspace's own and not foreign. Undefined for any
+   * other container.
+   * @param {number} userContextId
+   * @param {Workspaces | null} [model]
+   */
+  #home(userContextId, model = this.#model) {
+    const owner = this.#owner(userContextId, model);
+    if (owner) return owner;
+    const id = WorkspaceStore.temporaryWorkspace(userContextId);
+    return id === undefined ? undefined : model?.workspaces.find((w) => w.id === id);
+  }
+
+  /**
+   * Closes the tabs session restore brought back in a temporary container the startup cleanup
+   * deleted (docs/specs/temporary-containers.md, decision 18: never restored), after the current
+   * task: a rebuild or a sync must finish first. A window left with none of its own visible gets
+   * its workspace's home tab first, as moveTab does.
+   */
+  #dropPurged() {
+    this.#win.queueMicrotask(() => {
+      const gBrowser = this.#gBrowser;
+      if (this.#win.closed || !gBrowser) return;
+      const doomed = gBrowser.tabs.filter(
+        (/** @type {Tab} */ t) => !t.closing && WorkspaceStore.wasPurged(t.userContextId),
+      );
+      if (!doomed.length) return;
+      const model = this.#model;
+      const left = gBrowser.visibleTabs.filter((t) => !t.closing && !doomed.includes(t));
+      if (model && !left.length) {
+        const w = activeWorkspace(model);
+        this.#openHome(w.id, Number(w.container));
+      }
+      for (const t of doomed) gBrowser.removeTab(t, { animate: false });
+    });
+  }
+
   /** The window value; "" when there is none or SessionStore does not track the window yet. */
   #windowValue() {
     try {
@@ -994,7 +1047,7 @@ export class WindowWorkspacesImpl {
     for (const tab of gBrowser.tabs) {
       if (!this.#live(tab) || tab.pinned) continue;
       const id = this.#idOf(tab);
-      const owner = this.#owner(tab.userContextId, model)?.id;
+      const owner = this.#home(tab.userContextId, model)?.id;
       if (!owner) this.#foreign.add(id);
       const ws =
         owner ??
@@ -1023,6 +1076,7 @@ export class WindowWorkspacesImpl {
     this.#model = from;
     this.#show(from, model);
     WorkspaceStore.setActive(this.#win, /** @type {Workspaces} */ (this.#model).active);
+    this.#dropPurged();
   }
 
   /**
@@ -1142,7 +1196,7 @@ export class WindowWorkspacesImpl {
     const model = /** @type {Workspaces} */ (this.#model);
     const id = this.#idOf(tab);
     if (workspaceOfTab(model, id)) return null;
-    const owner = this.#owner(tab.userContextId);
+    const owner = this.#home(tab.userContextId);
     const ws = owner ?? activeWorkspace(model);
     if (!owner) this.#foreign.add(id);
     this.#model = openTab(model, id, { workspace: { id: ws.id }, activate: false });
@@ -1321,6 +1375,7 @@ export class WindowWorkspacesImpl {
     } else {
       this.#changed();
     }
+    this.#dropPurged();
   }
 
   /** Firefox's tabs as the switch planner reads them. */

@@ -920,7 +920,7 @@ interface MozBrowser extends Element {
   readonly contentPrincipal: nsIPrincipal | null;
   /** engine/dom/chrome-webidl/MozFrameLoaderOwner.webidl; FrameLoader.remoteTab is the remote
    * browser's nsIRemoteTab (engine/dom/interfaces/base/nsIRemoteTab.idl). */
-  readonly frameLoader: { readonly remoteTab: { priorityHint: boolean } | null } | null;
+  readonly frameLoader: { readonly remoteTab: nsIRemoteTab | null } | null;
   /** Its context is active: shown, or kept rendering. */
   docShellIsActive: boolean;
   gotoIndex(index: number): void;
@@ -2378,6 +2378,7 @@ interface XPCOMInterfaces {
     readonly EMPTY: number;
     readonly NO_REFERRER: number;
   };
+  nsIRemoteTab: nsIJSIID<nsIRemoteTab>;
   nsIRequest: nsIJSIID<nsIRequest> & { readonly LOAD_ANONYMOUS: number };
   nsIScriptError: nsIJSIID<nsIScriptError> & { readonly warningFlag: number };
   nsIScriptSecurityManager: nsIJSIID<nsISupports> & {
@@ -2638,6 +2639,12 @@ interface nsIAppStartup extends nsISupports {
   restartInSafeMode(mode: number): void;
 }
 // engine/widget/nsIBaseWindow.idl
+// engine/dom/interfaces/base/nsIRemoteTab.idl: a remote browser's tab; `tabId` names it in
+// `ipc:browser-destroyed`.
+interface nsIRemoteTab extends nsISupports {
+  readonly tabId: number;
+  priorityHint: boolean;
+}
 interface nsIBaseWindow extends nsISupports {
   visibility: boolean;
   destroy(): void;

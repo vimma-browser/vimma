@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "lastActive": "ws-0b5f6a52-2d8e-4f63-9f7a-1c2d3e4f5a6b",
+  "workspaces": [
+    {
+      "id": "ws-0b5f6a52-2d8e-4f63-9f7a-1c2d3e4f5a6b",
+      "name": "work",
+      "userContextId": 6,
+      "color": "blue",
+      "icon": "briefcase",
+      "home": "https://example.com/",
+      "source": "config"
+    },
+    {
+      "id": "ws-9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+      "name": "shop",
+      "userContextId": null,
+      "color": "pink",
+      "icon": "cart",
+      "source": "runtime"
+    }
+  ],
+  "temporary": [
+    {
+      "userContextId": 31,
+      "name": "vimma temporary 4f1d2c9ab0e34a5c8d7e6f5a4b3c2d1e"
+    }
+  ]
+}

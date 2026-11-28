@@ -125,6 +125,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/tabs.mjs": typeof import("../src/browser/base/content/vimma/core/tabs.mjs");
   "chrome://browser/content/vimma/core/tabsearch.mjs": typeof import("../src/browser/base/content/vimma/core/tabsearch.mjs");
   "chrome://browser/content/vimma/core/tabsleep.mjs": typeof import("../src/browser/base/content/vimma/core/tabsleep.mjs");
+  "chrome://browser/content/vimma/core/tempcontainers.mjs": typeof import("../src/browser/base/content/vimma/core/tempcontainers.mjs");
   "chrome://browser/content/vimma/core/textwidth.mjs": typeof import("../src/browser/base/content/vimma/core/textwidth.mjs");
   "chrome://browser/content/vimma/core/theme.mjs": typeof import("../src/browser/base/content/vimma/core/theme.mjs");
   "chrome://browser/content/vimma/core/toml.mjs": typeof import("../src/browser/base/content/vimma/core/toml.mjs");

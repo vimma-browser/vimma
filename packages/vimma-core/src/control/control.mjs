@@ -1247,6 +1247,10 @@ function checkStateResult(result, errors) {
       if ("asleep" in tab && tab.asleep !== true) {
         errors.push(`result.tabs[${i}].asleep must be true when present`);
       }
+      // A temporary container's tab (docs/specs/temporary-containers.md, decision 17).
+      if ("temporary" in tab && tab.temporary !== true) {
+        errors.push(`result.tabs[${i}].temporary must be true when present`);
+      }
     });
     if (selected > 1) errors.push("result.tabs must have at most one selected tab");
   }
