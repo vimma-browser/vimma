@@ -5860,23 +5860,26 @@ fill_on_load = true    # false: a saved login fills only when you pick it in the
 - **`fill_on_load`** is Firefox's `signon.autofillForms`. With the default, `true`, a saved login
   is written into its form as soon as the page shows it, before you touch it, and any script on
   that page, the site's own or one injected into it, can read the password from the field. With
-  `fill_on_load = false` nothing is written until you ask: focusing the username or password
-  field opens the list of saved logins, and the one you pick (`Down`, then `Enter`) fills.
-  Firefox fills on load only on `https:` pages, and only with a login saved for that exact
-  site.
+  `fill_on_load = false` nothing is written until you ask: focusing the username field opens
+  the list of saved logins (in the password field, press `Down`), and the one you pick (`Down`,
+  then `Enter`) fills. Firefox fills on load only on secure pages (`https:`, plus `localhost`
+  and addresses on your local network), and only with a login saved for that exact address.
 
 Both keys apply within two seconds of saving `config.toml` (at once with `:source`), in every
 window and workspace, without a restart. Removing a key brings back Firefox's
 behaviour. A change made in Settings → Passwords and autofill ("Ask to save passwords", "Save and
-autofill usernames and passwords"), in `about:config`, or by an add-on that controls password
-saving wins over `config.toml`; to hand the choice back to the file, reset the pref in
-`about:config`.
+autofill usernames and passwords") or in `about:config` wins over `config.toml`, and so does a
+value that Firefox Sync brings from another device (both settings sync with "Settings" ticked),
+an enterprise policy, or an add-on that controls password saving and sets it differently. To
+hand the choice back to the file, reset the pref in `about:config`. Vimma remembers the values in
+force and sets them again as it starts, before any page loads, and a `config.toml` with a
+mistake keeps them as they were.
 
 **What protects the saved passwords.** They are stored in your Vimma profile folder, encrypted
 in `logins.db` with a key kept in `key4.db`. Without a primary password that key opens with no
 password, so any program running as you, or anyone with a copy of the profile folder, can read
 every saved password. On Linux, `about:logins` also shows, copies and exports them without
-asking for anything, because Firefox has no system password prompt there. Set a primary password
+asking for a password, because Firefox has no system password prompt there. Set a primary password
 in Settings → Passwords and autofill → Set primary password: Vimma then asks for it,
 once per session, before it uses a saved login, and `about:logins` asks for it before it shows
 one.

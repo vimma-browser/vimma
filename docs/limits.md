@@ -85,7 +85,7 @@ the [user guide](guide.md); planned work is on the
   the address bar suggests other workspaces' history, and a saved password autofills in all of
   them.
 - On Linux, `about:logins` shows, copies and exports saved passwords without asking for
-  anything unless a primary password is set: Firefox has no system password prompt there
+  a password unless a primary password is set: Firefox has no system password prompt there
   (bug 1527745). Without a primary password, the saved logins in the profile folder are readable
   by any program running as you ([Saved passwords](guide.md#saved-passwords)).
 - Tabs in hidden workspaces keep running and playing audio; Vimma does not unload them.

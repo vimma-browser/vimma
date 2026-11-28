@@ -53,8 +53,9 @@ store none, and a user who keeps them in Vimma knows what protects them.
    login; the logins already stored stay in `about:logins`, unused (decision 7).
 2. **`[passwords] fill_on_load`** (boolean; default `true`) sets Firefox's
    `signon.autofillForms`. With `fill_on_load = false` a saved login is not written into a form
-   as the page loads; focusing the username or password field opens the list of saved logins,
-   and the login fills when the user picks it.
+   as the page loads; focusing the username field opens the list of saved logins (`Down` opens
+   it in the password field, which Firefox does not open on focus:
+   `LoginManagerChild.sys.mjs:682-704`), and the login fills when the user picks it.
 3. **Applied at once.** A change to either key applies when `config.toml` is next read (the
    poll or `:source`), without a restart, to every window and workspace.
 4. **Removing a key restores Firefox's behaviour,** and a value the user sets in Firefox's

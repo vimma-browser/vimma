@@ -266,7 +266,9 @@ function apply(next, text) {
   ThemeHost.setConfig(config.theme);
   PrivateSwap.configure(config.private.placement);
   CloseLastTab.configure(config.tabs.closeLast);
-  Passwords.configure(config.passwords);
+  // A file with errors keeps the saved-password prefs in force even before any good read
+  // (Passwords.sys.mjs): the defaults would turn saving and fill on load back on.
+  Passwords.configure(fallback ? null : config.passwords);
   PanelNumbers.set(config.panel.numbers);
   VimmaActors.setScrollStep(config.scroll.step);
   McpHost.configure(config.mcp);
@@ -375,6 +377,8 @@ function use(path, text, left = []) {
     routesFile: routesPresent,
   });
   active = r.active;
+  const wasFallback = fallback;
+  fallback = previous === null ? r.errors.length > 0 : fallback && r.errors.length > 0;
   if (active !== previous) apply(active, text);
   if (!r.errors.length) {
     appliedText = text;
@@ -390,11 +394,10 @@ function use(path, text, left = []) {
     errors: r.errors.length,
     inForce: active.config.updates.check,
     raw: r.errors.length ? rawUpdatesCheck(text) : null,
-    hadConfig: previous !== null && !fallback,
+    hadConfig: previous !== null && !wasFallback,
     previous: updates,
   });
   VimmaUpdates.configure(updates);
-  fallback = previous === null ? r.errors.length > 0 : fallback && r.errors.length > 0;
   report(path, r.errors, previous !== null, [...r.warnings, ...(r.errors.length ? [] : left)]);
   return r.errors.length === 0;
 }

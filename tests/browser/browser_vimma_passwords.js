@@ -19,9 +19,14 @@ const { ConfigHost } = ChromeUtils.importESModule(
 const { LoginManagerParent } = ChromeUtils.importESModule(
   "resource://gre/modules/LoginManagerParent.sys.mjs",
 );
+const { Passwords } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/services/Passwords.sys.mjs",
+);
 
 const SAVE = "signon.rememberSignons";
 const FILL = "signon.autofillForms";
+const LAST_SAVE = "vimma.passwords.lastSave";
+const LAST_FILL = "vimma.passwords.lastFillOnLoad";
 const ORIGIN = "https://example.com";
 const LOGIN = `${getRootDirectory(gTestPath).replace("chrome://mochitests/content", ORIGIN)}file_vimma_login.html`;
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-passwords-${Date.now()}`);
@@ -69,7 +74,7 @@ add_setup(async function () {
     set: [["vimma.config.path", configFile]],
     // The test profile turns saving off as a user value (testing/profiles/unittest-required/
     // user.js); a user's profile has neither.
-    clear: [[SAVE], [FILL]],
+    clear: [[SAVE], [FILL], [LAST_SAVE], [LAST_FILL]],
   });
   const login = Cc["@mozilla.org/login-manager/loginInfo;1"].createInstance(Ci.nsILoginInfo);
   login.init(ORIGIN, ORIGIN, null, "ada", "secret1", "user", "pass");
@@ -110,7 +115,7 @@ add_task(async function removing_the_key_restores_firefoxs_default() {
 
 add_task(async function a_value_set_in_settings_wins_over_config_toml() {
   await config("[passwords]\nsave = false\n");
-  // What ticking the box in Settings → Privacy & Security → Passwords writes.
+  // What ticking "Ask to save passwords" in Settings → Passwords and autofill writes.
   Services.prefs.setBoolPref(SAVE, true);
   await config("[passwords]\nsave = false\nfill_on_load = true\n");
   Assert.equal(Services.prefs.getBoolPref(SAVE), true, "the user value stays in force");
@@ -160,5 +165,57 @@ add_task(async function a_config_change_applies_without_a_restart() {
   tab = await openLogin();
   Assert.deepEqual(await fields(tab.linkedBrowser), ["ada", "secret1"], "filled once on again");
   BrowserTestUtils.removeTab(tab);
+  await config("");
+});
+
+add_task(async function save_false_neither_fills_nor_lists_a_saved_login() {
+  await config("[passwords]\nsave = false\n");
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, LOGIN);
+  const browser = tab.linkedBrowser;
+  // No FormProcessed: with saving off Firefox does not look at the form at all
+  // (LoginManagerChild.sys.mjs, #fetchLoginsFromParentAndFillForm).
+  const popup = /** @type {Element} */ (document.getElementById("PopupAutoComplete"));
+  let shown = false;
+  const onShown = () => (shown = true);
+  popup.addEventListener("popupshown", onShown);
+  await focusContent(browser);
+  await SpecialPowers.spawn(browser, [], () =>
+    /** @type {HTMLElement} */ (content.document.getElementById("user")).focus(),
+  );
+  // A round trip to the content process and back after the focus, by which the list would show.
+  await SpecialPowers.spawn(
+    browser,
+    [],
+    () => new Promise((r) => content.requestAnimationFrame(r)),
+  );
+  popup.removeEventListener("popupshown", onShown);
+  Assert.ok(!shown, "focusing the username field opens no list");
+  Assert.deepEqual(await fields(browser), ["", ""], "nothing is filled");
+  BrowserTestUtils.removeTab(tab);
+  await config("");
+});
+
+add_task(async function the_values_in_force_are_remembered_for_the_next_start() {
+  await config("[passwords]\nsave = false\nfill_on_load = false\n");
+  Assert.equal(Services.prefs.getBoolPref(LAST_SAVE), false, "save remembered");
+  Assert.equal(Services.prefs.getBoolPref(LAST_FILL), false, "fill_on_load remembered");
+  // A new start: Firefox's defaults again, until the remembered values are set before any window.
+  const defaults = Services.prefs.getDefaultBranch("");
+  defaults.setBoolPref(SAVE, true);
+  defaults.setBoolPref(FILL, true);
+  Passwords.init({ again: true });
+  Assert.equal(Services.prefs.getBoolPref(SAVE), false, "saving off before config.toml is read");
+  Assert.equal(Services.prefs.getBoolPref(FILL), false, "filling off before config.toml is read");
+  await config("");
+  Assert.equal(Services.prefs.getBoolPref(LAST_SAVE), true, "the default is remembered too");
+});
+
+add_task(async function a_file_the_defaults_stand_in_for_keeps_the_values_in_force() {
+  await config("[passwords]\nsave = false\nfill_on_load = false\n");
+  // ConfigHost passes null when a file with errors, or one it cannot read, has no last good
+  // config and the defaults stand in for it.
+  Passwords.configure(null);
+  Assert.equal(Services.prefs.getBoolPref(SAVE), false, "saving stays off");
+  Assert.equal(Services.prefs.getBoolPref(FILL), false, "filling on load stays off");
   await config("");
 });
