@@ -298,6 +298,7 @@ describe("parseConfig: errors carry line numbers", () => {
       toml("[keys]", 'new_tab = ["ctrl+alt+p"]', 'prev_workspace = ["ctrl+alt+p"]'),
     );
     expect(e).toMatchObject({ line: 3, path: "keys.prev_workspace" });
+    expect(e.message).toMatch(/already bound to new_tab/);
     expect(e.message).not.toMatch(/previous_workspace/);
   });
 

@@ -42,6 +42,21 @@ describe("compileKeymap: a user binding on a default's key", () => {
     expect(compileKeymap().warnings).toEqual([]);
   });
 
+  test("a taken key shadowed by a modal binding falls back to the user's action", () => {
+    // In insert mode a suggestion list's ctrl+p hides [keys]' ctrl+p, which runs outside a list.
+    const keymap = compileKeymap({ keys: { reload: ["ctrl+p"] } });
+    expect(keymap.fallback("insert", "ctrl+p")?.name).toBe("reload");
+    expect(keymap.warnings).toMatchObject([{ message: expect.stringMatching(/print_page/) }]);
+  });
+
+  test("listing the default action's own keys takes the key without a warning", () => {
+    const keymap = compileKeymap({
+      keys: { new_tab: ["prefix+n"], next_tab: ["ctrl+tab", "ctrl+pagedown"] },
+    });
+    expect(prefixN(keymap)).toBe("new_tab");
+    expect(keymap.warnings).toEqual([]);
+  });
+
   test("two of the user's own bindings on one key stay an error", () => {
     expect(() =>
       compileKeymap({ keys: { new_tab: ["ctrl+alt+c"], quit: ["ctrl+alt+c"] } }),

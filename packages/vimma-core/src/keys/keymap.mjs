@@ -508,13 +508,15 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
   /** @type {[Entry, Entry][]} each user binding and the default it took a key from */
   const taken = [];
   for (const u of entries) {
-    if (u.layer !== "keys" || !u.user || u.modes.size === 0) continue;
+    if (u.layer !== "keys" || !u.user) continue;
     for (const d of entries) {
       if (d.layer !== "keys" || d.user || d.seq !== u.seq || d.action === u.action) continue;
       let lost = false;
-      for (const m of u.modes) {
+      // A mode where a modal binding shadows both is still lost: there `fallback` runs the
+      // [keys] binding, which must be the user's.
+      for (const m of [...u.modes, ...(u.shadowed ?? [])]) {
         if (d.modes.delete(m)) lost = true;
-        d.shadowed?.delete(m);
+        if (d.shadowed?.delete(m)) lost = true;
       }
       if (lost) taken.push([u, d]);
     }

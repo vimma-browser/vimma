@@ -1533,7 +1533,7 @@ export function parseConfig(text, { mac = false, routesFile = false } = {}) {
  * @returns {{ active: ActiveConfig, errors: ConfigError[], warnings: ConfigError[],
  *   kept: boolean }}
  *   kept: the text was not applied; `active` is the previous config, or the defaults.
- *   warnings: what an applied text left out (parseConfig)
+ *   warnings: what an applied text left out or took from a default (parseConfig)
  */
 export function reloadConfig(active, text, { mac = false, routesFile = false } = {}) {
   const r = parseConfig(text, { mac, routesFile });

@@ -314,7 +314,7 @@ function apply(next, text) {
  * @param {string} path
  * @param {ConfigError[]} list  [] when the file was applied
  * @param {boolean} kept  a config was in force before (else: the defaults are)
- * @param {ConfigError[]} [left]  what an applied file left out
+ * @param {ConfigError[]} [left]  what an applied file left out, or took from a default
  */
 function report(path, list, kept, left = []) {
   errors = list;
@@ -322,7 +322,7 @@ function report(path, list, kept, left = []) {
   errorsPath = path;
   if (warnings.length) {
     const lines = warnings.map((e) => formatConfigError(e, path));
-    console.warn(`vimma: ${path} applied without:\n  ${lines.join("\n  ")}`);
+    console.warn(`vimma: ${path} applied with warnings:\n  ${lines.join("\n  ")}`);
   }
   if (errors.length) {
     // Logged once per change of the file (or :source): the signature holds until then.
