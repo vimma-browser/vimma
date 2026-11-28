@@ -2,11 +2,10 @@
 
 Closing a runtime workspace deletes its container and that container's cookies and site data.
 Spec: [m3-workspaces](../specs/m3-workspaces.md). A temporary container is deleted with its data
-when its last tab closes (W9 to W12). Spec: [temporary-containers](../specs/temporary-containers.md),
-behind `vimma.feature.temporary_containers` until it is finished.
+when its last tab closes (W9 to W12). Spec: [temporary-containers](../specs/temporary-containers.md).
 
-**Reach:** you, by keys, `:wsdelete` or `:tmp`. Extensions and Firefox's Settings can delete
-containers.
+**Reach:** you, by keys, `:wsdelete`, `ctrl+b t` or `:tmp`. Extensions and Firefox's Settings
+can delete containers.
 
 - W1. Site data **never** goes without a y to a y/N question; n keeps everything.
   [`closing_asks_n_keeps_y_deletes_the_container_and_its_cookies`](../../tests/browser/browser_vimma_workspace_ops.js),
@@ -88,7 +87,8 @@ containers.
   [`a_temporary_tab_restored_into_a_deleted_container_is_closed`](../../tests/browser/browser_vimma_temporary_containers.js)
 - W12. A temporary container keeps its cookies and site data apart from the workspace's, both
   ways; it is **not** private browsing: form history, saved logins you choose to save,
-  bookmarks, downloads, HSTS entries and session-restore entries are kept as for any tab
+  bookmarks, downloads, HSTS entries and session-restore entries are kept as for any tab, and so
+  are the pages it visits, in history, until the `disableglobalhistory` hunk (spec Delivery 4)
   ([temporary-containers](../specs/temporary-containers.md), "Security and privacy"). A tab you
   open from it (`ctrl+t`, `:tabnew`) takes the workspace's container; a tab or pop-up its page
   opens takes its own, as Firefox's opener rule gives it. A link from another app never lands in

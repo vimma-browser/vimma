@@ -23,7 +23,7 @@ const { VimmaHost } = ChromeUtils.importESModule(
 
 const PAGE = "https://example.com/";
 const NOTICE_ID = "vimma-notice";
-const A = `[keys]\nnew_tab = "prefix+t"\n`;
+const A = `[keys]\nnew_tab = "prefix+m"\n`;
 const B = `[keys]\nnew_tab = "prefix+y"\n`;
 
 /** @param {() => unknown} cond @param {string} msg */
@@ -121,12 +121,12 @@ add_task(async function a_file_that_is_not_utf8_is_said_and_the_config_in_force_
   await withConfig(async ({ config }) => {
     await IOUtils.writeUTF8(config, A);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+    Assert.equal(newTab(), "prefix+m", "sanity: the file applies");
 
     // Latin-1 "ä" in a comment, as an editor set to another encoding saves it.
     await IOUtils.write(config, new Uint8Array([...new TextEncoder().encode(B), 0x23, 0xe4, 0x0a]));
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "the config in force stays");
+    Assert.equal(newTab(), "prefix+m", "the config in force stays");
     await until(
       () => segText("error") === "config.toml: not UTF-8 text; not read",
       "the status bar says why the file was not read",
@@ -150,7 +150,7 @@ add_task(async function an_unreadable_file_is_said_and_read_once_it_can_be() {
   await withConfig(async ({ config }) => {
     await IOUtils.writeUTF8(config, A);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+    Assert.equal(newTab(), "prefix+m", "sanity: the file applies");
 
     // chmod changes neither the time nor the size.
     await IOUtils.setPermissions(config, 0o000);
@@ -159,12 +159,12 @@ add_task(async function an_unreadable_file_is_said_and_read_once_it_can_be() {
       () => segText("error") === "config.toml: cannot be read (no permission); not read",
       "the status bar says the file cannot be read",
     );
-    Assert.equal(newTab(), "prefix+t", "the config in force stays");
+    Assert.equal(newTab(), "prefix+m", "the config in force stays");
 
     await IOUtils.setPermissions(config, 0o600);
     await ConfigHost.poll();
     await until(() => segText("error") === null, "readable again: the error is gone");
-    Assert.equal(newTab(), "prefix+t", "and the file applies");
+    Assert.equal(newTab(), "prefix+m", "and the file applies");
   });
 });
 
@@ -180,7 +180,7 @@ add_task(async function a_link_repointed_at_a_file_of_the_same_size_and_time_is_
     await IOUtils.setModificationTime(two, 1000);
     await pointLink(one, config);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "sanity: the link's file applies");
+    Assert.equal(newTab(), "prefix+m", "sanity: the link's file applies");
 
     await pointLink(two, config);
     await ConfigHost.poll();
@@ -193,7 +193,7 @@ add_task(async function a_rewrite_that_keeps_the_time_and_size_is_read() {
     await IOUtils.writeUTF8(config, A);
     await IOUtils.setModificationTime(config, 1000);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+    Assert.equal(newTab(), "prefix+m", "sanity: the file applies");
 
     // An editor's save, as `cp -p` or `rsync -t` would leave it: written beside the file,
     // renamed over it, the time kept.
@@ -210,11 +210,11 @@ add_task(async function a_file_gone_for_one_poll_keeps_the_config_in_force() {
   await withConfig(async ({ config }) => {
     await IOUtils.writeUTF8(config, A);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+    Assert.equal(newTab(), "prefix+m", "sanity: the file applies");
 
     await IOUtils.remove(config);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "one poll without the file changes nothing");
+    Assert.equal(newTab(), "prefix+m", "one poll without the file changes nothing");
     Assert.equal(ConfigHost.file, "read", "and it is not called missing yet");
 
     await IOUtils.writeUTF8(config, B);
@@ -228,7 +228,7 @@ add_task(async function a_file_gone_for_two_polls_gives_the_defaults_and_says_so
   await withConfig(async ({ config }) => {
     await IOUtils.writeUTF8(config, A);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+    Assert.equal(newTab(), "prefix+m", "sanity: the file applies");
 
     await IOUtils.remove(config);
     await ConfigHost.poll();
@@ -253,7 +253,7 @@ add_task(async function a_link_to_nothing_is_said_and_the_config_in_force_stays(
   await withConfig(async ({ dir, config }) => {
     await IOUtils.writeUTF8(config, A);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+    Assert.equal(newTab(), "prefix+m", "sanity: the file applies");
 
     await IOUtils.remove(config);
     await pointLink(PathUtils.join(dir, "nowhere.toml"), config);
@@ -262,7 +262,7 @@ add_task(async function a_link_to_nothing_is_said_and_the_config_in_force_stays(
       () => segText("error") === "config.toml: a link to a missing file; not read",
       "the status bar names the link",
     );
-    Assert.equal(newTab(), "prefix+t", "the config in force stays");
+    Assert.equal(newTab(), "prefix+m", "the config in force stays");
 
     // :config neither creates the link's file nor says it cannot create config.toml.
     const tabs = gBrowser.tabs.length;
@@ -282,7 +282,7 @@ add_task(async function a_file_over_1_mib_is_not_read() {
   await withConfig(async ({ config }) => {
     await IOUtils.writeUTF8(config, A);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+    Assert.equal(newTab(), "prefix+m", "sanity: the file applies");
 
     await IOUtils.writeUTF8(config, `${B}${"# padding\n".repeat(110000)}`);
     await ConfigHost.poll();
@@ -290,7 +290,7 @@ add_task(async function a_file_over_1_mib_is_not_read() {
       () => segText("error") === "config.toml: larger than 1 MiB; not read",
       "the status bar says the file is too large",
     );
-    Assert.equal(newTab(), "prefix+t", "the config in force stays");
+    Assert.equal(newTab(), "prefix+m", "the config in force stays");
   });
 });
 
@@ -298,7 +298,7 @@ add_task(async function a_fifo_is_not_read_and_the_poll_goes_on() {
   await withConfig(async ({ config }) => {
     await IOUtils.writeUTF8(config, A);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+    Assert.equal(newTab(), "prefix+m", "sanity: the file applies");
 
     await IOUtils.remove(config);
     await mkfifo(config);
@@ -307,7 +307,7 @@ add_task(async function a_fifo_is_not_read_and_the_poll_goes_on() {
       () => segText("error") === "config.toml: not a regular file; not read",
       "the status bar says the FIFO is not read",
     );
-    Assert.equal(newTab(), "prefix+t", "the config in force stays");
+    Assert.equal(newTab(), "prefix+m", "the config in force stays");
     // A poll that opened the FIFO would never end, nor would any later one.
     await ConfigHost.poll();
     await IOUtils.remove(config);
@@ -360,7 +360,7 @@ add_task(async function a_folder_without_search_permission_is_said_and_read_once
   await withConfig(async ({ dir, config }) => {
     await IOUtils.writeUTF8(config, A);
     await ConfigHost.poll();
-    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+    Assert.equal(newTab(), "prefix+m", "sanity: the file applies");
 
     await IOUtils.setPermissions(dir, 0o600);
     try {
@@ -369,7 +369,7 @@ add_task(async function a_folder_without_search_permission_is_said_and_read_once
         () => ConfigHost.errors[0]?.message === "cannot be read (no permission); not read",
         "config.toml is said to be unreadable (routes.toml beside it too: it cannot be told apart)",
       );
-      Assert.equal(newTab(), "prefix+t", "the config in force stays");
+      Assert.equal(newTab(), "prefix+m", "the config in force stays");
     } finally {
       await IOUtils.setPermissions(dir, 0o700);
     }
@@ -378,7 +378,7 @@ add_task(async function a_folder_without_search_permission_is_said_and_read_once
       () => !ConfigHost.errors.length && !ConfigHost.routesProblems.length,
       "searchable again: the errors are gone",
     );
-    Assert.equal(newTab(), "prefix+t", "and the file applies");
+    Assert.equal(newTab(), "prefix+m", "and the file applies");
   });
 });
 

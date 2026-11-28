@@ -252,10 +252,6 @@ pref("permissions.isolateBy.userContext", true);
 // window whose other workspaces' tabs are hidden; Firefox opens a new tab in the workspace instead.
 pref("browser.tabs.closeWindowWithLastTab", false);
 
-// Temporary containers (docs/specs/temporary-containers.md, Delivery): off until the pull request
-// that finishes the feature removes this pref.
-pref("vimma.feature.temporary_containers", false);
-
 // Split panes (spec m4-split-panes, ADR-013): Vimma's keys are the only way into a split. This
 // hides Firefox's tab and link context-menu items and alt-click; the split-view API keeps
 // working. split.css hides the URL bar button.

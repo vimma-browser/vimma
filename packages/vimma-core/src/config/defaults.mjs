@@ -151,6 +151,8 @@ const keys = {
   // docs/specs/private-workspace.md: ctrl+shift+p is Firefox's "New Private Window", done
   // Vimma's way (go to the one private workspace, or open it).
   private_workspace: ["prefix+shift+p", "ctrl+shift+p"],
+  // docs/specs/temporary-containers.md decision 14: t for temporary, with the other tab keys.
+  temporary_tab: ["prefix+t"],
   goto_picker: ["prefix+g", "ctrl+shift+a"],
   // docs/specs/live-grep.md decision 2: prefix+f is the find group, Telescope's <leader>fg.
   live_grep: ["prefix+f g"],

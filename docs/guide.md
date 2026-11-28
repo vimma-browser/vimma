@@ -32,9 +32,11 @@ What works today, each with the section that explains it:
   dwindle, `space` cycles tmux's presets); `ctrl+b ?` lists every binding, searchable.
 - **[Workspaces](#workspaces):** each one a container with its own logins and cookies, kept
   with its tabs and split layout across restarts; `ctrl+^` goes back to the last one; a
-  [private workspace](#private-workspace) (`ctrl+b shift+p`); a [side panel](#side-panel)
-  (`ctrl+b b`) that reaches any tab with Vim's counts (`4j`, `12G`) and shows marked tabs
-  together as panes.
+  [private workspace](#private-workspace) (`ctrl+b shift+p`);
+  [temporary containers](#temporary-containers) (`ctrl+b t`, `:tmp`), a tab with cookies of its
+  own beside your signed-in tabs, even in one split, deleted when its last tab closes; a
+  [side panel](#side-panel) (`ctrl+b b`) that reaches any tab with Vim's counts (`4j`, `12G`)
+  and shows marked tabs together as panes.
 - **[Every key is yours](#every-key-is-yours):** any binding, the prefix and the leader remap
   in [config.toml](#configtoml), which applies on save; Firefox's own shortcuts are Vimma
   bindings too ([Firefox's own shortcuts](#firefoxs-own-shortcuts)).
@@ -2295,6 +2297,7 @@ workspace: `:b work` searches your tabs for `work`.
 |                  | `:wsmove work` / `:wsmove 2`     | Move the current tab to another workspace, by name or number.       |
 | `ctrl+b shift+p` | `:private`, `:priv`              | Go to the [private workspace](#private-workspace); again goes back. |
 |                  | `:private close`                 | Close the private workspace and discard its data, after `y/N`.      |
+| `ctrl+b t`       | `:tmp`, `:tmp vsplit`            | A tab in a new [temporary container](#temporary-containers).        |
 
 - The keys open the command line with the command typed for you (`ctrl+b shift+w` with the
   current name to edit).
@@ -4400,6 +4403,46 @@ share `config.toml` while the routes stay private (in `.gitignore`, or a private
   logins, a site opens with, just as a pulled `config.toml` does: pull it only from a repository
   you control.
 
+### Temporary containers
+
+A temporary container is a tab with cookies and site storage of its own, inside the workspace
+you are in, deleted with everything a site stored in it when its last tab closes. Use one to
+look at a site signed out, or signed in as a second account, beside your normal tabs, in the
+same split if you like.
+
+It is not private browsing. While it is open, its cookies, storage and cache are on disk like any
+container's. Form history, passwords you choose to save, bookmarks you add, downloads and the
+downloads list, and HSTS entries are kept after it closes, and history records the pages you
+visit in it, as in any tab. For nothing on disk, use the [private workspace](#private-workspace).
+
+| Keys       | Command                      | What it does                                                                 |
+| ---------- | ---------------------------- | ---------------------------------------------------------------------------- |
+| `ctrl+b t` | `:tmp`, `:temporary`         | A new tab in a new temporary container, in this workspace.                   |
+|            | `:tmp <url or search>`       | That page in a new temporary container.                                      |
+|            | `:tmp vsplit` / `:tmp split` | Split the pane right / down, with the new pane in a new temporary container. |
+
+- **Each `:tmp` makes a new container.** Two temporary tabs do not share cookies, so two
+  `:tmp vsplit` give you two separate sign-ins side by side.
+- **Pop-ups join it.** A tab or pop-up the page opens (a link that opens a new tab, a sign-in
+  window, `F`, a middle click) is in the same temporary container, so a sign-in pop-up works.
+  A tab you open yourself (`ctrl+t`, `ctrl+b c`, `t`, `:tabnew`, `P`) is the workspace's.
+- **Markers.** The tab line and the side panel show `tmp1`, `tmp2` beside each temporary tab, the
+  status bar shows `◇ tmp1` when the current tab is one, and the workspace picker counts
+  `2 temporary`. The numbers tell two temporary containers in one split apart.
+- **Closing its last tab** deletes the container with its cookies, storage and cache at once, and
+  `ctrl+shift+t` cannot bring its tabs back. A temporary container is never restored at the next
+  start, and one left behind by a crash is deleted then.
+- **It stays in its workspace.** `:wsmove`, the picker's `m` and the side panel's move refuse a
+  temporary tab: open it again with `:tmp` in the other workspace.
+- **Not in the agent workspace or the private workspace.** `ctrl+b t` and `:tmp` are refused
+  there: agents work only with the agent workspace's own tabs and never see a temporary one, and
+  the private workspace is discarded when it closes already. Links from other apps never open in
+  a temporary container. `vimma-ctl state` marks temporary tabs with `"temporary": true`.
+- **Your key.** `ctrl+b t` is `temporary_tab` in `[keys]`; bind it to another key, or to `[]` to
+  free `ctrl+b t`. A `config.toml` that already binds `prefix+t` to another action is refused
+  with `"prefix+t" is already bound to temporary_tab` until you add `temporary_tab = []` (or
+  another key) to its `[keys]`.
+
 ### Private workspace
 
 The private workspace is a Firefox private window that Vimma treats as a workspace. Everything
@@ -5013,7 +5056,8 @@ Bitwarden), and `Tab` completes the name. To put an add-on on a key:
 - **Container add-ons** (Multi-Account Containers, Temporary Containers) overlap with
   [workspaces](#workspaces), which are containers already. They work, but a tab they open in a
   container of their own belongs to no workspace: it joins the workspace you are in as a
-  `foreign` tab, without that workspace's cookies and logins.
+  `foreign` tab, without that workspace's cookies and logins. Vimma has
+  [temporary containers](#temporary-containers) of its own (`ctrl+b t`).
 - **An extension shortcut on a Vimma key**: Vimma sees the key first, so Vimma's binding wins
   and the add-on never gets it. Remap one side: the add-on's in `about:addons` → Manage Extension
   Shortcuts, or Vimma's in `config.toml`.

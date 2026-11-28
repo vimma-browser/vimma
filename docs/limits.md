@@ -84,6 +84,10 @@ the [user guide](guide.md); planned work is on the
   bookmarks, saved passwords, form history and the downloads list are shared by every workspace:
   the address bar suggests other workspaces' history, and a saved password autofills in all of
   them.
+- A [temporary container](guide.md#temporary-containers) is not private browsing: form history,
+  saved passwords, downloads and HSTS entries are shared with the rest of Vimma, history records
+  its visits, and its cookies and cache stay on disk until its last tab closes or, after a crash,
+  until the next start.
 - Tabs in hidden workspaces keep running and playing audio; Vimma does not unload them.
 - A tab that shares your camera, microphone or screen cannot be hidden, so it stays visible in
   other workspaces while it shares.

@@ -91,7 +91,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Move the tab to another workspace (reopens it there)                    | `move_to_workspace`  | —                                               |
 | Routing rules: list them; :route add [workspace], :route move           | `route_rules`        | —                                               |
 | Private workspace (a private window); again goes back                   | `private_workspace`  | `ctrl+b shift+p`, `ctrl+shift+p`                |
-| New tab in a new temporary container (deleted when its last tab closes) | `temporary_tab`      | —                                               |
+| New tab in a new temporary container (deleted when its last tab closes) | `temporary_tab`      | `ctrl+b t`                                      |
 
 ## Navigation
 
