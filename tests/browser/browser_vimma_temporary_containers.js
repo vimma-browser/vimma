@@ -40,6 +40,13 @@ const { ContextualIdentityService: CIS } = ChromeUtils.importESModule(
   "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs",
 );
 
+const { BrowserWindowTracker } = ChromeUtils.importESModule(
+  "resource:///modules/BrowserWindowTracker.sys.mjs",
+);
+const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+);
+
 const FEATURE = "vimma.feature.temporary_containers";
 const SITE = "https://example.com/";
 const NOTICE_ID = "vimma-notice";
@@ -284,13 +291,100 @@ add_task(async function a_temporary_tab_cannot_move_workspace() {
     Assert.equal(
       ww().moveTab(tab, { id: other.id }),
       "a temporary tab stays in its workspace: open it again with :tmp there",
-      "every move refuses it, the picker's and the side panel's included",
+      "WindowWorkspaces refuses every move of it, whatever asks",
     );
     BrowserTestUtils.removeTab(tab);
   } finally {
     await WorkspaceStore.deleteWorkspace(other.id, { confirmed: true });
     BrowserTestUtils.removeTab(home);
   }
+});
+
+const PICKER_ID = "vimma-workspace-picker";
+const PANEL_ID = "vimma-panel";
+const PROMPT_ID = "vimma-rename";
+const pickerOpen = () =>
+  !!(/** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID))?.open);
+const pickerRowCount = () =>
+  document.getElementById(PICKER_ID)?.querySelectorAll(".vimma-picker-row").length ?? 0;
+const panelOpen = () => document.getElementById(PANEL_ID)?.hidden === false;
+const promptOpen = () => document.getElementById(PROMPT_ID)?.hidden === false;
+
+/** ctrl+b `key`. @param {string} key */
+function prefix(key) {
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey(key);
+}
+
+/** In the open workspace picker, down to its last row: the private workspace's. */
+async function toPrivateRow() {
+  await until(() => pickerOpen() && pickerRowCount() > 1, "the workspace picker is open");
+  for (let i = 0; i < pickerRowCount(); i++) EventUtils.synthesizeKey("j");
+}
+
+/**
+ * The refusal of a move into the private workspace, before the y/N: the URL of a throwaway
+ * session never reaches the private window, and no tab is left in its container.
+ * @param {MozTabbrowserTab} tab
+ */
+async function refusedIntoPrivate(tab) {
+  await until(() => noticeText().includes("stays in its workspace"), "the move is refused");
+  Assert.equal(
+    noticeText(),
+    "a temporary tab stays in its workspace: open it again with :tmp there",
+    "with the spec's text",
+  );
+  Assert.ok(!promptOpen(), "before the y/N");
+  Assert.ok(tab.isConnected && !tab.closing, "the tab stays open");
+  Assert.ok(
+    !BrowserWindowTracker.orderedWindows.some((w) => PrivateBrowsingUtils.isWindowPrivate(w)),
+    "no private window opened",
+  );
+}
+
+add_task(async function a_temporary_tab_cannot_move_into_the_private_workspace() {
+  const home = await workspaceTab();
+  try {
+    const tab = await tmp(SITE, SITE);
+    // An earlier task's refusal may still show.
+    document.getElementById(NOTICE_ID)?.replaceChildren();
+    await focusContent(tab.linkedBrowser);
+    // The workspace picker's m on the private row.
+    prefix("w");
+    await toPrivateRow();
+    EventUtils.synthesizeKey("m");
+    await refusedIntoPrivate(tab);
+    if (pickerOpen()) EventUtils.synthesizeKey("KEY_Escape");
+    await until(() => !pickerOpen(), "the picker closed");
+
+    // The side panel's m on the tab's row, then the private row.
+    document.getElementById(NOTICE_ID)?.replaceChildren();
+    await focusContent(tab.linkedBrowser);
+    prefix("b");
+    await until(panelOpen, "the side panel is open");
+    EventUtils.synthesizeKey("m");
+    await toPrivateRow();
+    EventUtils.synthesizeKey("KEY_Enter");
+    await refusedIntoPrivate(tab);
+    if (pickerOpen()) EventUtils.synthesizeKey("KEY_Escape");
+    BrowserTestUtils.removeTab(tab);
+  } finally {
+    BrowserTestUtils.removeTab(home);
+  }
+});
+
+add_task(async function tmp_refuses_javascript_and_data_urls() {
+  const count = gBrowser.tabs.length;
+  const containers = CIS.getPublicIdentities().length;
+  for (const text of ["javascript:alert(1)", " data:text/html,<p>x</p>"]) {
+    Assert.equal(
+      WorkspaceOps.openTemporaryTab(window, text),
+      "blocked: javascript: and data: URLs can't be opened from the command line",
+      `${text.trim()} is refused, as :open refuses it`,
+    );
+  }
+  Assert.equal(gBrowser.tabs.length, count, "no tab opened");
+  Assert.equal(CIS.getPublicIdentities().length, containers, "and no container made");
 });
 
 add_task(async function tmp_is_refused_in_the_agent_workspace() {

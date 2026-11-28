@@ -80,7 +80,10 @@ containers.
 - W11. A temporary container a crash or a quit left **must** be deleted at the next start (W9's
   check first), and a tab session restore brings back in it is closed, its data deleted once more
   after its browser is gone (a selected one loaded its page meanwhile), and not left in the
-  recently closed tabs. Until then its data is on disk like any container's.
+  recently closed tabs. Until then its data is on disk like any container's. The record is
+  written with the rest of `vimma-workspaces.json`, after Firefox's short save delay: a crash
+  within that delay of `:tmp` leaves an unrecorded container, which W9 keeps, as an ordinary
+  container with its data, until it is removed in Firefox's container settings.
   [`a_recorded_container_left_by_a_crash_is_removed_at_startup`](../../tests/browser/browser_vimma_temporary_containers.js),
   [`a_temporary_tab_restored_into_a_deleted_container_is_closed`](../../tests/browser/browser_vimma_temporary_containers.js)
 - W12. A temporary container keeps its cookies and site data apart from the workspace's, both
@@ -91,8 +94,10 @@ containers.
   opens takes its own, as Firefox's opener rule gives it. A link from another app never lands in
   one: Firefox's container guess skips it, and "the current tab" on one becomes a new tab. A
   temporary tab never moves to another workspace, which would reopen it in a signed-in
-  container.
+  container, nor into the private workspace, which would carry its URL there; both are refused
+  before the y/N.
   [`a_cookie_set_in_a_temporary_tab_is_not_seen_by_the_workspace_and_back`](../../tests/browser/browser_vimma_temporary_containers.js),
   [`a_new_tab_from_a_temporary_tab_takes_the_workspace_container`](../../tests/browser/browser_vimma_temporary_containers.js),
   [`an_external_link_never_lands_in_a_temporary_container`](../../tests/browser/browser_vimma_temporary_containers.js),
-  [`a_temporary_tab_cannot_move_workspace`](../../tests/browser/browser_vimma_temporary_containers.js)
+  [`a_temporary_tab_cannot_move_workspace`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`a_temporary_tab_cannot_move_into_the_private_workspace`](../../tests/browser/browser_vimma_temporary_containers.js)
