@@ -373,6 +373,92 @@ add_task(async function a_temporary_tab_cannot_move_into_the_private_workspace()
   }
 });
 
+// Delivery 2 (decision 16): numbered text markers in the tab line, the side panel, the status
+// bar and the workspace picker, in a theme colour of their own.
+const segment = (/** @type {string} */ id) =>
+  /** @type {HTMLElement | null} */ (
+    document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`) ?? null
+  );
+/** The tab line's entry of `tab`, by its number in the workspace. @param {MozTabbrowserTab} tab */
+const lineEntry = (tab) =>
+  document
+    .getElementById("vimma-tabline")
+    ?.querySelector(`.vimma-tabline-tab[data-number="${gBrowser.visibleTabs.indexOf(tab) + 1}"]`);
+/** @param {MozTabbrowserTab} tab */
+const lineMarker = (tab) => lineEntry(tab)?.querySelector(".vimma-tabline-temporary")?.textContent;
+/** @param {MozTabbrowserTab} tab */
+const panelMarker = (tab) =>
+  document
+    .getElementById(PANEL_ID)
+    ?.querySelector(`.vimma-panel-row:nth-child(${gBrowser.visibleTabs.indexOf(tab) + 1})`)
+    ?.querySelector(".vimma-panel-temporary")?.textContent;
+const pickerRowTexts = () =>
+  [...(document.getElementById(PICKER_ID)?.querySelectorAll(".vimma-picker-row") ?? [])].map(
+    (r) => r.textContent ?? "",
+  );
+
+add_task(async function markers_number_temporary_tabs_in_the_bar_line_panel_and_picker() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.tabline", "always"]] });
+  const home = await workspaceTab();
+  try {
+    const a = await tmp(SITE, SITE);
+    const b = await tmp(SITE, SITE);
+
+    await until(() => segment("temporary")?.textContent?.startsWith("◇ tmp2"), "the bar: ◇ tmp2");
+    const seg = /** @type {HTMLElement} */ (segment("temporary"));
+    Assert.equal(seg.style.color, "var(--vimma-text-bright-green)", "in its own colour");
+    Assert.equal(
+      seg.querySelector(".vimma-sb-sr")?.textContent,
+      "temporary container tmp2",
+      "read in words",
+    );
+    await until(() => lineMarker(a) === "tmp1" && lineMarker(b) === "tmp2", "the line: tmp1, tmp2");
+    Assert.equal(lineMarker(home), undefined, "no marker on a workspace tab");
+
+    await focusContent(b.linkedBrowser);
+    prefix("b");
+    await until(panelOpen, "the side panel is open");
+    await until(() => panelMarker(a) === "tmp1" && panelMarker(b) === "tmp2", "the panel: tmp1/2");
+    Assert.equal(panelMarker(home), undefined, "no marker on a workspace tab's row");
+    Assert.equal(
+      document
+        .getElementById(PANEL_ID)
+        ?.querySelector(".vimma-panel-temporary")
+        ?.getAttribute("aria-label"),
+      "temporary tmp1",
+      "the row reads the marker as the tab line does",
+    );
+    EventUtils.synthesizeKey("KEY_Escape");
+    await until(() => !panelOpen(), "the side panel closed");
+
+    await focusContent(b.linkedBrowser);
+    prefix("w");
+    await until(() => pickerOpen() && pickerRowCount() > 0, "the workspace picker is open");
+    Assert.ok(
+      pickerRowTexts().some((t) => t.includes("main") && t.includes(", 2 temporary")),
+      `main's row counts 2 temporary: ${JSON.stringify(pickerRowTexts())}`,
+    );
+    EventUtils.synthesizeKey("KEY_Escape");
+    await until(() => !pickerOpen(), "the picker closed");
+
+    gBrowser.selectedTab = home;
+    await until(() => !segment("temporary"), "no temporary segment on a workspace tab");
+
+    // A closed container's number is free again; an open one's stays with it.
+    BrowserTestUtils.removeTab(a);
+    gBrowser.selectedTab = b;
+    const c = await tmp(SITE, SITE);
+    await until(
+      () => lineMarker(c) === "tmp1" && lineMarker(b) === "tmp2",
+      "tmp1 again, tmp2 kept",
+    );
+    BrowserTestUtils.removeTab(c);
+    BrowserTestUtils.removeTab(b);
+  } finally {
+    BrowserTestUtils.removeTab(home);
+  }
+});
+
 add_task(async function tmp_refuses_javascript_and_data_urls() {
   const count = gBrowser.tabs.length;
   const containers = CIS.getPublicIdentities().length;

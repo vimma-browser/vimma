@@ -14,16 +14,21 @@ import { splitLabel } from "../panes/splits.mjs";
 
 /**
  * What the host knows of a tab; undefined for one it no longer has.
+ * `temporary`: its temporary container's number in the window
+ * (docs/specs/temporary-containers.md decision 16), absent or null for any other tab.
  * @typedef {{ title?: string, url?: string, label?: string | null, foreign?: boolean,
- *   playing?: boolean, pinned?: boolean, asleep?: boolean }} PanelTabInfo
+ *   playing?: boolean, pinned?: boolean, asleep?: boolean,
+ *   temporary?: number | null }} PanelTabInfo
  */
 /**
  * `split`: the number of the split showing the tab, null in none (docs/specs/multiple-splits.md
  * decision 10). `asleep`: the tab has no loaded page (docs/specs/tab-sleep.md, behaviour 14).
+ * `temporary`: its temporary container's number, `tmp1` (temporary-containers decision 16); only
+ * on a temporary tab's row.
  * @typedef {{ readonly tabId: string, readonly number: number, readonly display: string,
  *   readonly host: string, readonly active: boolean, readonly foreign: boolean,
  *   readonly playing: boolean, readonly pinned: boolean, readonly asleep: boolean,
- *   readonly split: number | null }} PanelRow
+ *   readonly split: number | null, readonly temporary?: number }} PanelRow
  */
 /**
  * One split of the workspace as the panel shows it: its number and its tabs.
@@ -147,6 +152,7 @@ export function openPanel(
       pinned: !!t.pinned,
       asleep: !!t.asleep,
       split: splitOf.get(tabId) ?? null,
+      ...(t.temporary ? { temporary: t.temporary } : {}),
     });
   });
   const find = (/** @type {string | null} */ id) => rows.findIndex((r) => r.tabId === id);

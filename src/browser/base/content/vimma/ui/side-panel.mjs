@@ -21,6 +21,7 @@ import {
 } from "../core/sidepanel.mjs";
 import { splitLabel } from "../core/splits.mjs";
 import { PRIVATE_COLOR_TOKEN, PRIVATE_GLYPH } from "../core/privatews.mjs";
+import { temporaryMarker } from "../core/tempcontainers.mjs";
 
 /** @import { PanelNumbers as Numbers, PanelOptions, PanelState, PanelTabInfo } from "../core/sidepanel.mjs" */
 /** @import { Workspaces } from "../core/workspaces.mjs" */
@@ -348,7 +349,19 @@ export class SidePanel {
           el("span", "vimma-panel-title", r.display),
           el("span", "vimma-panel-host", r.host),
         );
-        if (marks.length) row.append(el("span", "vimma-panel-marks", marks.join(" ")));
+        // A temporary tab's `tmp1` leads the marks, in its own colour (temporary-containers
+        // decision 16): a span of its own inside them, so the row's columns stay as they are.
+        if (marks.length || r.temporary) {
+          const box = el("span", "vimma-panel-marks", marks.join(" "));
+          if (r.temporary) {
+            const text = temporaryMarker(r.temporary);
+            const marker = el("span", "vimma-panel-temporary", text);
+            // Read as the tab line reads it, "temporary tmp1", like the split label's name.
+            marker.setAttribute("aria-label", `temporary ${text}`);
+            box.prepend(marker, marks.length ? " " : "");
+          }
+          row.append(box);
+        }
         // Its split's colour as a stripe and its label as text (docs/specs/multiple-splits.md
         // decision 10); the label's accessible name ends the row's with ", split 2".
         if (r.split !== null) {

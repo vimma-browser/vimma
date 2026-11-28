@@ -118,6 +118,13 @@ describe("openPanel", () => {
     expect({ ...rows[2], asleep: false }).toEqual(awake[2]);
   });
 
+  test("a temporary tab's row carries its number (temporary-containers decision 16)", () => {
+    const temp = (id: string) => (id === "t3" ? { ...tabs.t3, temporary: 2 } : tabs[id]);
+    const rows = openPanel(model, temp).rows;
+    expect(rows.map((r) => r.temporary)).toEqual([undefined, 2, undefined]);
+    expect(openPanel(model, info).rows.some((r) => "temporary" in r)).toBe(false);
+  });
+
   test("Given no selection asked for, then the active tab's row is highlighted", () => {
     expect(openPanel(model, info).selected).toBe(1);
   });

@@ -6,8 +6,9 @@
  * Temporary containers (docs/specs/temporary-containers.md): a tab, or the tabs its page opens,
  * in a container of its own inside a workspace, deleted with its site data when its last tab
  * closes. Pure rules only (decision 11): the map from container to workspace, the refusals,
- * which recorded containers may be deleted, and the startup cleanup plan. The host owns
- * ContextualIdentityService, the tabs and the file (workspaces/WorkspaceStore.sys.mjs).
+ * which recorded containers may be deleted, the startup cleanup plan, and the markers' text and
+ * numbers (decision 16). The host owns ContextualIdentityService, the tabs and the file
+ * (workspaces/WorkspaceStore.sys.mjs).
  */
 
 /**
@@ -159,4 +160,59 @@ export function planTemporaryCleanup(records, identities, workspaceContainers) {
     else plan.kept.push(r.userContextId);
   }
   return plan;
+}
+
+/**
+ * The status bar's glyph before a temporary tab's marker (decision 16): `◇` echoes the private
+ * workspace's `◆` without claiming to be it.
+ */
+export const TEMPORARY_GLYPH = "◇";
+
+/**
+ * The markers' colour (decision 16): a theme token no workspace colour, the private workspace
+ * nor the default accent uses. Many palettes give bright green the same value as green (a
+ * workspace colour, the panel's mark gutter) and split 8's stripe uses it too, so the colour can
+ * match those on screen: the text is what tells a temporary tab apart.
+ */
+export const TEMPORARY_COLOR_TOKEN = "--vimma-text-bright-green";
+
+/**
+ * A temporary tab's marker in the tab line and the side panel, `tmp1` (decision 16).
+ * @param {number} n  its container's number in the window (numberTemporary)
+ */
+export function temporaryMarker(n) {
+  return `tmp${n}`;
+}
+
+/**
+ * The workspace picker's count of temporary tabs, `2 temporary` (behaviour 4).
+ * @param {number} n
+ */
+export function temporaryCountText(n) {
+  return `${n} temporary`;
+}
+
+/**
+ * The numbers of a window's temporary containers (decision 16): a container keeps its number
+ * while it is open, so a marker never changes under a tab; one opened since gets the lowest
+ * number no open container has, in the order the containers were made (Firefox's ids only
+ * count up). A closed container's number is free again. `numbers` itself when nothing changed.
+ * @param {ReadonlyMap<number, number>} numbers  userContextId → number, as last returned
+ * @param {readonly number[]} open  the temporary containers with a tab in the window
+ * @returns {ReadonlyMap<number, number>}
+ */
+export function numberTemporary(numbers, open) {
+  const live = new Set(open);
+  const kept = [...numbers].filter(([id]) => live.has(id));
+  const fresh = [...live].filter((id) => !numbers.has(id)).sort((a, b) => a - b);
+  if (!fresh.length && kept.length === numbers.size) return numbers;
+  const next = new Map(kept);
+  const used = new Set(next.values());
+  let n = 1;
+  for (const id of fresh) {
+    while (used.has(n)) n++;
+    next.set(id, n);
+    used.add(n);
+  }
+  return next;
 }

@@ -1,7 +1,7 @@
 # Spec: temporary-containers
 
-Status: accepted (Delivery 1 built, behind `vimma.feature.temporary_containers`; 2 to 5 to
-come) · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
+Status: accepted (Deliveries 1 and 2 built, behind `vimma.feature.temporary_containers`; 3 to
+5 to come) · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
 `cmdline.mjs`, a new `packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`,
 `ui/tabline.mjs`, `ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,
 `workspaces/WindowWorkspaces.sys.mjs`, `workspaces/WorkspaceRouter.sys.mjs`, `host/tab-ops.mjs`,
@@ -263,11 +263,18 @@ close_last` decides, and its container is deleted as the tab closes, so that no 
     the user opened on purpose. It can be added later as a setting if it is needed.
 16. **Numbered text markers.** `tmp1`, `tmp2` in the tab line and the side panel, `◇ tmp1` in the
     status bar after the workspace segment when the current tab is temporary, and `2 temporary`
-    in the picker's count, in a theme colour no workspace marker uses, because text works without
+    in the picker's count, in a theme colour token of their own, because text works without
     colour, the number tells two temporary sessions in one split apart, and `◇` echoes the
     private workspace's `◆` without claiming to be it. Numbers count up from 1 within a window
     and are not reused while a container with that number is open, so that a marker never
-    changes under a tab.
+    changes under a tab. A new container takes the lowest number no open one has, so that the
+    numbers stay short. The colour is the theme's bright green (`--vimma-text-bright-green`),
+    because the workspace colours, the private workspace's magenta, the agent's cyan and the
+    accent take the others, and the palette's `brown` falls back to the muted text in themes that
+    leave it out. The token is distinct, not the colour on screen: many palettes, 13 of the 23
+    stock Omarchy themes among them, give bright green the same value as green, a workspace
+    colour and the side panel's mark gutter, and split 8's stripe uses bright green too, so the
+    `tmp` text, never the colour, is what tells a temporary tab apart.
 17. **Agents, MCP and `vimma-ctl`.** Agents cannot open or see a temporary tab, and
     `vimma-ctl state` (the user's full role) lists temporary tabs with `"temporary": true`; no
     command or agent tool is added, because the agent workspace's confinement is its container

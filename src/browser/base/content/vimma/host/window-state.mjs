@@ -493,6 +493,8 @@ export function newWindowState(host, win, keymap, env) {
           url: browser?.currentURI?.spec ?? "",
           label: getTabLabel(tab),
           foreign: !!WindowWorkspaces.get(win)?.isForeign(tab),
+          // docs/specs/temporary-containers.md decision 16: `tmp1` in the panel and tab line.
+          temporary: WindowWorkspaces.get(win)?.temporaryNumber(tab) ?? null,
           playing: !!tab.soundPlaying,
           pinned: !!tab.pinned,
           asleep: tabAsleep(tab),

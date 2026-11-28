@@ -9,6 +9,7 @@
 // status bar's do. It has no tab stop and no key or pointer handler (decision 17).
 
 import { DEFAULT_CONFIG, TABLINE_SETTINGS, TABLINE_WIDTH } from "../core/defaults.mjs";
+import { temporaryMarker } from "../core/tempcontainers.mjs";
 import {
   fitTabLine,
   nextTabLineSetting,
@@ -324,6 +325,14 @@ export class TabLine {
       }
       tab.append(el("vimma-tabline-number", String(item.number)));
       if (item.pane) tab.append(...glyph("▪", " in a pane"));
+      // In the fixed columns before the name, so a cut name never hides it (temporary-containers
+      // decision 16); its colour is the CSS's, and the text says it without colour.
+      if (item.temporary) {
+        const marker = temporaryMarker(item.temporary);
+        const seen = el("vimma-tabline-temporary", marker);
+        seen.setAttribute("aria-hidden", "true");
+        tab.append(doc.createTextNode(" "), seen, el("vimma-tabline-sr", ` temporary ${marker}`));
+      }
       if (item.name) tab.append(doc.createTextNode(" "), el("vimma-tabline-name", item.name));
       if (item.playing) tab.append(doc.createTextNode(" "), ...glyph("♪", "playing sound"));
       if (item.asleep) tab.append(el("vimma-tabline-sr", " asleep"));

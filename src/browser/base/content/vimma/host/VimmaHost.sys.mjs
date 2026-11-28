@@ -1021,6 +1021,7 @@ export const VimmaHost = {
    *   pane?: { index: number, count: number } | null, configErrors?: readonly ConfigError[],
    *   configFile?: string, alerts?: readonly string[],
    *   workspace?: { name: string, index: number, color?: string, private?: boolean } | null,
+   *   temporary?: number | null,
    *   agent?: { waiting: number, minutes: number | null, ran: boolean } | null,
    *   update?: import("../core/updates.mjs").UpdateNotice | null,
    *   element?: import("../core/statusbar.mjs").ElementStatus | null,
@@ -1041,6 +1042,10 @@ export const VimmaHost = {
       pdf: browser ? PdfOps.state(browser) : null,
       pane: paneStatus(win),
       workspace: privateStatus(win) ?? WindowWorkspaces.get(win)?.status() ?? null,
+      // docs/specs/temporary-containers.md decision 16: `◇ tmp1` on a temporary tab.
+      temporary: win.gBrowser?.selectedTab
+        ? (WindowWorkspaces.get(win)?.temporaryNumber(win.gBrowser.selectedTab) ?? null)
+        : null,
       configErrors: settings.configErrors,
       configFile: settings.configFile,
       // Persistent, unlike a notice: containers off or lost at startup (m3-workspaces).
