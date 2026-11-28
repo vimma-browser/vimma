@@ -29,6 +29,12 @@ unbinding `t` on every site.
 2. An entry is one key in the notation `[keys]` uses (`"t"`, `"T"`, `"ctrl+k"`, `"<C-k>"`,
    `"space"`, `"<leader>"`). Unbinding a key that starts longer sequences takes all of them on
    that site: `unbind = ["g"]` gives `g` to the page, and `gg`, `gt` and `gT` are off there.
+   (Since changed: a listed digit also reaches the page in normal mode instead of starting a
+   count, because no binding starts with a digit, so taking it out of the trie alone left the
+   dispatcher's count check in charge of it. A listed digit typed after a count cancels the count,
+   as any other unbound key does, and digits the site keeps still count;
+   [#1612](https://github.com/vimma-browser/vimma/issues/1612),
+   [#1613](https://github.com/vimma-browser/vimma/pull/1613).)
 3. The entries apply in normal mode and in insert mode, while keyboard focus is in the page. They
    do not apply in Vimma's own modes and surfaces (the side panel, the `:` line, hints, copy mode,
    the help overlay, pickers, the agent question), in the address bar, or in the PDF viewer.
