@@ -99,7 +99,7 @@ describe("an unknown action with no close match", () => {
       toml(
         "[keys]",
         'summon_hologram = ["prefix+h"]',
-        'new_tab = ["prefix+t"]',
+        'new_tab = ["prefix+m"]',
         "[scroll]",
         "step = 7",
       ),
@@ -112,7 +112,7 @@ describe("an unknown action with no close match", () => {
         message: 'unknown action "summon_hologram"; skipped',
       },
     ]);
-    expect(r.keymap?.keysFor("new_tab")).toContain("ctrl+b t");
+    expect(r.keymap?.keysFor("new_tab")).toContain("ctrl+b m");
     expect(r.keymap?.keysFor("new_tab")).not.toContain("ctrl+b c");
     expect(r.config?.scroll.step).toBe(7);
     expect(r.config?.keys).not.toHaveProperty("summon_hologram");

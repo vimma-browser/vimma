@@ -427,8 +427,8 @@ add_task(async function about_vimma_lists_only_the_aliases_that_apply() {
 });
 
 add_task(async function an_unknown_engine_is_a_config_error_and_the_rest_applies() {
-  await writeConfig("[search]", 'default = "Vimma Instaled"', "[keys]", 'new_tab = "prefix+t"');
-  await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", "the rest of the file applies");
+  await writeConfig("[search]", 'default = "Vimma Instaled"', "[keys]", 'new_tab = "prefix+m"');
+  await until(() => ConfigHost.config?.keys.new_tab === "prefix+m", "the rest of the file applies");
   await until(() => errorSegment()?.includes("search.default"), "the status bar shows it");
   Assert.equal(
     errorSegment(),

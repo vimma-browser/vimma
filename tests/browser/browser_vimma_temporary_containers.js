@@ -51,7 +51,6 @@ const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 );
 
-const FEATURE = "vimma.feature.temporary_containers";
 const SITE = "https://example.com/";
 const NOTICE_ID = "vimma-notice";
 
@@ -69,11 +68,8 @@ const files = [];
 
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      [FEATURE, true],
-      // window.open from a spawned script has no user gesture.
-      ["dom.disable_open_during_load", false],
-    ],
+    // window.open from a spawned script has no user gesture.
+    set: [["dom.disable_open_during_load", false]],
   });
   registerCleanupFunction(async () => {
     ww().switchTo({ id: mainDef().id });
@@ -137,25 +133,6 @@ function pageCookies(tab) {
 
 const closedOf = (/** @type {number} */ ucid) =>
   SessionStore.getClosedTabDataForWindow(window).filter((t) => t.state?.userContextId === ucid);
-
-add_task(async function tmp_does_not_exist_while_the_feature_is_off() {
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE, false]] });
-  try {
-    const tab = await workspaceTab();
-    const count = gBrowser.tabs.length;
-    await runCommand("tmp");
-    const error = () =>
-      document.querySelector("#vimma-cmdline .vimma-cmdline-error")?.textContent ?? "";
-    await until(() => error().startsWith('not a command: "tmp"'), "the command line says so");
-    EventUtils.synthesizeKey("KEY_Escape");
-    Assert.equal(gBrowser.tabs.length, count, "no tab opened");
-    Assert.equal(openTemporaryTab(window), 'not a command: "tmp"', "the action refuses too");
-    Assert.equal(gBrowser.tabs.length, count, "still no tab");
-    BrowserTestUtils.removeTab(tab);
-  } finally {
-    await SpecialPowers.popPrefEnv();
-  }
-});
 
 add_task(async function tmp_opens_a_tab_in_a_new_container_in_the_current_workspace() {
   const home = await workspaceTab();
@@ -376,16 +353,6 @@ add_task(async function a_refused_tmp_split_makes_no_tab_and_no_container() {
   } finally {
     ww().switchTo({ id: mainDef().id });
   }
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE, false]] });
-  try {
-    Assert.equal(
-      WorkspaceOps.openTemporaryTab(window, "vsplit"),
-      'not a command: "tmp"',
-      "no command while the feature is off",
-    );
-  } finally {
-    await SpecialPowers.popPrefEnv();
-  }
   Assert.equal(ours(), count, "no tab opened");
   Assert.equal(CIS.getPublicIdentities().length, containers, "and no container made");
   Assert.deepEqual(paneTabs(), [], "and no split");
@@ -454,6 +421,22 @@ function prefix(key) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key);
 }
+
+add_task(async function prefix_t_opens_a_temporary_tab() {
+  const home = await workspaceTab();
+  await focusContent(home.linkedBrowser);
+  prefix("t");
+  await until(() => gBrowser.selectedTab !== home, "ctrl+b t selected a new tab");
+  const tab = gBrowser.selectedTab;
+  Assert.ok(WorkspaceStore.isTemporaryContainer(tab.userContextId), "in a temporary container");
+  Assert.ok(ww().isTemporary(tab), "a temporary tab of the window");
+  const w = ww().model.workspaces.find((x) => x.id === mainDef().id);
+  Assert.ok(w?.tabs.includes(ww().idOf(tab)), "in the workspace it was opened in");
+  const ucid = tab.userContextId;
+  BrowserTestUtils.removeTab(tab);
+  await until(() => !CIS.getPublicIdentityFromId(ucid), "closing it deletes its container");
+  BrowserTestUtils.removeTab(home);
+});
 
 /** In the open workspace picker, down to its last row: the private workspace's. */
 async function toPrivateRow() {

@@ -838,7 +838,12 @@
         {
           "name": "temporary_tab",
           "description": "New tab in a new temporary container (deleted when its last tab closes)",
-          "keys": []
+          "keys": [
+            {
+              "keys": "ctrl+b t",
+              "chords": ["ctrl+b", "t"]
+            }
+          ]
         }
       ]
     },

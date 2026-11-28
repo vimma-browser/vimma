@@ -154,12 +154,12 @@ add_task(async function setup() {
 
 add_task(async function a_remapped_key_applies_after_the_poll() {
   const tab = await openPage("remap");
-  Assert.equal((await tabsAfterPrefix("t")).delta, 0, "sanity: prefix+t is unbound by default");
+  Assert.equal((await tabsAfterPrefix("m")).delta, 0, "sanity: prefix+m is unbound by default");
 
-  await writeConfig(`[keys]\nnew_tab = "prefix+t"`);
-  await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", "the poll loads the file");
+  await writeConfig(`[keys]\nnew_tab = "prefix+m"`);
+  await until(() => ConfigHost.config?.keys.new_tab === "prefix+m", "the poll loads the file");
   await focusContent(tab.linkedBrowser);
-  Assert.equal((await tabsAfterPrefix("t")).delta, 1, "ctrl+b t opens a tab");
+  Assert.equal((await tabsAfterPrefix("m")).delta, 1, "ctrl+b m opens a tab");
   await focusContent(tab.linkedBrowser);
   Assert.equal((await tabsAfterPrefix("c")).delta, 0, "ctrl+b c no longer does (list replaced)");
 
@@ -169,8 +169,8 @@ add_task(async function a_remapped_key_applies_after_the_poll() {
 
 add_task(async function the_help_overlay_marks_and_lists_an_override() {
   const tab = await openPage("help");
-  await writeConfig(`[keys]\nnew_tab = "prefix+t"`);
-  await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", "the poll loads the file");
+  await writeConfig(`[keys]\nnew_tab = "prefix+m"`);
+  await until(() => ConfigHost.config?.keys.new_tab === "prefix+m", "the poll loads the file");
   await focusContent(tab.linkedBrowser);
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("?", { shiftKey: true });
@@ -183,7 +183,7 @@ add_task(async function the_help_overlay_marks_and_lists_an_override() {
   /** @param {string} name @param {string} cls */
   const part = (name, cls) => found(row(name).querySelector(`.vimma-help-${cls}`)).textContent;
   Assert.equal(part("new_tab", "override"), "*", "the overridden action is marked *");
-  Assert.stringContains(part("new_tab", "keys"), "ctrl+b t", "with the file's binding");
+  Assert.stringContains(part("new_tab", "keys"), "ctrl+b m", "with the file's binding");
   Assert.ok(!part("new_tab", "keys").includes("ctrl+b c"), "not the default one it replaced");
   Assert.equal(part("close_tab", "override"), "", "a default binding is not marked");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -194,8 +194,8 @@ add_task(async function the_help_overlay_marks_and_lists_an_override() {
 
 add_task(async function a_broken_line_keeps_the_old_config_and_shows_file_and_line() {
   const tab = await openPage("broken");
-  await writeConfig(`[keys]\nnew_tab = "prefix+t"`);
-  await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", "the valid file loads");
+  await writeConfig(`[keys]\nnew_tab = "prefix+m"`);
+  await until(() => ConfigHost.config?.keys.new_tab === "prefix+m", "the valid file loads");
 
   await writeConfig(`[keys]\nnew_tab = "prefix+y"\nnew_tabb = "prefix+u"`);
   await until(() => ConfigHost.errors.length > 0, "the broken file is rejected");
@@ -204,9 +204,9 @@ add_task(async function a_broken_line_keeps_the_old_config_and_shows_file_and_li
     "the status bar shows config.toml:3:",
   );
   Assert.ok(found(segText("error")).includes('did you mean "new_tab"'), "with the suggestion");
-  Assert.equal(config().keys.new_tab, "prefix+t", "the old config stays active");
+  Assert.equal(config().keys.new_tab, "prefix+m", "the old config stays active");
   await focusContent(tab.linkedBrowser);
-  Assert.equal((await tabsAfterPrefix("t")).delta, 1, "the old mapping still opens a tab");
+  Assert.equal((await tabsAfterPrefix("m")).delta, 1, "the old mapping still opens a tab");
   await focusContent(tab.linkedBrowser);
   Assert.equal((await tabsAfterPrefix("y")).delta, 0, "the broken file's mapping does not");
 
@@ -225,10 +225,10 @@ add_task(async function skipped_bindings_count_as_warnings() {
       "[keys]",
       'summon_hologram = "prefix+h"',
       'teleport_tab = "prefix+j"',
-      'new_tab = "prefix+t"',
+      'new_tab = "prefix+m"',
     ].join("\n"),
   );
-  await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", "the file applies");
+  await until(() => ConfigHost.config?.keys.new_tab === "prefix+m", "the file applies");
   await until(
     () => segText("error")?.startsWith("2 warnings: config.toml:2: keys.summon_hologram:"),
     "the count says warnings",
@@ -243,14 +243,14 @@ add_task(async function an_unknown_agent_cli_skips_its_provider_and_the_file_app
   await writeConfig(
     [
       "[keys]",
-      'new_tab = "prefix+t"',
+      'new_tab = "prefix+m"',
       "[[agent.providers]]",
       'name = "later"',
       'kind = "cli"',
       'cli = "opencode"',
     ].join("\n"),
   );
-  await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", "the file applies");
+  await until(() => ConfigHost.config?.keys.new_tab === "prefix+m", "the file applies");
   Assert.deepEqual(ConfigHost.errors, [], "an unknown cli is no error");
   Assert.deepEqual(config().agent.providers, [], "its provider is left out");
   Assert.equal(ConfigHost.warnings.length, 1, "it is a warning");
@@ -260,9 +260,9 @@ add_task(async function an_unknown_agent_cli_skips_its_provider_and_the_file_app
   );
   Assert.ok(found(segText("error")).includes("this provider is skipped"), "and says what happened");
   await focusContent(tab.linkedBrowser);
-  Assert.equal((await tabsAfterPrefix("t")).delta, 1, "the file's mapping works");
+  Assert.equal((await tabsAfterPrefix("m")).delta, 1, "the file's mapping works");
 
-  await writeConfig(`[keys]\nnew_tab = "prefix+t"`);
+  await writeConfig(`[keys]\nnew_tab = "prefix+m"`);
   await until(() => segText("error") === null, "removing the provider clears the notice");
   Assert.deepEqual(ConfigHost.warnings, [], "and the warning");
 
@@ -300,12 +300,12 @@ add_task(async function the_poll_is_not_a_repeating_timer_a_test_could_be_blamed
 add_task(async function colon_source_reloads_at_once() {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.pollMs", 600000]] });
   const tab = await openPage("source");
-  await writeConfig(`[keys]\nnew_tab = "prefix+t"`);
+  await writeConfig(`[keys]\nnew_tab = "prefix+m"`);
   Assert.equal(ConfigHost.config?.keys.new_tab, undefined, "not loaded before :source");
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString("source");
   EventUtils.synthesizeKey("KEY_Enter");
-  await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", ":source loads the file");
+  await until(() => ConfigHost.config?.keys.new_tab === "prefix+m", ":source loads the file");
   await until(() => noticeText() === "sourced config.toml", "and says so (#1474)");
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
@@ -325,9 +325,9 @@ function command(line) {
 add_task(async function colon_source_a_path_replaces_the_config_and_reports_that_file() {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.pollMs", 600000]] });
   const tab = await openPage("source-path");
-  await writeConfig(`[keys]\nnew_tab = "prefix+t"`);
+  await writeConfig(`[keys]\nnew_tab = "prefix+m"`);
   await ConfigHost.reload();
-  Assert.equal(config().keys.new_tab, "prefix+t", "sanity: config.toml is in force");
+  Assert.equal(config().keys.new_tab, "prefix+m", "sanity: config.toml is in force");
 
   // Relative: next to config.toml. The file replaces the config, it is not merged into it.
   await IOUtils.writeUTF8(PathUtils.join(dir, "work.toml"), `[keys]\nclose_tab = "prefix+q"\n`);
@@ -337,7 +337,7 @@ add_task(async function colon_source_a_path_replaces_the_config_and_reports_that
   Assert.ok(!Object.hasOwn(config().keys, "new_tab"), "config.toml's binding is gone");
   Assert.equal(ConfigHost.path, PathUtils.join(dir, "work.toml"), "the file in force");
   await focusContent(tab.linkedBrowser);
-  Assert.equal((await tabsAfterPrefix("t")).delta, 0, "ctrl+b t no longer opens a tab");
+  Assert.equal((await tabsAfterPrefix("m")).delta, 0, "ctrl+b m no longer opens a tab");
 
   // A missing file: said in the status bar as a config error is, and nothing changes.
   await focusContent(tab.linkedBrowser);
@@ -356,7 +356,7 @@ add_task(async function colon_source_a_path_replaces_the_config_and_reports_that
   // Plain :source goes back to config.toml.
   await focusContent(tab.linkedBrowser);
   command("source");
-  await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", ":source reads config.toml");
+  await until(() => ConfigHost.config?.keys.new_tab === "prefix+m", ":source reads config.toml");
   Assert.equal(segText("error"), null, "and the error is gone");
   Assert.equal(ConfigHost.path, file, "config.toml is the file in force again");
 
@@ -388,12 +388,12 @@ add_task(async function colon_config_opens_the_file_and_creates_it_from_the_temp
   BrowserTestUtils.removeTab(shown);
 
   // An existing file is opened as it is, never rewritten.
-  await IOUtils.writeUTF8(fresh, `[keys]\nnew_tab = "prefix+t"\n`);
+  await IOUtils.writeUTF8(fresh, `[keys]\nnew_tab = "prefix+m"\n`);
   await focusContent(tab.linkedBrowser);
   const again = BrowserTestUtils.waitForNewTab(gBrowser, url, true);
   command("config");
   BrowserTestUtils.removeTab(await again);
-  Assert.equal(await IOUtils.readUTF8(fresh), `[keys]\nnew_tab = "prefix+t"\n`, "untouched");
+  Assert.equal(await IOUtils.readUTF8(fresh), `[keys]\nnew_tab = "prefix+m"\n`, "untouched");
 
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();

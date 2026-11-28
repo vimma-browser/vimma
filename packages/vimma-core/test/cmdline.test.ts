@@ -760,7 +760,7 @@ describe("parseCommandLine: messages and edges", () => {
 });
 
 describe("parseCommandLine: hidden actions", () => {
-  test(":tmp does not exist while temporary containers are off (CONTRIBUTING, unfinished)", () => {
+  test("a hidden action's commands do not exist (CONTRIBUTING, unfinished features)", () => {
     const hidden = ["workspace.temporary_tab"];
     for (const line of [":tmp", ":temporary", ":tmp example.com", ":temporary_tab"]) {
       expect(errorOf(line, { hidden }).code).toBe("unknown-command");

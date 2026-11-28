@@ -2,8 +2,7 @@
 
 Closing a runtime workspace deletes its container and that container's cookies and site data.
 Spec: [m3-workspaces](../specs/m3-workspaces.md). A temporary container is deleted with its data
-when its last tab closes (W9 to W12). Spec: [temporary-containers](../specs/temporary-containers.md),
-behind `vimma.feature.temporary_containers` until it is finished.
+when its last tab closes (W9 to W12). Spec: [temporary-containers](../specs/temporary-containers.md).
 
 **Reach:** you, by keys, `:wsdelete` or `:tmp`. Extensions and Firefox's Settings can delete
 containers.

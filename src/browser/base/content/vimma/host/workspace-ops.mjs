@@ -36,14 +36,6 @@ import { BLOCKED_URL_TEXT } from "./tab-ops.mjs";
 
 export const NO_WORKSPACES = "no workspaces in this window";
 
-/** Temporary containers (docs/specs/temporary-containers.md) while they are unfinished. */
-export const TEMPORARY_FEATURE_PREF = "vimma.feature.temporary_containers";
-
-/** Whether temporary containers are on (CONTRIBUTING.md, "Unfinished features"). */
-export function temporaryContainersOn() {
-  return Services.prefs.getBoolPref(TEMPORARY_FEATURE_PREF, false);
-}
-
 const lazy = /** @type {Lazy<"PrivateBrowsingUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
@@ -62,8 +54,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
  * @returns {string | null} why not, or null
  */
 export function openTemporaryTab(win, text = "") {
-  // While the feature is off, the command does not exist: a binding to it says what :tmp would.
-  if (!temporaryContainersOn()) return 'not a command: "tmp"';
   const ww = WindowWorkspaces.get(win);
   const refusal = temporaryRefusal({
     privateWindow: lazy.PrivateBrowsingUtils.isWindowPrivate(win),

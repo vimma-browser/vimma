@@ -109,7 +109,7 @@ add_task(async function a_missing_folder_is_created_private() {
 });
 
 add_task(async function an_existing_file_is_never_touched() {
-  for (const text of ['[keys]\nnew_tab = ["prefix+t"]\n', ""]) {
+  for (const text of ['[keys]\nnew_tab = ["prefix+m"]\n', ""]) {
     const t = await tempXdg();
     await IOUtils.makeDirectory(t.dir);
     await IOUtils.writeUTF8(t.file, text);

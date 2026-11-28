@@ -125,6 +125,19 @@ describe("actions", () => {
       expect(node?.action?.id, mode).toBe("workspace.private");
     }
   });
+
+  test("temporary_tab: prefix+t, in every mode (temporary-containers decision 14)", () => {
+    const km = compileKeymap();
+    expect(getAction("temporary_tab")).toMatchObject({
+      id: "workspace.temporary_tab",
+      group: "Workspaces",
+    });
+    expect(km.bindingsFor("temporary_tab")).toEqual(["prefix+t"]);
+    for (const mode of ["normal", "insert", "visual", "panel", "help"] as const) {
+      const node = km.trie(mode).children.get("ctrl+b")?.children.get("t");
+      expect(node?.action?.id, mode).toBe("workspace.temporary_tab");
+    }
+  });
 });
 
 // The "did you mean" suggestion for config keys and values (config.mjs, routes.mjs, cmdline.mjs).

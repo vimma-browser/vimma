@@ -1,9 +1,8 @@
 # Spec: temporary-containers
 
-Status: accepted (Deliveries 1 to 3 built, behind `vimma.feature.temporary_containers`; 4 and
-5 to come) · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
-`cmdline.mjs`, a new `packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`,
-`ui/tabline.mjs`, `ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,
+Status: accepted (Deliveries 1 to 3 and 5 built, on for everyone; 4 to come) · Area: core
+(`packages/vimma-core/src/actions.mjs`, `defaults.mjs`, `cmdline.mjs`, a new
+`packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`, `ui/tabline.mjs`, `ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,
 `workspaces/WindowWorkspaces.sys.mjs`, `workspaces/WorkspaceRouter.sys.mjs`, `host/tab-ops.mjs`,
 `host/pane-ops.mjs`, `host/close-last-ops.mjs`, `ui/statusbar.mjs`, `ui/tabline.mjs`,
 `ui/side-panel.mjs`, `ctl/VimmaControl.sys.mjs`) · Upstream patches: one more hunk in
