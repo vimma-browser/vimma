@@ -113,7 +113,7 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [mcp-consequence](specs/mcp-consequence.md), [mcp-drive](specs/mcp-drive.md),
   [mcp-forms](specs/mcp-forms.md), [builtin-agent](specs/builtin-agent.md),
   [builtin-agent-cli](specs/builtin-agent-cli.md), [agent-speed](specs/agent-speed.md),
-  [agent-modules](specs/agent-modules.md).
+  [agent-modules](specs/agent-modules.md), [agent-apis](specs/agent-apis.md).
 - **Firefox under Vimma:** [m0-mozilla-services](specs/m0-mozilla-services.md),
   [m0-user-agent](specs/m0-user-agent.md), [m0-safebrowsing-key](specs/m0-safebrowsing-key.md),
   [firefox-versions](specs/firefox-versions.md), [m0-rebase-playbook](specs/m0-rebase-playbook.md),
