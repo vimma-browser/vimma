@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.26](https://github.com/vimma-browser/vimma/compare/v0.1.25...v0.1.26) (2026-11-28)
+
+
+### Added
+
+* **agent:** convert an OpenAPI description into an operation index and shape API replies ([#1635](https://github.com/vimma-browser/vimma/issues/1635)) ([8d43d08](https://github.com/vimma-browser/vimma/commit/8d43d08be80ecbd8d5945a747e682c2553497acd))
+* **mcp:** a dropped modified click in an agent tab says so in the status bar ([#1611](https://github.com/vimma-browser/vimma/issues/1611)) ([076cea3](https://github.com/vimma-browser/vimma/commit/076cea336809eeeaacfca4fa58d480d90679799f)), closes [#1591](https://github.com/vimma-browser/vimma/issues/1591)
+* **tabs:** closing the last tab opens the workspace picker, or quits when nothing is left ([#1598](https://github.com/vimma-browser/vimma/issues/1598)) ([6eea4e4](https://github.com/vimma-browser/vimma/commit/6eea4e4685a00bd067e0e753cbfc38be15d9678f)), closes [#1428](https://github.com/vimma-browser/vimma/issues/1428)
+* **workspaces:** :tmp vsplit and :tmp split put a temporary pane in the split ([#1623](https://github.com/vimma-browser/vimma/issues/1623)) ([ef2ce07](https://github.com/vimma-browser/vimma/commit/ef2ce07ef9c848f9d5bdaba0799996977c6a8fc6))
+* **workspaces:** mark temporary tabs as tmp1, tmp2 in the bar, tab line, panel and picker ([#1621](https://github.com/vimma-browser/vimma/issues/1621)) ([258d970](https://github.com/vimma-browser/vimma/commit/258d970e0cded76ea009a5247871e3be01b632b0))
+* **workspaces:** open a tab in a temporary container with :tmp, behind a flag ([#1614](https://github.com/vimma-browser/vimma/issues/1614)) ([c26b854](https://github.com/vimma-browser/vimma/commit/c26b854779a31c1e33b30199ce48b3a08b9a5d1c))
+
+
+### Fixed
+
+* **bookmarks:** a private change to a bookmark vimma is writing is not written ([#1596](https://github.com/vimma-browser/vimma/issues/1596)) ([8918ae9](https://github.com/vimma-browser/vimma/commit/8918ae9c817f510066842e6520bbf5155ee21ecb)), closes [#1576](https://github.com/vimma-browser/vimma/issues/1576)
+* **bookmarks:** count a put-back by the closing compare for the loop guard ([#1605](https://github.com/vimma-browser/vimma/issues/1605)) ([843d4a6](https://github.com/vimma-browser/vimma/commit/843d4a6ed76d7e683bda327087e24da186c84244)), closes [#1595](https://github.com/vimma-browser/vimma/issues/1595)
+* **ctl:** ask before full control while an agent ticket is live ([#1610](https://github.com/vimma-browser/vimma/issues/1610)) ([08cadfe](https://github.com/vimma-browser/vimma/commit/08cadfe99ec188b731802ff1cc619876c9381ad7))
+* **keys:** a digit in a site's unbind list reaches the page instead of starting a count ([#1613](https://github.com/vimma-browser/vimma/issues/1613)) ([fa0bf05](https://github.com/vimma-browser/vimma/commit/fa0bf057d555a3862edea85be792bfe2f9f2d7e5)), closes [#1612](https://github.com/vimma-browser/vimma/issues/1612)
+* **mcp:** links dragged from agent tabs open no tab ([#1606](https://github.com/vimma-browser/vimma/issues/1606)) ([901172a](https://github.com/vimma-browser/vimma/commit/901172ab44bd9d655d0c106bd16b0ec3a666088e)), closes [#1592](https://github.com/vimma-browser/vimma/issues/1592)
+* **theme:** selected text in settings' dialogs and prompts uses the theme's selection colour ([#1632](https://github.com/vimma-browser/vimma/issues/1632)) ([9b0d86b](https://github.com/vimma-browser/vimma/commit/9b0d86b459632706a7fc0381e9f80d50bd02588a))
+* **theme:** settings' dialogs and prompts get square corners and the theme's font ([#1620](https://github.com/vimma-browser/vimma/issues/1620)) ([3c93a31](https://github.com/vimma-browser/vimma/commit/3c93a31a5b872efc0bab0533c65971d9ff8652ba))
+
 ## [Unreleased]
 
 ## [0.1.25](https://github.com/vimma-browser/vimma/compare/v0.1.24...v0.1.25) · Firefox 161.0 (2026-11-26)
