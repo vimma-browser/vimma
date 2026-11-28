@@ -9,6 +9,7 @@
 import { ACTIONS, closest, resolveActionName } from "./actions.mjs";
 import { scoreField } from "../ui/picker.mjs";
 import { LAYOUTS } from "../panes/layouts.mjs";
+import { TEMPORARY_SPLIT_WORDS } from "../workspaces/tempcontainers.mjs";
 
 /** @import { Action } from "./dispatcher.mjs" */
 
@@ -594,6 +595,8 @@ const ARGUMENT_KINDS = Object.freeze({
   layout: { names: "layout", kind: "layout", fixed: LAYOUTS },
   sleep: { names: "sleep", kind: "every workspace", fixed: ["all"] },
   private: { names: "private", kind: "private workspace", fixed: ["close"] },
+  // docs/specs/temporary-containers.md behaviour 2: a split with a temporary pane.
+  tmp: { names: "tmp", kind: "temporary pane", fixed: TEMPORARY_SPLIT_WORDS },
   // Only the words the host offers: export, export! and forget while bookmarks.toml is on.
   bookmarks: { names: "bookmarksfile", kind: "bookmarks file" },
   // The two a first-time user reaches for, then back to following the system.
@@ -716,7 +719,9 @@ export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] }
   const word = (m?.[1] ?? "").toLowerCase();
   // Stryker disable next-line OptionalChaining: the pattern matches every string, so `m` is set
   if (m?.[2]) {
-    const command = byWord.get(word)?.name;
+    const entry = byWord.get(word);
+    // A hidden command (an unfinished feature's) completes no argument, as it does not run.
+    const command = entry && !hidden.includes(entry.action) ? entry.name : undefined;
     if (command === "tab") {
       const text = rest.slice(/** @type {string} */ (m[1]).length + 1);
       const titles = /** @type {readonly string[]} */ (args.tab ?? []);

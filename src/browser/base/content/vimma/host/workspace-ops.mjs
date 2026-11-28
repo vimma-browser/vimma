@@ -9,7 +9,8 @@
 
 import { refusedScheme } from "../core/pageurl.mjs";
 import { workspaceItems } from "../core/picker.mjs";
-import { TEMPORARY_REFUSALS, temporaryRefusal } from "../core/tempcontainers.mjs";
+import { TEMPORARY_REFUSALS, temporaryRefusal, temporarySplit } from "../core/tempcontainers.mjs";
+import { PaneViews, isSplitLimitRefusal } from "../split/PaneView.mjs";
 import {
   closeWorkspaceQuestion,
   deleteBookmarksQuestion,
@@ -29,6 +30,7 @@ import {
 import { BLOCKED_URL_TEXT } from "./tab-ops.mjs";
 
 /** @import { WorkspaceItem } from "../core/picker.mjs" */
+/** @import { PaneResult, Tab as PaneTab } from "../split/PaneView.mjs" */
 /** @import { WorkspaceRef, Workspaces } from "../core/workspaces.mjs" */
 /** @import { WorkspaceDefinition } from "../core/workspacedefs.mjs" */
 
@@ -52,7 +54,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
  * temporary container of the window's workspace, showing the new-tab page or what was typed
  * (a URL, or words for the default search engine, as `:tabnew` loads them). Refused in the
  * private and the agent workspace (behaviour 8). The container is given explicitly, so neither
- * a routing rule nor the selected tab's container decides it.
+ * a routing rule nor the selected tab's container decides it. `:tmp vsplit` / `:tmp split`
+ * split the focused pane instead, as `:vsplit` / `:split` do, with the new pane's tab in the new
+ * container (behaviour 2); a refused split makes no container.
  * @param {BrowserWindow} win
  * @param {string} [text]
  * @returns {string | null} why not, or null
@@ -68,6 +72,8 @@ export function openTemporaryTab(win, text = "") {
   if (refusal) return TEMPORARY_REFUSALS[refusal];
   if (!ww?.model) return NO_WORKSPACES;
   const typed = text.trim();
+  const direction = temporarySplit(typed);
+  if (direction) return splitTemporary(win, ww.model.active, direction, typed);
   if (typed && refusedScheme(typed)) {
     return BLOCKED_URL_TEXT;
   }
@@ -85,6 +91,45 @@ export function openTemporaryTab(win, text = "") {
     inBackground: false,
     ...(typed ? { allowThirdPartyFixup: true } : {}),
   });
+  return null;
+}
+
+/**
+ * `:tmp vsplit` / `:tmp split` (decision 9): the focused pane split right / down, the new pane
+ * on the new-tab page in a new temporary container of `workspace`, focused, its URL bar ready
+ * for an address as after `:vsplit`. The container is made only once the split is allowed.
+ * @param {BrowserWindow} win
+ * @param {string} workspace
+ * @param {"vertical" | "horizontal"} direction
+ * @param {string} word  as typed, for the refusal
+ * @returns {string | null} why not, or null
+ */
+function splitTemporary(win, workspace, direction, word) {
+  const view = PaneViews.get(win);
+  if (!view) return `:tmp ${word}: no panes in this window`;
+  /** @type {PaneResult} */
+  let result;
+  try {
+    result = view.split(direction, {
+      // A new tab has its panel at once (addTab), as PaneView's own new pane does.
+      open: () =>
+        /** @type {PaneTab} */ (
+          /** @type {unknown} */ (
+            win.gBrowser.addTrustedTab(win.BROWSER_NEW_TAB_URL, {
+              inBackground: true,
+              userContextId: WorkspaceStore.createTemporary(workspace),
+            })
+          )
+        ),
+    });
+  } catch (e) {
+    return `:tmp ${word}: ${/** @type {Error} */ (e).message}`;
+  }
+  if (!result.ok) {
+    // It already says what happened; the command's name would only lengthen it (pane-ops).
+    return isSplitLimitRefusal(result.reason) ? result.reason : `:tmp ${word}: ${result.reason}`;
+  }
+  win.gURLBar?.select();
   return null;
 }
 

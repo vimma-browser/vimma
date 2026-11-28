@@ -1,6 +1,6 @@
 # Spec: temporary-containers
 
-Status: accepted (Deliveries 1 and 2 built, behind `vimma.feature.temporary_containers`; 3 to
+Status: accepted (Deliveries 1 to 3 built, behind `vimma.feature.temporary_containers`; 4 and
 5 to come) · Area: core (`packages/vimma-core/src/actions.mjs`, `defaults.mjs`,
 `cmdline.mjs`, a new `packages/vimma-core/src/workspaces/tempcontainers.mjs`, `statusbar.mjs`,
 `ui/tabline.mjs`, `ui/sidepanel.mjs`, `ui/picker.mjs`), chrome (`workspaces/WorkspaceStore.sys.mjs`,

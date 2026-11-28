@@ -18,6 +18,7 @@ import {
   temporaryMarker,
   temporaryName,
   temporaryRefusal,
+  temporarySplit,
   temporaryWorkspaceOf,
   withTemporary,
   withoutTemporary,
@@ -75,6 +76,21 @@ describe("temporaryRefusal (behaviour 8)", () => {
     expect(TEMPORARY_REFUSALS["move-temporary"]).toBe(
       "a temporary tab stays in its workspace: open it again with :tmp there",
     );
+  });
+});
+
+describe("temporarySplit (behaviour 2, decision 9)", () => {
+  test("vsplit and vs split right, split and sp split down", () => {
+    expect(temporarySplit("vsplit")).toBe("vertical");
+    expect(temporarySplit("vs")).toBe("vertical");
+    expect(temporarySplit("split")).toBe("horizontal");
+    expect(temporarySplit(" sp ")).toBe("horizontal");
+  });
+
+  test("anything else is a page to open, not a split", () => {
+    for (const text of ["", "example.com", "vsplit example.com", "VSPLIT", "spl", "splits"]) {
+      expect(temporarySplit(text)).toBeNull();
+    }
   });
 });
 

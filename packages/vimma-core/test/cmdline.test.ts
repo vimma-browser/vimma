@@ -84,6 +84,11 @@ describe("parseCommandLine: the Vim-style commands", () => {
     [":tmp example.com", run("tmp", "workspace.temporary_tab", { text: "example.com" })],
     [":temporary cats", run("tmp", "workspace.temporary_tab", { text: "cats" })],
     [":temporary_tab", run("temporary_tab", "workspace.temporary_tab")],
+    // Behaviour 2: the host reads these words as a split with a temporary pane.
+    [":tmp vsplit", run("tmp", "workspace.temporary_tab", { text: "vsplit" })],
+    [":tmp vs", run("tmp", "workspace.temporary_tab", { text: "vs" })],
+    [":tmp split", run("tmp", "workspace.temporary_tab", { text: "split" })],
+    [":temporary sp", run("tmp", "workspace.temporary_tab", { text: "sp" })],
     [":ls", run("ls", "goto.picker")],
     // docs/specs/tab-search.md decision 2: tab search, with the text as its query.
     [":tabsearch", run("tabsearch", "goto.picker")],
@@ -353,6 +358,15 @@ describe("completeCommandLine", () => {
     expect(values(":theme li")).toEqual(["theme light"]);
     const c = completeCommandLine(":theme sy").candidates[0];
     expect(c).toMatchObject({ label: "system", kind: "argument", description: "appearance" });
+  });
+
+  test(":tmp completes vsplit and split (temporary-containers behaviour 2)", () => {
+    expect(values(":tmp ")).toEqual(["tmp vsplit", "tmp split"]);
+    expect(values(":temporary vs")).toEqual(["temporary vsplit"]);
+    const c = completeCommandLine(":tmp sp").candidates[0];
+    expect(c).toMatchObject({ label: "split", kind: "argument", description: "temporary pane" });
+    const hidden = ["workspace.temporary_tab"];
+    expect(completeCommandLine(":tmp ", { hidden }).candidates).toEqual([]);
   });
 
   test(":settings completes its panes", () => {

@@ -33,6 +33,10 @@ const { agentTabs, agentWorkspace } = ChromeUtils.importESModule(
 const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
+const { PaneViews } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/split/PaneView.mjs",
+);
+const { leaves } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/panes.mjs");
 const { SessionStore } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
 );
@@ -271,6 +275,120 @@ add_task(async function a_new_tab_from_a_temporary_tab_takes_the_workspace_conta
   BrowserTestUtils.removeTab(fresh);
 
   BrowserTestUtils.removeTab(tab);
+  BrowserTestUtils.removeTab(home);
+});
+
+const view = () => /** @type {PaneView} */ (PaneViews.get(window));
+/** How the split's top level lays out its panes: `x` side by side, `y` stacked. */
+const rootAxis = () => {
+  const root = view().panes?.root;
+  return root?.type === "split" ? root.axis : null;
+};
+/** The tabs the shown panes show, in order, or [] with one pane. */
+const paneTabs = () => {
+  const panes = view().panes;
+  if (!panes || panes.hidden) return [];
+  return leaves(panes).map((l) => gBrowser.tabs.find((t) => t.linkedPanel === l.tab));
+};
+
+/**
+ * Runs `:tmp <word>` from `home` and returns the new pane's tab once two panes show.
+ * @param {string} word
+ * @param {MozTabbrowserTab} home
+ */
+async function tmpSplit(word, home) {
+  gBrowser.selectedTab = home;
+  await runCommand(`tmp ${word}`);
+  await until(() => paneTabs().length === 2, `:tmp ${word} made a split`);
+  return /** @type {MozTabbrowserTab} */ (gBrowser.selectedTab);
+}
+
+/** Closes `tab`'s pane, as closing its tab does, and waits for its container to go. */
+async function closeTemporaryPane(/** @type {MozTabbrowserTab} */ tab) {
+  const ucid = tab.userContextId;
+  BrowserTestUtils.removeTab(tab);
+  await until(() => paneTabs().length === 0, "back to one pane");
+  await until(() => !CIS.getPublicIdentityFromId(ucid), "its container is deleted");
+}
+
+add_task(async function tmp_vsplit_puts_a_temporary_pane_beside_a_workspace_pane() {
+  const home = await workspaceTab();
+  await pageCookie(home, "signedin");
+  const tab = await tmpSplit("vsplit", home);
+  Assert.deepEqual(paneTabs(), [home, tab], "the new pane is right of the workspace's");
+  Assert.equal(rootAxis(), "x", "side by side");
+  const ucid = tab.userContextId;
+  Assert.notEqual(ucid, mainDef().userContextId, "not the workspace's container");
+  Assert.ok(WorkspaceStore.isTemporaryContainer(ucid), "a new temporary container");
+  Assert.ok(ww().isTemporary(tab) && !ww().isForeign(tab), "the window knows it is temporary");
+  const w = ww().model.workspaces.find((x) => x.id === mainDef().id);
+  Assert.ok(w?.tabs.includes(ww().idOf(tab)), "in the workspace the split is in");
+  Assert.equal(home.userContextId, mainDef().userContextId, "the other pane keeps its container");
+
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, SITE);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, SITE);
+  Assert.equal(await pageCookies(tab), "", "the temporary pane is signed out");
+  Assert.equal(await pageCookies(home), "signedin=1", "the workspace pane stays signed in");
+
+  await closeTemporaryPane(tab);
+  Assert.ok(home.isConnected && !home.closing, "the workspace pane stays");
+  await SpecialPowers.spawn(home.linkedBrowser, [], () => {
+    content.document.cookie = "signedin=; Max-Age=0; Secure; SameSite=None; Path=/";
+  });
+  BrowserTestUtils.removeTab(home);
+});
+
+add_task(async function tmp_split_puts_a_temporary_pane_below() {
+  const home = await workspaceTab();
+  for (const word of ["split", "sp", "vs"]) {
+    const tab = await tmpSplit(word, home);
+    Assert.deepEqual(paneTabs(), [home, tab], `:tmp ${word}: the new pane follows`);
+    const axis = word === "vs" ? "x" : "y";
+    Assert.equal(rootAxis(), axis, word);
+    Assert.ok(WorkspaceStore.isTemporaryContainer(tab.userContextId), `${word}: temporary`);
+    await closeTemporaryPane(tab);
+  }
+  BrowserTestUtils.removeTab(home);
+});
+
+add_task(async function a_refused_tmp_split_makes_no_tab_and_no_container() {
+  const home = await workspaceTab();
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
+  // Showing the agent workspace may open its first tab; only the other tabs are counted.
+  const ours = () => gBrowser.tabs.filter((t) => t.userContextId !== agent.userContextId).length;
+  const count = ours();
+  const containers = CIS.getPublicIdentities().length;
+  const max = view().max;
+  view().max = 1;
+  try {
+    const said = WorkspaceOps.openTemporaryTab(window, "vsplit");
+    Assert.ok(said?.includes("pane"), `past [panes] max, refused as :vsplit is: ${said}`);
+  } finally {
+    view().max = max;
+  }
+  ww().switchTo({ id: agent.id });
+  try {
+    Assert.equal(
+      WorkspaceOps.openTemporaryTab(window, "split"),
+      "no temporary containers in the agent workspace",
+      "refused in the agent workspace as :tmp is",
+    );
+  } finally {
+    ww().switchTo({ id: mainDef().id });
+  }
+  await SpecialPowers.pushPrefEnv({ set: [[FEATURE, false]] });
+  try {
+    Assert.equal(
+      WorkspaceOps.openTemporaryTab(window, "vsplit"),
+      'not a command: "tmp"',
+      "no command while the feature is off",
+    );
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+  Assert.equal(ours(), count, "no tab opened");
+  Assert.equal(CIS.getPublicIdentities().length, containers, "and no container made");
+  Assert.deepEqual(paneTabs(), [], "and no split");
   BrowserTestUtils.removeTab(home);
 });
 
