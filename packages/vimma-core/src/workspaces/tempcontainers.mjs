@@ -62,6 +62,33 @@ export function temporaryRefusal({ privateWindow, agentWorkspace }) {
   return null;
 }
 
+/** `:tmp`'s words for a split (behaviour 2): the direction each splits in, as `:vsplit` / `:split`. */
+const SPLIT_WORDS = Object.freeze(
+  /** @type {Record<string, "vertical" | "horizontal">} */ ({
+    vsplit: "vertical",
+    vs: "vertical",
+    split: "horizontal",
+    sp: "horizontal",
+  }),
+);
+
+/** The split words `:tmp ` completes, the long forms (behaviour 2). */
+export const TEMPORARY_SPLIT_WORDS = Object.freeze(["vsplit", "split"]);
+
+/**
+ * The split `:tmp <text>` asks for (behaviour 2, decision 9): `vertical` for `vsplit` / `vs`,
+ * `horizontal` for `split` / `sp`, or null when the text is a page to open in a new tab. Only the
+ * whole word counts, so `:tmp split screen` still searches for those words.
+ * @param {string} text
+ * @returns {"vertical" | "horizontal" | null}
+ */
+export function temporarySplit(text) {
+  const word = text.trim();
+  return Object.hasOwn(SPLIT_WORDS, word)
+    ? /** @type {"vertical" | "horizontal"} */ (SPLIT_WORDS[word])
+    : null;
+}
+
 /**
  * The workspace a temporary container's tabs belong to (decision 3), or undefined when
  * `userContextId` is not a recorded temporary container.

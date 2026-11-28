@@ -60,7 +60,7 @@ containers.
   [`a_link_clicked_in_an_extensions_popup_opens_in_no_container`](../../tests/browser/browser_vimma_workspace_extension_tabs.js),
   [`a_page_never_opens_in_no_container_through_an_extension`](../../tests/browser/browser_vimma_workspace_extension_tabs.js)
 - W9. Only Vimma's own temporary containers are **ever** deleted as temporary: an id Vimma
-  recorded when `:tmp` made it (in memory, and in `vimma-workspaces.json` for the next start)
+  recorded when `:tmp` or `:tmp vsplit` / `:tmp split` made it (in memory, and in `vimma-workspaces.json` for the next start)
   whose live container still has the name Vimma gave it (`vimma temporary <hex>`), never a
   workspace's container and never container 0. A recorded container renamed in Settings, reused
   after a `containers.json` reset, or now a workspace's keeps its data (W4). A temporary
@@ -95,9 +95,14 @@ containers.
   one: Firefox's container guess skips it, and "the current tab" on one becomes a new tab. A
   temporary tab never moves to another workspace, which would reopen it in a signed-in
   container, nor into the private workspace, which would carry its URL there; both are refused
-  before the y/N.
+  before the y/N. A temporary pane made by `:tmp vsplit` / `:tmp split` is such a tab: the pane
+  beside it keeps the workspace's container, and a split refused (past `[panes] max`, in the
+  agent or private workspace) makes no container.
   [`a_cookie_set_in_a_temporary_tab_is_not_seen_by_the_workspace_and_back`](../../tests/browser/browser_vimma_temporary_containers.js),
   [`a_new_tab_from_a_temporary_tab_takes_the_workspace_container`](../../tests/browser/browser_vimma_temporary_containers.js),
   [`an_external_link_never_lands_in_a_temporary_container`](../../tests/browser/browser_vimma_temporary_containers.js),
   [`a_temporary_tab_cannot_move_workspace`](../../tests/browser/browser_vimma_temporary_containers.js),
-  [`a_temporary_tab_cannot_move_into_the_private_workspace`](../../tests/browser/browser_vimma_temporary_containers.js)
+  [`a_temporary_tab_cannot_move_into_the_private_workspace`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`tmp_vsplit_puts_a_temporary_pane_beside_a_workspace_pane`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`a_refused_tmp_split_makes_no_tab_and_no_container`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`tmp_is_refused_in_the_private_workspace`](../../tests/browser/browser_vimma_temporary_containers.js)

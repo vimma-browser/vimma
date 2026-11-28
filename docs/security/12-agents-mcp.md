@@ -1742,9 +1742,10 @@ off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; wit
   [`each asking agent command is one MCP tool; hello and ping are not`](../../packages/vimma-core/test/agent-gate.test.ts)
 - M68. Agents **never** see or open a tab in a temporary container
   ([temporary-containers](../specs/temporary-containers.md) decisions 7 and 17): its container is
-  not the agent workspace's, so M2 keeps it out of every agent command, and `:tmp` is refused in
-  the agent workspace, so no second container sits in the workspace made for agents. No agent
-  command or MCP tool opens one, and none says which tabs are temporary; only `vimma-ctl state`
-  in the full role does (S9).
+  not the agent workspace's, so M2 keeps it out of every agent command, and `:tmp`, `:tmp vsplit`
+  and `:tmp split` are refused in the agent workspace, so no second container sits in the
+  workspace made for agents. No agent command or MCP tool opens one, and none says which tabs are
+  temporary; only `vimma-ctl state` in the full role does (S9).
   [`tmp_is_refused_in_the_agent_workspace`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`a_refused_tmp_split_makes_no_tab_and_no_container`](../../tests/browser/browser_vimma_temporary_containers.js),
   [`agent_tabs_list_no_temporary_tab`](../../tests/browser/browser_vimma_temporary_containers.js)

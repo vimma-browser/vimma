@@ -52,6 +52,7 @@ import {
   zoomPane,
 } from "./pane-ops.mjs";
 import { pdfRunners } from "./pdf-ops.mjs";
+import { isSplitLimitRefusal } from "../split/PaneView.mjs";
 import { openSitePermissions } from "./permission-ops.mjs";
 import {
   MOVE_OUT_REFUSED,
@@ -472,7 +473,10 @@ export function hostRunners(host, page) {
     ) => {
       s.notice.hide();
       const said = openTemporaryTab(s.win, text ?? "");
-      if (said) s.notice.show(said, { error: true });
+      // A split's refusal at `[panes] max_splits` stays until the next key, as :vsplit's does.
+      if (said) s.notice.show(said, { error: true, untilKey: isSplitLimitRefusal(said) });
+      // `:tmp vsplit` changed the panes: redraw, as the pane keys do.
+      emit(s);
     },
     // workspace-routing: `:route` lists the rules (about:vimma); `add [workspace]`, `move`.
     "workspace.route": (

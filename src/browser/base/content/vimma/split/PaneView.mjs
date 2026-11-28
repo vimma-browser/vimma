@@ -770,12 +770,14 @@ export class PaneView {
    * core's reason, past `[panes] max` or with no space; a refused split opens no tab. On a tab
    * shown alone while the workspace keeps splits, the tab and the new pane make a new split with
    * the next free number, and the split shown last stays hidden; refused at `[panes] max_splits`
-   * (docs/specs/split-from-lone-tab.md).
+   * (docs/specs/split-from-lone-tab.md). `open` makes the new pane's tab instead, called only
+   * once the split is allowed, so that a refused split leaves nothing behind (a temporary
+   * container, docs/specs/temporary-containers.md decision 9).
    * @param {SplitDirection} direction
-   * @param {{ tab?: Tab }} [options]
+   * @param {{ tab?: Tab, open?: () => Tab }} [options]
    * @returns {PaneResult}
    */
-  split(direction, { tab } = {}) {
+  split(direction, { tab, open } = {}) {
     const lone = this.hidden;
     if (lone) {
       const limit = splitLimitRefusal(this.splits, { max: this.maxSplits });
@@ -788,6 +790,7 @@ export class PaneView {
     if (refusal) return { ok: false, reason: refusal.message };
     const fresh =
       tab ??
+      open?.() ??
       gBrowserOf(this.#win).addTrustedTab(this.#win.BROWSER_NEW_TAB_URL, {
         inBackground: true,
       });
