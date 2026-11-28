@@ -2,12 +2,20 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { readDefinitions } from "../src/workspaces/workspacedefs.mjs";
+import { THEME_TOKENS } from "../src/config/theme.mjs";
+import { WORKSPACE_COLOR_TOKENS } from "../src/ui/statusbar.mjs";
+import { PRIVATE_COLOR_TOKEN } from "../src/workspaces/privatews.mjs";
 import {
+  TEMPORARY_COLOR_TOKEN,
+  TEMPORARY_GLYPH,
   TEMPORARY_LOOKS,
   TEMPORARY_REFUSALS,
   canRemoveTemporary,
+  numberTemporary,
   planTemporaryCleanup,
   readTemporaryRecords,
+  temporaryCountText,
+  temporaryMarker,
   temporaryName,
   temporaryRefusal,
   temporaryWorkspaceOf,
@@ -209,5 +217,55 @@ describe("planTemporaryCleanup (decisions 5 and 18)", () => {
 
   test("nothing recorded, nothing deleted", () => {
     expect(planTemporaryCleanup([], live, [40])).toEqual({ remove: [], kept: [] });
+  });
+});
+
+describe("markers (decision 16)", () => {
+  test("text that does not lean on colour: tmp1 in the lists, ◇ tmp1 in the bar's glyph", () => {
+    expect(temporaryMarker(1)).toBe("tmp1");
+    expect(temporaryMarker(12)).toBe("tmp12");
+    expect(TEMPORARY_GLYPH).toBe("◇");
+  });
+
+  test("the picker's count says how many tabs are temporary", () => {
+    expect(temporaryCountText(1)).toBe("1 temporary");
+    expect(temporaryCountText(2)).toBe("2 temporary");
+  });
+
+  test("a theme colour no workspace marker uses", () => {
+    expect(THEME_TOKENS.some((t) => t.name === TEMPORARY_COLOR_TOKEN)).toBe(true);
+    expect(Object.values(WORKSPACE_COLOR_TOKENS)).not.toContain(TEMPORARY_COLOR_TOKEN);
+    expect([PRIVATE_COLOR_TOKEN, "--vimma-text-accent"]).not.toContain(TEMPORARY_COLOR_TOKEN);
+  });
+});
+
+describe("numberTemporary (decision 16)", () => {
+  test("numbers count up from 1, in the order the containers were made", () => {
+    const n = numberTemporary(new Map(), [31, 30]);
+    expect([...n]).toEqual([
+      [30, 1],
+      [31, 2],
+    ]);
+  });
+
+  test("a number stays with its container while it is open", () => {
+    const first = numberTemporary(new Map(), [30, 31]);
+    const next = numberTemporary(first, [31, 32]);
+    expect(next.get(31)).toBe(2);
+    expect(next.has(30)).toBe(false);
+  });
+
+  test("a number is not reused while its container is open; a closed one's is free again", () => {
+    const n = numberTemporary(new Map([[31, 2]]), [31, 40, 41]);
+    expect([...n].sort((a, b) => a[0] - b[0])).toEqual([
+      [31, 2],
+      [40, 1],
+      [41, 3],
+    ]);
+  });
+
+  test("the same map back when nothing changed, so a caller can tell", () => {
+    const n = numberTemporary(new Map(), [30]);
+    expect(numberTemporary(n, [30])).toBe(n);
   });
 });

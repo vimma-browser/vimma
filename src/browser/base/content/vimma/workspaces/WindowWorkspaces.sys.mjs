@@ -41,7 +41,7 @@ import {
 import { getTabLabel, LABEL_EVENT, setTabLabel, TAB_LABEL_KEY } from "./tab-labels.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
 import { unpinnedNotice } from "../core/workspacedefs.mjs";
-import { TEMPORARY_REFUSALS } from "../core/tempcontainers.mjs";
+import { TEMPORARY_REFUSALS, numberTemporary } from "../core/tempcontainers.mjs";
 import { CHANGED_TOPIC, WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 
 /** @import { Workspaces, WorkspaceRef, WorkspaceState } from "../core/workspaces.mjs" */
@@ -242,6 +242,12 @@ export class WindowWorkspacesImpl {
   /** Tabs of a container no workspace owns, adopted by the active workspace (decision 1). */
   /** @type {Set<string>} */
   #foreign = new Set();
+  /**
+   * The window's temporary containers' numbers, userContextId → n for the `tmp<n>` markers
+   * (docs/specs/temporary-containers.md decision 16), renumbered only when a new one shows up.
+   * @type {ReadonlyMap<number, number>}
+   */
+  #temporaryNumbers = new Map();
   /** Each tab's uuid, and back. */
   /** @type {WeakMap<Tab, string>} */
   #ids = new WeakMap();
@@ -436,6 +442,30 @@ export class WindowWorkspacesImpl {
    */
   isTemporary(tab) {
     return WorkspaceStore.isTemporaryContainer(tab.userContextId);
+  }
+
+  /**
+   * The number of `tab`'s temporary container in this window, for its `tmp<n>` marker
+   * (docs/specs/temporary-containers.md decision 16), or null for a tab in any other container.
+   * The numbers are worked out again only for a container without one, from the temporary
+   * containers that still have a tab here, so a closed container's number is free again and an
+   * open one's never changes.
+   * @param {Tab} tab
+   * @returns {number | null}
+   */
+  temporaryNumber(tab) {
+    const ucid = tab.userContextId;
+    if (!this.isTemporary(tab)) return null;
+    const known = this.#temporaryNumbers.get(ucid);
+    if (known !== undefined) return known;
+    const open = new Set([ucid]);
+    for (const t of this.#gBrowser?.tabs ?? []) {
+      if (this.#live(t) && WorkspaceStore.isTemporaryContainer(t.userContextId)) {
+        open.add(t.userContextId);
+      }
+    }
+    this.#temporaryNumbers = numberTemporary(this.#temporaryNumbers, [...open]);
+    return this.#temporaryNumbers.get(ucid) ?? null;
   }
 
   /** The status bar's workspace segment: the active workspace's name, place and colour. */
