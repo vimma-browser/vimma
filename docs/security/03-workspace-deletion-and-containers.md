@@ -104,4 +104,5 @@ containers.
   [`a_temporary_tab_cannot_move_workspace`](../../tests/browser/browser_vimma_temporary_containers.js),
   [`a_temporary_tab_cannot_move_into_the_private_workspace`](../../tests/browser/browser_vimma_temporary_containers.js),
   [`tmp_vsplit_puts_a_temporary_pane_beside_a_workspace_pane`](../../tests/browser/browser_vimma_temporary_containers.js),
-  [`a_refused_tmp_split_makes_no_tab_and_no_container`](../../tests/browser/browser_vimma_temporary_containers.js)
+  [`a_refused_tmp_split_makes_no_tab_and_no_container`](../../tests/browser/browser_vimma_temporary_containers.js),
+  [`tmp_is_refused_in_the_private_workspace`](../../tests/browser/browser_vimma_temporary_containers.js)

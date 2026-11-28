@@ -392,6 +392,27 @@ add_task(async function a_refused_tmp_split_makes_no_tab_and_no_container() {
   BrowserTestUtils.removeTab(home);
 });
 
+add_task(async function tmp_vsplit_on_a_lone_tab_starts_a_new_split_with_a_temporary_pane() {
+  const a = /** @type {SplitTab} */ (await workspaceTab());
+  const b = /** @type {SplitTab} */ (await workspaceTab());
+  Assert.ok(view().showTabs([a, b], a).ok, "S1: a | b");
+  await until(() => view().splits.shown === 1, "S1 shows");
+  const lone = await workspaceTab();
+  await until(() => view().hidden, "the third tab shows alone, S1 hidden");
+  const tab = await tmpSplit("vsplit", lone);
+  Assert.equal(view().splits.shown, 2, "the lone tab and the new pane are a new split");
+  Assert.deepEqual(paneTabs(), [lone, tab], "the new pane is right of the lone tab");
+  Assert.ok(WorkspaceStore.isTemporaryContainer(tab.userContextId), "in a temporary container");
+  Assert.equal(lone.userContextId, mainDef().userContextId, "the lone tab keeps its container");
+  Assert.equal(view().splits.splits.length, 2, "S1 is kept, hidden");
+
+  const ucid = tab.userContextId;
+  BrowserTestUtils.removeTab(tab);
+  await until(() => !CIS.getPublicIdentityFromId(ucid), "its container is deleted");
+  for (const t of [lone, b, a]) BrowserTestUtils.removeTab(t);
+  await until(() => !view().panes, "no split left");
+});
+
 add_task(async function a_temporary_tab_cannot_move_workspace() {
   const home = await workspaceTab();
   const other = WorkspaceStore.newWorkspace("tmp-target");
@@ -611,12 +632,17 @@ add_task(async function tmp_is_refused_in_the_private_workspace() {
   const win = await BrowserTestUtils.openNewBrowserWindow({ private: true });
   try {
     const count = win.gBrowser.tabs.length;
-    Assert.equal(
-      openTemporaryTab(win),
-      "the private workspace is discarded when it closes already",
-      "refused with the spec's text",
-    );
+    const containers = CIS.getPublicIdentities().length;
+    for (const text of ["", "vsplit", "split"]) {
+      Assert.equal(
+        WorkspaceOps.openTemporaryTab(win, text),
+        "the private workspace is discarded when it closes already",
+        `:tmp ${text}: refused with the spec's text`,
+      );
+    }
     Assert.equal(win.gBrowser.tabs.length, count, "no tab opened");
+    Assert.equal(CIS.getPublicIdentities().length, containers, "and no container made");
+    Assert.ok(!PaneViews.get(win)?.panes, "and no split");
   } finally {
     await BrowserTestUtils.closeWindow(win);
   }

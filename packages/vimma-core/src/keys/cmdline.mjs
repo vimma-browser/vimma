@@ -721,7 +721,7 @@ export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] }
   if (m?.[2]) {
     const entry = byWord.get(word);
     // A hidden command (an unfinished feature's) completes no argument, as it does not run.
-    const command = entry && !hidden.includes(entry.action) ? entry.name : undefined;
+    const command = entry && !isHidden(word, hidden, "command") ? entry.name : undefined;
     if (command === "tab") {
       const text = rest.slice(/** @type {string} */ (m[1]).length + 1);
       const titles = /** @type {readonly string[]} */ (args.tab ?? []);
