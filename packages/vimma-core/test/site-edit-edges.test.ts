@@ -329,14 +329,20 @@ describe("the result", () => {
     });
   });
 
-  test("macOS's keys decide whether the file has errors", () => {
-    // meta+9 is select_last_tab on macOS only.
-    const text = '[keys]\nnew_tab = "meta+9"\n';
-    expect(after(text, { add: ["t"] })).toBe(`${text}\n[sites."a.b"]\nunbind = ["t"]\n`);
+  test("the platform's keys decide whether the file has errors", () => {
+    // ctrl+h deletes a character in a text field on Linux only, so it cannot be the prefix there;
+    // macOS's fields already take it as backspace.
+    const text = '[keys]\nprefix = "ctrl+h"\n';
     expect(editSiteUnbindText(text, "a.b", { add: ["t"] }, { mac: true })).toEqual({
-      error:
-        "config.toml has errors; fix them first (:config): line 2: keys.new_tab: " +
-        '"meta+9" is already bound to select_last_tab in normal mode',
+      added: ["t"],
+      already: [],
+      removed: [],
+      text: `${text}\n[sites."a.b"]\nunbind = ["t"]\n`,
+    });
+    expect(edit(text, { add: ["t"] })).toMatchObject({
+      error: expect.stringMatching(
+        /^config\.toml has errors; fix them first \(:config\): line 2: keys\.prefix: ctrl\+h /,
+      ),
     });
   });
 

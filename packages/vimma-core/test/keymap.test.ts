@@ -70,8 +70,10 @@ describe("compileKeymap", () => {
     expect(km.bindingsFor("new_tab")).toEqual(["ctrl+alt+c", "t"]);
   });
 
-  test("the same sequence bound to two actions in one mode is an error", () => {
-    expect(() => compileKeymap({ keys: { new_tab: ["prefix+n"] } })).toThrow(KeymapError);
+  test("the same sequence bound to two of the user's actions in one mode is an error", () => {
+    expect(() =>
+      compileKeymap({ keys: { new_tab: ["prefix+m"], close_tab: ["prefix+m"] } }),
+    ).toThrow(KeymapError);
   });
 
   test("an unknown mode table is an error", () => {

@@ -283,17 +283,22 @@ describe("parseConfig: errors carry line numbers", () => {
     expect(e).toMatchObject({ line: 2, path: "modal.normal.j", suggestion: "scroll.down" });
   });
 
-  test("a conflict with a default binding points at the user's line", () => {
-    const e = oneError(toml("schema = 1", "", "[keys]", 'new_tab = ["prefix+n"]'));
-    expect(e).toMatchObject({ line: 4, path: "keys.new_tab" });
-    expect(e.message).toMatch(/already bound/);
+  test("a conflict between two of the user's bindings points at the second one's line", () => {
+    const e = oneError(
+      toml("schema = 1", "", "[keys]", 'new_tab = ["ctrl+alt+p"]', 'close_tab = ["ctrl+alt+p"]'),
+    );
+    expect(e).toMatchObject({ line: 5, path: "keys.close_tab" });
+    expect(e.message).toMatch(/already bound to new_tab/);
   });
 
   test("an error on an alias names the alias the user wrote, at its line", () => {
     // prev_workspace is an alias (spec m0-core-dispatcher); compileKeymap's canonical name is
     // previous_workspace
-    const e = oneError(toml("schema = 1", "", "[keys]", 'prev_workspace = ["prefix+n"]'));
-    expect(e).toMatchObject({ line: 4, path: "keys.prev_workspace" });
+    const e = oneError(
+      toml("[keys]", 'new_tab = ["ctrl+alt+p"]', 'prev_workspace = ["ctrl+alt+p"]'),
+    );
+    expect(e).toMatchObject({ line: 3, path: "keys.prev_workspace" });
+    expect(e.message).toMatch(/already bound to new_tab/);
     expect(e.message).not.toMatch(/previous_workspace/);
   });
 

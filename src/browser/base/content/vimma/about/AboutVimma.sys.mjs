@@ -54,7 +54,7 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  * @property {{ window: number, current: boolean, mode: string }[]} modes
  * @property {import("../host/key-log.mjs").KeyEvent[]} keys
  * @property {{ path: string, file: "pending" | "missing" | "read", errors: string[],
- *   warnings: string[] }} config  `warnings`: what a loaded file left out
+ *   warnings: string[] }} config  `warnings`: what a loaded file left out or took from a default
  * @property {{ name: string, group: string, bindings: string[], overridden: boolean }[]} bindings
  * @property {{ default: string | null, fromConfig: boolean, template: string | null,
  *   aliases: { alias: string, engine: string, unencrypted: boolean }[], errors: string[] }} search

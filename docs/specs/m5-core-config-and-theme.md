@@ -19,6 +19,18 @@ the file`). Only a downgrade, mainly by nightly testers, meets it. Every other c
 was. Tests: `config-schema-line.test.ts`; the contract fixtures of `tests/contract/config/v1/`
 and `v2/` still load, `v2/valid-old-schema.toml` with newer keys under `schema = 1`.
 
+Since changed (#1633): a `[keys]` binding the user wrote on a sequence that a default `[keys]`
+binding of another action also uses is no longer an error. The user's binding wins in the modes
+both are bound in, the default action loses only that key, and the file applies with a warning at
+the user's line that names the action and the keys it keeps (`"prefix+n" takes next_tab's default
+key; next_tab keeps ctrl+tab, ctrl+pagedown and gt`), or says it has none left and to bind it
+under `[keys]`. The reason: every new default key would otherwise refuse, on upgrade, each
+config.toml that already used that key for something else, and leave the user on the defaults
+until they unbound the new default by hand. Writing a key in `[keys]` is a clear statement of
+intent; the warning keeps the lost default visible. Two of the user's own bindings on one key stay
+an error, since neither is the one to keep. `compileKeymap` returns the clashes as `warnings`
+and `parseConfig` adds them to its own. Tests: `keymap-user-wins.test.ts`.
+
 ## User stories
 
 - As a user, I write `~/.config/vimma/config.toml` in Herdr syntax; a mistake on line 12 shows
@@ -243,6 +255,8 @@ warnings }`: what the host injects; an adaptive built-in adds its light tokens u
 - Given `[theme.colors] acent = "#fff"` / `accent = "blue"`, then a suggestion / a hex error.
 - Given a top-level `[thmee]`, then an error suggesting `theme`.
 - Given `new_tab = ["prefix+n"]` (taken by `next_tab`), then the error is on the user's line.
+  (Since changed: the file applies with a warning on that line; see the note under the status
+  line.)
 - Given the alias `prev_workspace` in a conflict, then the error is `keys.prev_workspace` on its
   own line, and the message never says `previous_workspace`.
 - Given workspaces `work`, `2`, `"1"`, `[workspaces.10]`, then that order, not `1, 2, 10, work`.

@@ -1422,8 +1422,27 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
  * @property {Keymap | null} keymap
  * @property {ConfigError[]} errors           in file order
  * @property {ConfigError[]} warnings         what was left out of a file that applies, in file
- *   order: a provider whose `cli` this build does not know
+ *   order: a provider whose `cli` this build does not know; and what applies differently from
+ *   the defaults: a default key that a `[keys]` binding of the user's took (#1633)
  */
+
+/**
+ * compileKeymap names actions canonically; a problem says what the user wrote (prev_workspace).
+ * @param {string} at  compileKeymap's path, `keys.previous_workspace[0]`
+ * @param {string} message
+ * @param {UserConfig} user
+ * @returns {Problem}
+ */
+function asWritten(at, message, user) {
+  let path = parsePath(at);
+  for (const written of Object.keys(user.keys ?? {})) {
+    const name = resolveActionName(written)?.name;
+    if (!name || name === written) continue;
+    if (path[0] === "keys" && path[1] === name) path = ["keys", written, ...path.slice(2)];
+    message = message.replace(new RegExp(`\\b${name}\\b`, "g"), written);
+  }
+  return { path, message };
+}
 
 /**
  * @param {string} text  contents of config.toml
@@ -1483,18 +1502,11 @@ export function parseConfig(text, { mac = false, routesFile = false } = {}) {
         },
         { mac },
       );
+      for (const w of keymap.warnings) warnings.push(asWritten(w.path, w.message, user));
     } catch (e) {
       /* c8 ignore next */
       if (!(e instanceof KeymapError)) throw e;
-      // compileKeymap names actions canonically; say what the user wrote (prev_workspace)
-      let path = parsePath(e.path);
-      let message = e.detail;
-      for (const written of Object.keys(user.keys ?? {})) {
-        const name = resolveActionName(written)?.name;
-        if (!name || name === written) continue;
-        if (path[0] === "keys" && path[1] === name) path = ["keys", written, ...path.slice(2)];
-        message = message.replace(new RegExp(`\\b${name}\\b`, "g"), written);
-      }
+      const { path, message } = asWritten(e.path, e.detail, user);
       problems.push({ path, message, ...(e.suggestion ? { suggestion: e.suggestion } : {}) });
     }
   }
@@ -1521,7 +1533,7 @@ export function parseConfig(text, { mac = false, routesFile = false } = {}) {
  * @returns {{ active: ActiveConfig, errors: ConfigError[], warnings: ConfigError[],
  *   kept: boolean }}
  *   kept: the text was not applied; `active` is the previous config, or the defaults.
- *   warnings: what an applied text left out (parseConfig)
+ *   warnings: what an applied text left out or took from a default (parseConfig)
  */
 export function reloadConfig(active, text, { mac = false, routesFile = false } = {}) {
   const r = parseConfig(text, { mac, routesFile });

@@ -276,14 +276,12 @@ describe("addAgentProviderText", () => {
   });
 
   test("checks the file before and after with the platform's keymap", () => {
-    // alt+d is focus_urlbar on Linux only; meta+l is focus_urlbar on macOS only.
-    const altD = cfg("[keys]", 'reload = ["alt+d"]');
-    const metaL = cfg("[keys]", 'reload = ["meta+l"]');
+    // ctrl+h deletes a character in a text field on Linux only, so it cannot be the prefix there;
+    // macOS's fields already take it as backspace.
+    const ctrlH = cfg("[keys]", 'prefix = "ctrl+h"');
     const opts = { makeDefault: false };
-    expect(addAgentProviderText(altD, local, opts)).toHaveProperty("error");
-    expect(addAgentProviderText(altD, local, { ...opts, mac: true })).toHaveProperty("text");
-    expect(addAgentProviderText(metaL, local, opts)).toHaveProperty("text");
-    expect(addAgentProviderText(metaL, local, { ...opts, mac: true })).toHaveProperty("error");
+    expect(addAgentProviderText(ctrlH, local, opts)).toHaveProperty("error");
+    expect(addAgentProviderText(ctrlH, local, { ...opts, mac: true })).toHaveProperty("text");
   });
 
   test("[agent] goes before the first providers header, not a comment that names one", () => {
